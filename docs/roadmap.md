@@ -1,137 +1,285 @@
-📅 2️⃣ 4-SPRINT BUILD ROADMAP
+🔵 UPDATED 4-SPRINT BUILD ROADMAP (Core-First, Revenue-Stable)
+
+We are no longer thinking “MVP.”
+
+We are thinking:
+
+Core Engine Stabilization → Revenue Engine → Expansion-Ready Architecture
 
 Each sprint = 1–2 weeks.
 
-🟢 Sprint 1 — Foundation
+🟢 Sprint 1 — Core Engine Stabilization
+🎯 Goal:
 
-Goal: Working backend + basic inventory
+Build the immutable foundation correctly with test discipline.
 
 Deliverables:
+Backend
 
-Project setup
+Project structure
 
-Database schema
+PostgreSQL schema (users, inventory_items, migrations)
 
-Auth system
+Auth system (JWT + bcrypt)
 
 Inventory CRUD
 
-Basic mobile UI for inventory
+State machine enforcement (inventory states)
 
-Deploy staging backend
+Pagination for inventory
+
+Proper DB indexing
+
+Testing
+
+pytest setup
+
+Inventory CRUD tests
+
+Auth tests
+
+State transition tests
+
+Test DB environment
+
+80%+ coverage for inventory + auth
+
+Mobile
+
+Login screen
+
+Inventory list screen
+
+Add/edit item screen
+
+Basic navigation
+
+API integration
+
+Error states
+
+DevOps
+
+Docker compose
+
+Test DB
+
+GitHub Actions CI (backend tests required)
+
+EAS preview build manual
 
 Success Criteria:
 
 User can create account
 
-Add item
+Add/edit/delete item
 
-Edit item
+Inventory states enforced
 
-Delete item
+All tests passing
+
+Preview build installable
+
+Architecture docs updated
+
+Core must feel solid.
 
 No payments yet.
 
-🟢 Sprint 2 — Profit & Barcode
+🟢 Sprint 2 — Revenue Engine (Profit + Transactions)
+🎯 Goal:
 
-Goal: Make it usable in real world
+Make inventory financially meaningful.
 
 Deliverables:
+Backend
 
-Barcode scanning (Expo)
+Transactions table
 
 Manual payment logging
 
-Profit calculation engine
+Profit calculation engine (isolated service)
 
-Transaction table
+Refund logic
 
-Dashboard v1 (revenue + profit)
+Dashboard API endpoints
+
+Golden Frame scenarios for:
+
+Add item → sell → profit calc
+
+Refund → profit adjust
+
+Testing
+
+Profit engine 100% coverage
+
+Transaction tests
+
+Refund tests
+
+Regression test suite begins
+
+Mobile
+
+Quick Sale flow
+
+Manual payment logging UI
+
+Dashboard v1:
+
+Revenue today
+
+Net profit
+
+Inventory value
 
 Success Criteria:
 
-Scan → create item
+Log sale in <5 seconds
 
-Log sale → see profit instantly
+Profit updates instantly
 
-🟢 Sprint 3 — Invoices + Stripe
+Refund updates profit correctly
 
-Goal: Money automation
+Golden Frames pass
+
+Now Vendora becomes usable even without Stripe.
+
+🟢 Sprint 3 — Automated Money Layer (Stripe + Invoices)
+🎯 Goal:
+
+Automate revenue without breaking core.
 
 Deliverables:
+Backend
 
 Invoice system
+
+Invoice state machine
 
 Stripe Connect
 
 Payment Intent creation
 
-Stripe webhooks
+Webhook handler (idempotent)
 
-Auto-update inventory on payment
+Subscription billing logic
 
-Subscription billing setup
+Tier enforcement middleware
+
+Event ID deduplication
+
+Testing
+
+Stripe webhook integration test
+
+Invoice lifecycle test
+
+Subscription enforcement test
+
+Full Golden Frame:
+
+Create invoice
+
+Stripe payment
+
+Webhook
+
+Inventory update
+
+Dashboard update
+
+Mobile
+
+Invoice creation screen
+
+Stripe pay link flow
+
+Subscription upgrade flow
 
 Success Criteria:
 
-Send invoice
+Customer pays invoice
 
-Customer pays
+Item auto marked sold
 
-Item marked sold automatically
+Profit accurate
 
-Dashboard updates
+Subscription tiers enforced
 
-🟢 Sprint 4 — Polish + App Store
+Webhook cannot double-process
 
-Goal: Production-ready
+Now you have a revenue-stable core.
+
+🟢 Sprint 4 — Modular Expansion + Hardening
+🎯 Goal:
+
+Prepare for continuous evolution safely.
 
 Deliverables:
+Modules
 
-Subscription tier enforcement
+Barcode scanning
 
-UX polish
-
-Error handling
+Feature flags
 
 CSV export
 
-App Store prep
+Public seller page (basic)
 
-Landing page
+Pro tier gating for barcode
+
+Stability
+
+Full regression test suite
+
+Performance query optimization
+
+Backup automation
+
+Logging improvements
+
+Risk register review
+
+UX
+
+Onboarding polish
+
+Error handling improvement
+
+Empty states
+
+App Store compliance review
 
 Success Criteria:
 
-Stable
+Stable preview builds
 
-Clean UI
+Golden Frames green
 
-Stripe working
+Risk register updated
 
-Can onboard new user start-to-finish
+Feature registry accurate
 
-🧠 Documentation Rule (Important)
+App Store submission-ready
 
-You said:
+Now the system is expansion-ready.
 
-I want my AI to always keep documentation in /docs
+🔐 Updated Documentation Rule
 
-Good.
+Replace your old rule with this stricter version:
 
-Here’s your permanent project rule:
+Every feature must:
 
-Every feature addition must:
+Update ARCHITECTURE.md if schema changes
 
-Update /docs/ARCHITECTURE.md if schema or routes change
+Update STATE_MACHINES.md if transitions change
 
-Update /docs/ROADMAP.md if scope shifts
+Update RISK_REGISTER.md if exposure changes
 
-Update /docs/FEATURES.md if functionality expands
+Update FEATURE_REGISTRY.md if status changes
 
-Never modify README without updating docs
+Update SYSTEM_EVOLUTION_PROTOCOL.md if expansion logic changes
 
-You enforce this in your AI prompts:
-
-“After generating code, update relevant docs in /docs to reflect architectural changes.”
-
-That prevents drift.
+Docs are not optional.

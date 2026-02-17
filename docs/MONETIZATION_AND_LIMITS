@@ -1,0 +1,89 @@
+Vendora — Monetization & Tier Logic
+🎯 Monetization Philosophy
+
+Users pay for:
+
+Scale
+
+Automation
+
+Trust
+
+Advanced features
+
+Free tier allows validation.
+Paid tier enables growth.
+
+🟢 Free Tier
+
+Max 25 inventory items
+
+Manual payment logging only
+
+No Stripe integration
+
+No barcode scanning
+
+Basic dashboard
+
+🔵 Pro Tier
+
+Unlimited inventory
+
+Stripe integration
+
+Barcode scanning
+
+Invoice generation
+
+Full dashboard analytics
+
+CSV export
+
+🔥 Partner Tier ($3–4 Add-on)
+
+Requires:
+
+Pro subscription
+
+Trust eligibility
+
+Includes:
+
+Verified badge
+
+Seller profile page
+
+Profile highlight
+
+Priority support
+
+🚦 Enforcement Logic
+
+On item creation:
+
+Check item count vs tier limit
+
+On Stripe connect attempt:
+
+Require Pro
+
+On barcode usage:
+
+Require Pro
+
+On seller profile activation:
+
+Require Partner
+
+🔁 Upgrade Flow
+
+If limit hit:
+
+Show upgrade modal
+
+Explain benefits
+
+Link to Stripe subscription
+
+No silent blocking.
