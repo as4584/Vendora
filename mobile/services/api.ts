@@ -212,6 +212,99 @@ export async function updateItemStatus(
   });
 }
 
+// ─── Transaction Endpoints ───────────────────────────
+
+export interface Transaction {
+  id: string;
+  user_id: string;
+  item_id: string | null;
+  method: string;
+  status: string;
+  gross_amount: string;
+  fee_amount: string;
+  net_amount: string;
+  external_reference_id: string | null;
+  notes: string | null;
+  is_refund: boolean;
+  original_transaction_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedTransactions {
+  items: Transaction[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface CreateTransactionPayload {
+  item_id?: string;
+  method: string;
+  gross_amount: string;
+  fee_amount?: string;
+  external_reference_id?: string;
+  notes?: string;
+}
+
+export async function createTransaction(
+  payload: CreateTransactionPayload
+): Promise<Transaction> {
+  return request<Transaction>("/transactions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listTransactions(
+  page = 1,
+  perPage = 20
+): Promise<PaginatedTransactions> {
+  return request<PaginatedTransactions>(
+    `/transactions?page=${page}&per_page=${perPage}`
+  );
+}
+
+export async function getTransaction(id: string): Promise<Transaction> {
+  return request<Transaction>(`/transactions/${id}`);
+}
+
+export async function refundTransaction(
+  id: string,
+  reason?: string
+): Promise<Transaction> {
+  return request<Transaction>(`/transactions/${id}/refund`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason || null }),
+  });
+}
+
+// ─── Dashboard Endpoints ─────────────────────────────
+
+export interface Dashboard {
+  revenue_today: string;
+  revenue_week: string;
+  revenue_month: string;
+  net_profit_today: string;
+  net_profit_week: string;
+  net_profit_month: string;
+  net_profit_all_time: string;
+  total_inventory_value: string;
+  total_expected_value: string;
+  potential_profit: string;
+  total_items: number;
+  items_in_stock: number;
+  items_listed: number;
+  items_sold: number;
+  total_transactions: number;
+  total_refunds: number;
+}
+
+export async function getDashboard(): Promise<Dashboard> {
+  return request<Dashboard>("/dashboard");
+}
+
 // ─── Health ──────────────────────────────────────────
 
 export async function healthCheck(): Promise<{ status: string; version: string }> {

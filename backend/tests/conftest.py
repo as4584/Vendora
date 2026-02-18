@@ -20,6 +20,7 @@ from app.main import app
 from app.database import get_db
 from app.models.base import Base
 from app.models.user import User
+from app.models.transaction import Transaction  # noqa: F401
 from app.services.auth import hash_password, create_access_token
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
@@ -49,30 +50,19 @@ def setup_database():
 
     # Create triggers
     with engine.connect() as conn:
-        conn.execute(text("""
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_trigger WHERE tgname = 'update_users_updated_at'
-                ) THEN
-                    CREATE TRIGGER update_users_updated_at
-                        BEFORE UPDATE ON users
-                        FOR EACH ROW
-                        EXECUTE FUNCTION update_updated_at_column();
-                END IF;
-            END $$
-        """))
-        conn.execute(text("""
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_trigger WHERE tgname = 'update_inventory_items_updated_at'
-                ) THEN
-                    CREATE TRIGGER update_inventory_items_updated_at
-                        BEFORE UPDATE ON inventory_items
-                        FOR EACH ROW
-                        EXECUTE FUNCTION update_updated_at_column();
-                END IF;
-            END $$
-        """))
+        for table_name in ["users", "inventory_items", "transactions"]:
+            conn.execute(text(f"""
+                DO $$ BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_trigger WHERE tgname = 'update_{table_name}_updated_at'
+                    ) THEN
+                        CREATE TRIGGER update_{table_name}_updated_at
+                            BEFORE UPDATE ON {table_name}
+                            FOR EACH ROW
+                            EXECUTE FUNCTION update_updated_at_column();
+                    END IF;
+                END $$
+            """))
         conn.commit()
 
     yield

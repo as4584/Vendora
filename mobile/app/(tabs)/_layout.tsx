@@ -1,5 +1,6 @@
 /**
  * Tabs layout — bottom tab navigation for authenticated users.
+ * Sprint 2: Added Dashboard and Quick Sale tabs.
  */
 import { Tabs } from "expo-router";
 import { Text } from "react-native";
@@ -25,12 +26,32 @@ export default function TabsLayout() {
             }}
         >
             <Tabs.Screen
+                name="dashboard"
+                options={{
+                    title: "Dashboard",
+                    headerTitle: "Dashboard",
+                    tabBarIcon: ({ color }) => (
+                        <Text style={{ fontSize: 22 }}>📊</Text>
+                    ),
+                }}
+            />
+            <Tabs.Screen
                 name="inventory/index"
                 options={{
                     title: "Inventory",
                     headerTitle: "My Inventory",
                     tabBarIcon: ({ color }) => (
                         <Text style={{ fontSize: 22 }}>📦</Text>
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="inventory/sale"
+                options={{
+                    title: "Quick Sale",
+                    headerTitle: "Quick Sale",
+                    tabBarIcon: ({ color }) => (
+                        <Text style={{ fontSize: 22 }}>💰</Text>
                     ),
                 }}
             />
