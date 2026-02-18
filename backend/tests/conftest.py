@@ -21,6 +21,8 @@ from app.database import get_db
 from app.models.base import Base
 from app.models.user import User
 from app.models.transaction import Transaction  # noqa: F401
+from app.models.invoice import Invoice, InvoiceItem  # noqa: F401
+from app.models.subscription import Subscription, WebhookEvent  # noqa: F401
 from app.services.auth import hash_password, create_access_token
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
@@ -50,7 +52,7 @@ def setup_database():
 
     # Create triggers
     with engine.connect() as conn:
-        for table_name in ["users", "inventory_items", "transactions"]:
+        for table_name in ["users", "inventory_items", "transactions", "invoices", "subscriptions", "webhook_events"]:
             conn.execute(text(f"""
                 DO $$ BEGIN
                     IF NOT EXISTS (

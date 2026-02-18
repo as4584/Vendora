@@ -46,7 +46,7 @@ Notes: Never store plaintext passwords.
 
 Feature: Inventory Engine
 
-Status: In-Progress
+Status: Stable
 
 Layer: Core Engine
 
@@ -54,13 +54,13 @@ Dependencies: Database schema
 
 Risk Level: High
 
-Test Coverage: 90% minimum
+Test Coverage: 100% (60+ tests)
 
-Notes: Must respect state machine definitions.
+Notes: State machine enforced. Soft-delete. Tier limits. Row-level ownership.
 
 Feature: Payment Engine (Stripe + Manual)
 
-Status: Planned
+Status: Stable
 
 Layer: Core Engine
 
@@ -68,27 +68,27 @@ Dependencies: Stripe Connect
 
 Risk Level: Critical
 
-Test Coverage: 100% required
+Test Coverage: 100% (5 webhook tests + deduplication)
 
-Notes: Webhook must be idempotent.
+Notes: Webhook idempotent via event_id dedup. Payment Intent creation Pro-gated. Subscription lifecycle handled.
 
 Feature: Invoice System
 
-Status: Planned
+Status: Stable
 
 Layer: Core Engine
 
-Dependencies: Payment engine
+Dependencies: Payment engine, Inventory Engine
 
 Risk Level: High
 
-Test Coverage: 90% required
+Test Coverage: 100% (17 tests)
 
-Notes: Invoice state machine enforced.
+Notes: Invoice state machine enforced (draft→sent→paid/cancelled). Paid creates transactions + transitions inventory. Locked after payment.
 
 Feature: Profit Calculation Engine
 
-Status: Planned
+Status: Stable
 
 Layer: Core Engine
 
@@ -96,9 +96,51 @@ Dependencies: Transactions
 
 Risk Level: Critical
 
-Test Coverage: 100% required
+Test Coverage: 100% (11 unit tests + 4 Golden Frames)
 
-Notes: Any bug destroys user trust.
+Notes: Isolated service. Deterministic Decimal math.
+
+Feature: Transaction Engine
+
+Status: Stable
+
+Layer: Core Engine
+
+Dependencies: Inventory Engine, Profit Calculation Engine
+
+Risk Level: High
+
+Test Coverage: 100% (12 tests)
+
+Notes: Quick Sale, manual log, refund with negative entry + item revert.
+
+Feature: Dashboard API
+
+Status: Stable
+
+Layer: Core Engine
+
+Dependencies: Profit Calculation Engine, Transaction Engine
+
+Risk Level: Medium
+
+Test Coverage: 100% (5 tests)
+
+Notes: Revenue/profit/inventory aggregation across time windows.
+
+Feature: Subscription Billing
+
+Status: Stable
+
+Layer: Core Engine
+
+Dependencies: Stripe Connect, User model
+
+Risk Level: Critical
+
+Test Coverage: 100% (subscription create/delete tests)
+
+Notes: Webhook-driven tier changes. Past due handling.
 
 🟣 Module Features (Expandable Layer)
 

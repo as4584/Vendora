@@ -305,6 +305,91 @@ export async function getDashboard(): Promise<Dashboard> {
   return request<Dashboard>("/dashboard");
 }
 
+// ─── Invoice Endpoints ───────────────────────────────
+
+export interface InvoiceItem {
+  id: string;
+  invoice_id: string;
+  inventory_item_id: string | null;
+  description: string;
+  quantity: number;
+  unit_price: string;
+  line_total: string;
+}
+
+export interface InvoiceData {
+  id: string;
+  user_id: string;
+  customer_name: string;
+  customer_email: string | null;
+  status: string;
+  subtotal: string;
+  tax: string;
+  shipping: string;
+  discount: string;
+  total: string;
+  stripe_payment_intent_id: string | null;
+  notes: string | null;
+  items: InvoiceItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedInvoices {
+  items: InvoiceData[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface CreateInvoicePayload {
+  customer_name: string;
+  customer_email?: string;
+  items: {
+    inventory_item_id?: string;
+    description: string;
+    quantity: number;
+    unit_price: string;
+  }[];
+  tax?: string;
+  shipping?: string;
+  discount?: string;
+  notes?: string;
+}
+
+export async function createInvoice(
+  payload: CreateInvoicePayload
+): Promise<InvoiceData> {
+  return request<InvoiceData>("/invoices", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listInvoices(
+  page = 1,
+  perPage = 20
+): Promise<PaginatedInvoices> {
+  return request<PaginatedInvoices>(
+    `/invoices?page=${page}&per_page=${perPage}`
+  );
+}
+
+export async function getInvoice(id: string): Promise<InvoiceData> {
+  return request<InvoiceData>(`/invoices/${id}`);
+}
+
+export async function updateInvoiceStatus(
+  id: string,
+  status: string
+): Promise<InvoiceData> {
+  return request<InvoiceData>(`/invoices/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
 // ─── Health ──────────────────────────────────────────
 
 export async function healthCheck(): Promise<{ status: string; version: string }> {

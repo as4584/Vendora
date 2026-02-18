@@ -13,6 +13,8 @@ from app.models.base import Base
 from app.models.user import User       # noqa: F401 — register model
 from app.models.inventory import InventoryItem  # noqa: F401 — register model
 from app.models.transaction import Transaction  # noqa: F401 — register model
+from app.models.invoice import Invoice, InvoiceItem  # noqa: F401 — register model
+from app.models.subscription import Subscription, WebhookEvent  # noqa: F401 — register model
 from app.config import settings
 
 config = context.config

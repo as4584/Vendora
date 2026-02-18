@@ -56,6 +56,16 @@ export default function TabsLayout() {
                 }}
             />
             <Tabs.Screen
+                name="inventory/invoices"
+                options={{
+                    title: "Invoices",
+                    headerTitle: "Invoices",
+                    tabBarIcon: ({ color }) => (
+                        <Text style={{ fontSize: 22 }}>🧾</Text>
+                    ),
+                }}
+            />
+            <Tabs.Screen
                 name="inventory/add"
                 options={{
                     title: "Add Item",
