@@ -35,6 +35,7 @@ is_partner (boolean, default false)
 stripe_account_id
 created_at
 updated_at
+deleted_at (timestamp, nullable — soft-delete for account recovery)
 inventory_items
 id (uuid, pk)
 user_id (fk → users)
@@ -54,6 +55,7 @@ platform
 status (in_stock, listed, sold, shipped, paid, archived)
 created_at
 updated_at
+deleted_at (timestamp, nullable — soft-delete for item recovery)
 transactions
 id (uuid, pk)
 user_id (fk)
@@ -98,8 +100,44 @@ user_id (fk)
 stripe_subscription_id
 tier (free | pro)
 is_partner (boolean, default false)
-status
+price_monthly (decimal: free = 0, pro = 20, partner_addon = 5)
+status (active, past_due, cancelled)
 current_period_end
+created_at
+
+⚙️ Database Trigger Functions
+
+update_updated_at_column()
+
+Purpose: Auto-set updated_at = NOW() on every row UPDATE.
+Applied to: users, inventory_items (and all future tables with updated_at).
+Type: BEFORE UPDATE trigger, per row.
+
+This is a PostgreSQL trigger function — not application code.
+It guarantees updated_at is always accurate regardless of which service writes to the DB.
+
+🗑 Soft-Delete & Account Recovery
+
+Strategy:
+
+deleted_at column (TIMESTAMP, NULLABLE) on users and inventory_items.
+NULL = active record.
+TIMESTAMP = soft-deleted (recoverable).
+
+Deletion behavior:
+
+DELETE /inventory/{id} → sets deleted_at = NOW()
+DELETE /user/account → sets deleted_at = NOW() on user + cascades to inventory
+All queries filter WHERE deleted_at IS NULL by default
+Soft-deleted records return 404 on GET/PUT/PATCH
+
+Recovery:
+
+User can request account restoration within 30 days
+Restore clears deleted_at back to NULL
+After 30 days, a scheduled job permanently purges data
+
+This protects against accidental deletion while respecting data cleanup obligations.
 🔌 Core API Routes
 Auth
 POST   /auth/register
