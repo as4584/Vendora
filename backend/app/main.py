@@ -3,11 +3,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import auth, inventory, transactions, dashboard, invoices, webhooks
+from app.routers import export, features, sellers
 
 app = FastAPI(
     title="Vendora API",
     description="Reseller Operating System — Inventory + Payments + Profit + Trust",
-    version="3.0.0",
+    version="4.0.0",
     docs_url="/api/v1/docs",
     redoc_url="/api/v1/redoc",
     openapi_url="/api/v1/openapi.json",
@@ -29,9 +30,12 @@ app.include_router(transactions.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(invoices.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
+app.include_router(export.router, prefix="/api/v1")
+app.include_router(features.router, prefix="/api/v1")
+app.include_router(sellers.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health", tags=["health"])
 def health_check():
     """Health check endpoint."""
-    return {"status": "ok", "version": "3.0.0"}
+    return {"status": "ok", "version": "4.0.0"}

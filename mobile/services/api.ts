@@ -389,6 +389,77 @@ export async function updateInvoiceStatus(
     body: JSON.stringify({ status }),
   });
 }
+// ─── Feature Flags ───────────────────────────────────
+
+export interface FeatureFlags {
+  tier: string;
+  is_partner: boolean;
+  features: Record<string, boolean>;
+}
+
+export interface TierInfo {
+  name: string;
+  price: number;
+  item_limit: number | null;
+  features: string[];
+}
+
+export interface TiersResponse {
+  tiers: { free: TierInfo; pro: TierInfo };
+  partner_addon: { price: number; requires: string; features: string[] };
+}
+
+export async function getFeatureFlags(): Promise<FeatureFlags> {
+  return request<FeatureFlags>("/features");
+}
+
+export async function getTiers(): Promise<TiersResponse> {
+  return request<TiersResponse>("/features/tiers");
+}
+
+// ─── Export ──────────────────────────────────────────
+
+export async function exportInventoryCSV(): Promise<string> {
+  return request<string>("/export/inventory");
+}
+
+export async function exportTransactionsCSV(): Promise<string> {
+  return request<string>("/export/transactions");
+}
+
+// ─── Public Seller Page ──────────────────────────────
+
+export interface SellerProfile {
+  seller: {
+    id: string;
+    business_name: string;
+    is_partner: boolean;
+    verified: boolean;
+    member_since: string | null;
+  };
+  stats: {
+    total_items: number;
+    items_sold: number;
+    total_transactions: number;
+  };
+  listings: {
+    id: string;
+    name: string;
+    category: string | null;
+    size: string | null;
+    color: string | null;
+    condition: string | null;
+    price: string | null;
+    status: string;
+  }[];
+  disclaimer: string;
+}
+
+export async function getSellerProfile(
+  userId: string
+): Promise<SellerProfile> {
+  return request<SellerProfile>(`/sellers/${userId}`);
+}
 
 // ─── Health ──────────────────────────────────────────
 

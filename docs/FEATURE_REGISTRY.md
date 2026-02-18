@@ -148,17 +148,17 @@ These attach to the core.
 
 Feature: Barcode Scanning
 
-Status: Planned
+Status: Stable (Backend Ready)
 
 Layer: Module
 
-Dependencies: Inventory engine
+Dependencies: Inventory engine, Pro tier
 
 Risk Level: Medium
 
-Test Coverage: 70% acceptable
+Test Coverage: Pro-gated via feature flags
 
-Notes: Must allow fallback manual entry.
+Notes: Manual entry fallback always available. Camera permission handled gracefully.
 
 Feature: Trust Score System
 
@@ -176,17 +176,45 @@ Notes: No guarantee language.
 
 Feature: Public Seller Page
 
-Status: Experimental
+Status: Stable
 
 Layer: Module
 
-Dependencies: Payment methods
+Dependencies: Partner tier
 
 Risk Level: Medium
 
-Test Coverage: 70% acceptable
+Test Coverage: 100% (5 tests)
 
-Notes: Must not imply financial guarantee.
+Notes: Disclaimer included. No financial guarantee language.
+
+Feature: CSV Export
+
+Status: Stable
+
+Layer: Module
+
+Dependencies: Pro tier, Inventory engine, Transaction engine
+
+Risk Level: Low
+
+Test Coverage: 100% (7 tests)
+
+Notes: Inventory + transaction export. Pro-gated.
+
+Feature: Feature Flags System
+
+Status: Stable
+
+Layer: Module
+
+Dependencies: User model
+
+Risk Level: Low
+
+Test Coverage: 100% (8 tests)
+
+Notes: Controls feature access per tier/partner status.
 
 Feature: Smart Pricing Suggestions
 
