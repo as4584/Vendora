@@ -160,6 +160,48 @@ Test Coverage: 60% acceptable
 
 Notes: Non-blocking to core flow.
 
+Feature: POS Mode (In-Person Sales)
+
+Status: Planned
+
+Layer: Module
+
+Dependencies: Inventory engine, Payment engine
+
+Risk Level: Medium
+
+Test Coverage: 70% acceptable
+
+Notes: Designed for sneaker events / pop-ups. Post-MVP.
+
+Feature: CSV Import (Cash App / PayPal)
+
+Status: Planned
+
+Layer: Module
+
+Dependencies: Transactions, Inventory engine
+
+Risk Level: Low
+
+Test Coverage: 60% acceptable
+
+Notes: Upload CSV, parse transactions, match to inventory.
+
+Feature: Google Sheets Sync
+
+Status: Planned
+
+Layer: Module
+
+Dependencies: Inventory engine
+
+Risk Level: Low
+
+Test Coverage: 60% acceptable
+
+Notes: Optional sync for spreadsheet-heavy sellers. Post-MVP.
+
 🟡 Feature Status Definitions
 
 Planned → Not built yet

@@ -162,6 +162,8 @@ Stripe
 POST   /stripe/connect
 POST   /stripe/webhook
 POST   /stripe/create-payment-intent
+Account
+DELETE /user/account (Planned — data deletion compliance)
 
 Webhook Responsibilities:
 
