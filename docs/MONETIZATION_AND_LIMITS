@@ -13,8 +13,15 @@ Advanced features
 
 Free tier allows validation.
 Paid tier enables growth.
+Partner is a trust add-on, not a standalone tier.
 
-🟢 Free Tier
+💲 Pricing
+
+Free Tier: $0/month
+Pro Tier: $20/month
+Partner Add-On: +$5/month (requires active Pro subscription)
+
+🟢 Free Tier ($0/month)
 
 Max 25 inventory items
 
@@ -26,7 +33,7 @@ No barcode scanning
 
 Basic dashboard
 
-🔵 Pro Tier
+🔵 Pro Tier ($20/month)
 
 Unlimited inventory
 
@@ -40,11 +47,16 @@ Full dashboard analytics
 
 CSV export
 
-🔥 Partner Tier ($3–4 Add-on)
+🔥 Partner Add-On (+$5/month)
+
+Partner is NOT a standalone subscription tier.
+It is an add-on flag that requires an active Pro subscription.
+
+If Pro subscription lapses, Partner benefits are suspended until Pro is restored.
 
 Requires:
 
-Pro subscription
+Active Pro subscription
 
 Trust eligibility
 
@@ -58,11 +70,19 @@ Profile highlight
 
 Priority support
 
+🧠 Schema Representation
+
+subscription_tier: 'free' | 'pro'
+is_partner: boolean (default false)
+
+Partner is stored as a boolean flag, not a tier value.
+This prevents invalid states like "partner without pro."
+
 🚦 Enforcement Logic
 
 On item creation:
 
-Check item count vs tier limit
+Check item count vs tier limit (Free = 25)
 
 On Stripe connect attempt:
 
@@ -74,7 +94,16 @@ Require Pro
 
 On seller profile activation:
 
-Require Partner
+Require is_partner = true AND subscription_tier = 'pro'
+
+On Partner activation:
+
+Verify subscription_tier = 'pro'
+If not Pro, reject with upgrade prompt
+
+On Pro subscription lapse:
+
+Suspend Partner benefits (is_partner remains true, but gated)
 
 🔁 Upgrade Flow
 

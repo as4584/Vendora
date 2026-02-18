@@ -30,7 +30,8 @@ id (uuid, pk)
 email (unique)
 password_hash
 business_name
-subscription_tier
+subscription_tier (free | pro)
+is_partner (boolean, default false)
 stripe_account_id
 created_at
 updated_at
@@ -95,7 +96,8 @@ subscriptions
 id (uuid, pk)
 user_id (fk)
 stripe_subscription_id
-tier
+tier (free | pro)
+is_partner (boolean, default false)
 status
 current_period_end
 🔌 Core API Routes
