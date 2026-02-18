@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: vendora
+      POSTGRES_PASSWORD: vendora
+      POSTGRES_DB: vendora
+    ports:
+      - "5432:5432"
+    volumes:
+      - vendora_data:/var/lib/postgresql/data
+
+  test-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: vendora
+      POSTGRES_PASSWORD: vendora
+      POSTGRES_DB: vendora_test
+    ports:
+      - "5433:5432"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://vendora:vendora@db:5432/vendora
+      SECRET_KEY: dev-secret-key-change-in-production
+      ENVIRONMENT: development
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app
+
+volumes:
+  vendora_data:
