@@ -15,6 +15,7 @@ interface AuthContextType extends AuthState {
     signIn: (email: string, password: string) => Promise<void>;
     signUp: (email: string, password: string, businessName?: string) => Promise<void>;
     signOut: () => Promise<void>;
+    refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -62,8 +63,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
     };
 
+    const refreshUser = async () => {
+        try {
+            const user = await api.getMe();
+            setState((s) => ({ ...s, user }));
+        } catch {
+            // silently fail
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ ...state, signIn, signUp, signOut }}>
+        <AuthContext.Provider value={{ ...state, signIn, signUp, signOut, refreshUser }}>
             {children}
         </AuthContext.Provider>
     );

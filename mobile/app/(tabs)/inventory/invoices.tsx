@@ -17,6 +17,8 @@ import {
     FlatList,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import * as api from "../../../services/api";
 
 interface LineItemDraft {
@@ -161,6 +163,29 @@ export default function InvoicesScreen() {
             Alert.alert("Error", err.message || "Failed to create invoice.");
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const [exportingId, setExportingId] = useState<string | null>(null);
+
+    const handleExportPdf = async (inv: api.InvoiceData) => {
+        setExportingId(inv.id);
+        try {
+            const { pdf_base64, filename } = await api.exportInvoicePdf(inv.id);
+            const fileUri = FileSystem.documentDirectory + filename;
+            await FileSystem.writeAsStringAsync(fileUri, pdf_base64, {
+                encoding: FileSystem.EncodingType.Base64,
+            });
+            const canShare = await Sharing.isAvailableAsync();
+            if (canShare) {
+                await Sharing.shareAsync(fileUri, { mimeType: "application/pdf", dialogTitle: "Share Invoice" });
+            } else {
+                Alert.alert("Saved", `Invoice saved to: ${fileUri}`);
+            }
+        } catch (err: any) {
+            Alert.alert("Export Failed", err.message || "Could not generate PDF.");
+        } finally {
+            setExportingId(null);
         }
     };
 
@@ -359,6 +384,18 @@ export default function InvoicesScreen() {
                                     </View>
                                 </View>
                             </View>
+                            {/* PDF export button */}
+                            <TouchableOpacity
+                                style={styles.pdfBtn}
+                                onPress={() => handleExportPdf(inv)}
+                                disabled={exportingId === inv.id}
+                            >
+                                {exportingId === inv.id ? (
+                                    <ActivityIndicator size="small" color="#6C5CE7" />
+                                ) : (
+                                    <Text style={styles.pdfBtnText}>📄 Export PDF</Text>
+                                )}
+                            </TouchableOpacity>
                         </TouchableOpacity>
                     )}
                 />
@@ -561,5 +598,20 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: "#888",
         marginTop: 4,
+    },
+    pdfBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        marginTop: 10,
+        paddingVertical: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#6C5CE7",
+    },
+    pdfBtnText: {
+        color: "#6C5CE7",
+        fontWeight: "700",
+        fontSize: 13,
     },
 });

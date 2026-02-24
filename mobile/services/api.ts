@@ -7,7 +7,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const API_BASE_URL = __DEV__
-  ? "http://192.168.1.231:8000/api/v1" // PC WiFi IP → works for Expo Go on iPhone
+  ? "https://vendora.lexmakesit.com/api/v1" // prod backend — works from any network in Expo Go
   : "https://vendora.lexmakesit.com/api/v1";
 
 const TOKEN_KEY = "vendora_access_token";
@@ -97,6 +97,7 @@ export interface User {
   id: string;
   email: string;
   business_name: string | null;
+  profile_picture: string | null;  // base64 data URL
   subscription_tier: string;
   is_partner: boolean;
   created_at: string;
@@ -135,6 +136,30 @@ export async function login(
 
 export async function getMe(): Promise<User> {
   return request<User>("/auth/me");
+}
+
+export async function updateProfile(
+  businessName?: string | null,
+  profilePicture?: string | null
+): Promise<User> {
+  return request<User>("/auth/profile", {
+    method: "PATCH",
+    body: JSON.stringify({
+      business_name: businessName,
+      profile_picture: profilePicture,
+    }),
+  });
+}
+
+export interface InvoicePdfResponse {
+  pdf_base64: string;
+  filename: string;
+}
+
+export async function exportInvoicePdf(
+  invoiceId: string
+): Promise<InvoicePdfResponse> {
+  return request<InvoicePdfResponse>(`/invoices/${invoiceId}/pdf`);
 }
 
 // ─── Inventory Endpoints ─────────────────────────────

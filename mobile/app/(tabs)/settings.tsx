@@ -3,20 +3,50 @@
  */
 import { useEffect, useState } from "react";
 import {
-    View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView
+    View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
+import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../../context/auth";
 import * as api from "../../services/api";
 import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/backgroundSync";
 
 export default function SettingsScreen() {
-    const { user, signOut } = useAuth();
+    const { user, signOut, refreshUser } = useAuth();
 
     // Lightspeed state
     const [lsStatus, setLsStatus] = useState<api.LightspeedStatus | null>(null);
     const [lsLoading, setLsLoading] = useState(true);
     const [lsSyncing, setLsSyncing] = useState(false);
+    const [photoSaving, setPhotoSaving] = useState(false);
+
+    const handleChangePhoto = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+            Alert.alert("Permission needed", "Grant photo access to set your profile picture.");
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.5,
+            base64: true,
+        });
+        if (!result.canceled && result.assets[0].base64) {
+            setPhotoSaving(true);
+            try {
+                const b64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+                await api.updateProfile(user?.business_name, b64);
+                await refreshUser();
+                Alert.alert("✅", "Profile picture updated! It will appear on your PDF invoices.");
+            } catch (err: any) {
+                Alert.alert("Error", err.message || "Failed to save profile picture.");
+            } finally {
+                setPhotoSaving(false);
+            }
+        }
+    };
 
     const fetchLsStatus = async () => {
         try {
@@ -88,11 +118,27 @@ export default function SettingsScreen() {
         <ScrollView style={styles.container} contentContainerStyle={styles.content}>
             {/* Profile Card */}
             <View style={styles.card}>
-                <Text style={styles.avatar}>ðŸ‘¤</Text>
+                <TouchableOpacity style={styles.avatarContainer} onPress={handleChangePhoto} disabled={photoSaving}>
+                    {user?.profile_picture ? (
+                        <Image source={{ uri: user.profile_picture }} style={styles.avatarImage} />
+                    ) : (
+                        <View style={styles.avatarPlaceholder}>
+                            <Text style={styles.avatarEmoji}>👤</Text>
+                        </View>
+                    )}
+                    <View style={styles.cameraBtn}>
+                        {photoSaving ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                            <Text style={{ fontSize: 12 }}>📷</Text>
+                        )}
+                    </View>
+                </TouchableOpacity>
                 <Text style={styles.email}>{user?.email}</Text>
                 {user?.business_name && (
                     <Text style={styles.businessName}>{user.business_name}</Text>
                 )}
+                <Text style={styles.photoHint}>Tap photo to change — appears on PDF invoices</Text>
             </View>
 
             {/* Tier Info */}
@@ -207,6 +253,43 @@ const styles = StyleSheet.create({
     avatar: { fontSize: 48, textAlign: "center", marginBottom: 12 },
     email: { color: "#FFFFFF", fontSize: 16, fontWeight: "700", textAlign: "center" },
     businessName: { color: "#888", fontSize: 14, textAlign: "center", marginTop: 4 },
+    avatarContainer: {
+        alignSelf: "center",
+        marginBottom: 12,
+        position: "relative",
+    },
+    avatarImage: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        borderWidth: 3,
+        borderColor: "#6C5CE7",
+    },
+    avatarPlaceholder: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: "#2A2A4A",
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 2,
+        borderColor: "#6C5CE7",
+    },
+    avatarEmoji: { fontSize: 36 },
+    cameraBtn: {
+        position: "absolute",
+        bottom: 0,
+        right: 0,
+        backgroundColor: "#6C5CE7",
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 2,
+        borderColor: "#0A0A1A",
+    },
+    photoHint: { color: "#555", fontSize: 11, textAlign: "center", marginTop: 6 },
     sectionTitle: {
         fontSize: 13,
         fontWeight: "800",
