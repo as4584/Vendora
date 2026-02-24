@@ -165,7 +165,7 @@ export default function AddItemScreen() {
                 platform: platform.trim() || undefined,
             };
             await api.createItem(payload);
-            Alert.alert("âœ… Added", "Item saved to inventory!", [
+            Alert.alert("✅ Added", "Item saved to inventory!", [
                 { text: "OK", onPress: () => router.replace("/(tabs)/inventory") },
             ]);
         } catch (err: any) {
@@ -198,7 +198,7 @@ export default function AddItemScreen() {
                             <Image source={{ uri: frontPhoto }} style={styles.photoThumb} />
                         ) : (
                             <View style={styles.photoPlaceholder}>
-                                <Text style={styles.photoIcon}>ðŸ“¸</Text>
+                                <Text style={styles.photoIcon}>📸</Text>
                                 <Text style={styles.photoLabel}>Front</Text>
                             </View>
                         )}
@@ -211,7 +211,7 @@ export default function AddItemScreen() {
                             <Image source={{ uri: backPhoto }} style={styles.photoThumb} />
                         ) : (
                             <View style={styles.photoPlaceholder}>
-                                <Text style={styles.photoIcon}>ðŸ“¸</Text>
+                                <Text style={styles.photoIcon}>📸</Text>
                                 <Text style={styles.photoLabel}>Back</Text>
                             </View>
                         )}
@@ -259,7 +259,7 @@ export default function AddItemScreen() {
                                 style={styles.autoButton}
                                 onPress={handleAutoSKU}
                             >
-                                <Text style={styles.autoButtonText}>âš¡</Text>
+                                <Text style={styles.autoButtonText}>⚡</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -277,7 +277,7 @@ export default function AddItemScreen() {
                         keyboardType="numeric"
                     />
                     <TouchableOpacity style={styles.scanButton} onPress={openScanner}>
-                        <Text style={styles.scanButtonText}>ðŸ”</Text>
+                        <Text style={styles.scanButtonText}>🔍</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -343,7 +343,7 @@ export default function AddItemScreen() {
                 <Text style={styles.label}>Platform</Text>
                 <TextInput
                     style={styles.input}
-                    placeholder="eBay, StockX, Mercariâ€¦"
+                    placeholder="eBay, StockX, Mercari…"
                     placeholderTextColor="#555"
                     value={platform}
                     onChangeText={setPlatform}

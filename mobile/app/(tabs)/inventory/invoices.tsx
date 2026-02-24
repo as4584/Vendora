@@ -20,7 +20,7 @@ import {
     Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as api from "../../../services/api";
 

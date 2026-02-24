@@ -73,7 +73,15 @@ export default function SettingsScreen() {
             setLsLoading(true);
             await fetchLsStatus();
         } catch (err: any) {
-            Alert.alert("Error", err.message || "Could not open Lightspeed auth.");
+            const msg: string = err.message ?? "";
+            if (msg.toLowerCase().includes("not configured") || err.status === 503) {
+                Alert.alert(
+                    "Coming Soon",
+                    "Lightspeed POS integration requires a developer key that hasn't been set up on this server yet. This feature will be available soon."
+                );
+            } else {
+                Alert.alert("Error", msg || "Could not open Lightspeed auth.");
+            }
         }
     };
 
