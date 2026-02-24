@@ -1,8 +1,84 @@
-📘 VENDORA — SOURCE OF TRUTH v1.0
+📘 VENDORA — SOURCE OF TRUTH v2.0
+Last Updated: 2026-02-24
 
-Product Type: Mobile-First Reseller Operating System
-Positioning: Inventory + Payments + Profit + Trust — Unified
-Primary Users: Resellers (sneakers, clothing, watches, pet gear, handmade, Instagram brands)
+## ✅ LIVE DEPLOYMENT STATE
+
+| Component | Status | Detail |
+|-----------|--------|--------|
+| Production URL | ✅ Live | https://vendora.lexmakesit.com |
+| Backend | ✅ Running | FastAPI + Uvicorn on Ubuntu VPS via Docker |
+| Database | ✅ PostgreSQL | 6 migrations applied (001–006) |
+| Git Branch | sprint-5-lightspeed-deploy | pushed to GitHub |
+| Expo SDK | 54 | React Native 0.81.5 |
+| Dev Tunnel | exp://fsl2bsc-anonymous-8083.exp.direct | port 8083 |
+
+## ✅ DATABASE SCHEMA (migration sequence)
+- 001: users, inventory_items
+- 002: transactions
+- 003: invoices, invoice_items, subscriptions, webhook_events
+- 004: lightspeed_tokens
+- 005: source + external_id on inventory_items + transactions
+- 006: profile_picture on users
+
+## ✅ DEPLOYED ENDPOINTS
+
+**Auth:** POST /auth/register, POST /auth/login, GET /auth/me, PATCH /auth/profile
+
+**Inventory:** GET/POST /inventory, GET/PATCH/DELETE /inventory/{id},
+GET /inventory/market-price, GET /inventory/{id}/pricing-suggestion
+
+**Invoices:** GET/POST /invoices, GET /invoices/{id}, PATCH /invoices/{id}/status,
+POST /invoices/{id}/pay, GET /invoices/{id}/pdf
+
+**Transactions:** GET/POST /transactions, GET /transactions/{id}
+
+**Dashboard:** GET /dashboard/summary
+
+**Sellers:** GET /sellers/{user_id}
+
+**Export (Pro):** GET /export/inventory, GET /export/transactions
+
+**Lightspeed:** GET /integrations/lightspeed/status,
+GET /integrations/lightspeed/connect,
+POST /integrations/lightspeed/sync
+
+**Webhooks:** POST /webhooks/stripe
+
+## ✅ MOBILE SCREENS (Expo Router)
+
+- `/(auth)/login` — JWT login with show/hide password toggle
+- `/(auth)/register` — Account creation
+- `/(tabs)/dashboard` — Revenue/profit summary
+- `/(tabs)/inventory/index` — 3-column photo grid
+- `/(tabs)/inventory/add` — Add item (photos, barcode scanner, auto-SKU)
+- `/(tabs)/inventory/[id]` — Item detail (market price panel, pricing suggestion)
+- `/(tabs)/inventory/invoices` — Invoice list + create + 📄 Export PDF
+- `/(tabs)/settings` — Profile picture, Lightspeed integration, tier info, sign out
+
+## ✅ INSTALLED MOBILE PACKAGES
+- expo ~54.0.33, expo-router ~6.0.23
+- react-native-reanimated 4.1.6, react-native-worklets 0.5.1
+- expo-camera ~17.0.10, expo-image-picker ~17.0.10
+- expo-background-fetch ~14.0.9, expo-task-manager ~14.0.9
+- expo-web-browser ~15.0.10
+- expo-file-system 19.0.21, expo-sharing 14.0.8
+
+## ⚠️ KNOWN OPERATIONAL RISKS
+
+**DB Volume Wipe:** `docker compose up --build -d` may recreate the Postgres
+volume, wiping all data. After any deploy that shows "Volume ... Creating",
+re-run: `docker compose exec -T backend python create_user.py`
+
+**Expo Go Limitations:** expo-background-fetch and expo-task-manager are
+no-ops in Expo Go (wrapped in try/catch). Full background sync only works
+in a development build (EAS Build).
+
+**QR Code in Windows Terminal:** Renders rectangular — use manual URL entry
+in Expo Go or open http://localhost:8083 in browser for proper QR.
+
+---
+
+
 
 🧱 CORE SYSTEM
 1️⃣ User Accounts & Authentication

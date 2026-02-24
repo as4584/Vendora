@@ -1,12 +1,100 @@
-🔵 UPDATED 4-SPRINT BUILD ROADMAP (Core-First, Revenue-Stable)
+🔵 VENDORA BUILD ROADMAP — Last Updated: 2026-02-24
 
-We are no longer thinking “MVP.”
+Production URL: https://vendora.lexmakesit.com
+Git Branch: sprint-5-lightspeed-deploy
+Expo SDK: 54 | React Native: 0.81.5 | FastAPI backend on Ubuntu VPS
 
-We are thinking:
+---
 
-Core Engine Stabilization → Revenue Engine → Expansion-Ready Architecture
+⚠️ DEPLOYMENT NOTE — DATABASE VOLUMES
+When running `docker compose up --build -d`, if a new volume is created
+(log shows "Volume vendora_xxx Creating"), ALL user data is wiped.
+After any volume-recreating deploy, run:
+  ssh vendora "cd /opt/vendora/deploy && docker compose exec -T backend python create_user.py"
+Test account: thegamermasterninja@gmail.com / Alexander1221 (Pro tier)
 
-Each sprint = 1–2 weeks.
+---
+
+🟢 Sprint 1 — Core Engine Stabilization — COMPLETE
+✅ PostgreSQL schema (users, inventory_items, migrations 001)
+✅ Auth system (JWT + bcrypt), CRUD, state machine, pagination, indexing
+✅ pytest suite, 80%+ coverage
+✅ Mobile: Login, inventory list, add/edit, navigation, API integration
+
+🟢 Sprint 2 — Revenue Engine — COMPLETE
+✅ Transactions table (migration 002)
+✅ Profit calculation engine (isolated service)
+✅ Refund logic, dashboard API
+✅ Mobile: Quick Sale, manual payment logging, Dashboard v1
+
+🟢 Sprint 3 — Automated Money Layer — COMPLETE
+✅ Invoice system + state machine (draft→sent→paid→cancelled)
+✅ Stripe Connect, PaymentIntent, webhook handler (idempotent)
+✅ Subscription billing logic, tier enforcement middleware
+✅ Invoice items table (migration 003)
+✅ Mobile: Invoice creation screen, Stripe pay link, subscription flow
+
+🟢 Sprint 4 — Modular Expansion + Hardening — COMPLETE
+✅ Barcode scanning (expo-camera CameraView)
+✅ Feature flags service
+✅ CSV export (Pro tier)
+✅ Public seller page
+✅ Full regression test suite
+
+🟢 Sprint 5 — Lightspeed POS Integration — COMPLETE
+✅ Lightspeed OAuth token storage (migration 004)
+✅ Background sync every 15 min (expo-background-fetch + expo-task-manager)
+✅ Lightspeed sync endpoints: /integrations/lightspeed/status|connect|sync
+✅ source + external_id dedup columns (migration 005)
+✅ Mobile: Settings → Lightspeed card, Connect/Sync/Disconnect
+
+🟢 Sprint 6 — Market Intelligence + Invoice PDF — COMPLETE (2026-02-24)
+✅ Market price endpoint: GET /inventory/market-price
+✅ Pricing suggestion endpoint: GET /inventory/{id}/pricing-suggestion
+✅ PDF invoice export: GET /invoices/{id}/pdf (fpdf2, styled A4)
+✅ profile_picture column on users (migration 006)
+✅ PATCH /auth/profile (business_name + profile_picture base64)
+✅ Mobile: 3-column photo grid inventory view
+✅ Mobile: Add item with front/back photos, barcode scanner, auto-SKU
+✅ Mobile: Item detail — market price panel, smart pricing suggestion + Apply
+✅ Mobile: Invoice PDF export button (expo-file-system + expo-sharing)
+✅ Mobile: Profile picture upload in Settings (circular, shown on invoices)
+
+---
+
+🔵 Sprint 7 — UX Polish + App Store Prep (NEXT)
+🎯 Goal: Make Vendora App Store submittable.
+
+Deliverables:
+- Onboarding flow (first-time user walkthrough)
+- Empty states with illustrations
+- Error boundary components (replace raw Alert calls)
+- Password reset flow (forgot password email)
+- Push notifications (expo-notifications) for invoice paid events
+- App icon + splash screen final assets
+- App Store metadata (screenshots, description, keywords)
+- EAS Build configuration (production build, TestFlight)
+- Privacy policy + Terms of service screens
+
+Success Criteria:
+- No crashes in any happy-path flow
+- App Store review guidelines checklist passes
+- TestFlight build installable by external testers
+
+---
+
+🔐 Documentation Rule (STRICT)
+
+Every feature must update:
+- ARCHITECTURE.md if schema/endpoint changes
+- STATE_MACHINES.md if transitions change
+- RISK_REGISTER.md if new exposure
+- FEATURE_REGISTRY.md if feature status changes
+- ROADMAP.md sprint status + deployment notes
+- Vendora_source_of_truth.md if core product definition changes
+
+Docs are not optional. Outdated docs = context hallucination.
+
 
 🟢 Sprint 1 — Core Engine Stabilization
 🎯 Goal:
