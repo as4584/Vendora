@@ -54,8 +54,10 @@ install_caddy() {
   fi
   log "Installing Caddy"
   apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
-  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /etc/apt/trusted.gpg.d/caddy-stable.gpg
-  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/deb/debian/caddy-stable.list | tee /etc/apt/sources.list.d/caddy-stable.list
+  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
+    | gpg --batch --yes --dearmor -o /etc/apt/trusted.gpg.d/caddy-stable.gpg
+  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/deb/debian/caddy-stable.list \
+    | tee /etc/apt/sources.list.d/caddy-stable.list
   apt-get update -y
   apt-get install -y caddy
 }
