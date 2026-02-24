@@ -74,8 +74,12 @@ create_deploy_user() {
   usermod -aG docker "$DEPLOY_USER"
 
   mkdir -p "/home/$DEPLOY_USER/.ssh"
+  touch "/home/$DEPLOY_USER/.ssh/authorized_keys"
   if [[ -f /root/.ssh/authorized_keys ]]; then
-    cp /root/.ssh/authorized_keys "/home/$DEPLOY_USER/.ssh/authorized_keys"
+    # Append root keys without overwriting existing entries
+    while IFS= read -r key; do
+      grep -qxF "$key" "/home/$DEPLOY_USER/.ssh/authorized_keys" || echo "$key" >> "/home/$DEPLOY_USER/.ssh/authorized_keys"
+    done < /root/.ssh/authorized_keys
   fi
   chown -R "$DEPLOY_USER:$DEPLOY_GROUP" "/home/$DEPLOY_USER/.ssh"
   chmod 700 "/home/$DEPLOY_USER/.ssh"
