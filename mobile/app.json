@@ -30,7 +30,15 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-camera",
+        { "cameraPermission": "Vendora uses the camera to scan barcodes on items." }
+      ],
+      [
+        "expo-image-picker",
+        { "photosPermission": "Vendora needs photo access to attach images to inventory items." }
+      ]
     ]
   }
 }

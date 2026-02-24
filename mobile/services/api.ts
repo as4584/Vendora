@@ -479,6 +479,79 @@ export async function getSellerProfile(
   return request<SellerProfile>(`/sellers/${userId}`);
 }
 
+// ─── Market Price + Pricing ──────────────────────────
+
+export interface MarketPriceSource {
+  source: string;
+  price: number | null;
+  label: string;
+}
+
+export interface MarketPriceResult {
+  query: string;
+  upc: string | null;
+  product_info: {
+    title: string | null;
+    brand: string | null;
+    description: string | null;
+    image_url: string | null;
+    lowest_price: number | null;
+    highest_price: number | null;
+  } | null;
+  sources: MarketPriceSource[];
+  internal_history: {
+    avg_sold_price: number | null;
+    sample_count: number;
+  };
+}
+
+export interface PricingSuggestion {
+  item_id: string;
+  suggested_price: number;
+  reason: string;
+  confidence: "high" | "medium" | "low";
+  basis: string;
+}
+
+export async function getMarketPrice(
+  query: string,
+  upc?: string
+): Promise<MarketPriceResult> {
+  const params = new URLSearchParams({ query });
+  if (upc) params.append("upc", upc);
+  return request<MarketPriceResult>(`/inventory/market-price?${params}`);
+}
+
+export async function getPricingSuggestion(
+  itemId: string
+): Promise<PricingSuggestion> {
+  return request<PricingSuggestion>(`/inventory/${itemId}/pricing-suggestion`);
+}
+
+// ─── Lightspeed Integration ──────────────────────────
+
+export interface LightspeedStatus {
+  connected: boolean;
+  account_id: string | null;
+  expires_at: string | null;
+  last_synced_at: string | null;
+}
+
+export async function getLightspeedStatus(): Promise<LightspeedStatus> {
+  return request<LightspeedStatus>("/integrations/lightspeed/status");
+}
+
+export async function getLightspeedConnectUrl(): Promise<{ url: string }> {
+  return request<{ url: string }>("/integrations/lightspeed/connect");
+}
+
+export async function triggerLightspeedSync(): Promise<{
+  synced_items: number;
+  synced_transactions: number;
+}> {
+  return request("/integrations/lightspeed/sync", { method: "POST" });
+}
+
 // ─── Health ──────────────────────────────────────────
 
 export async function healthCheck(): Promise<{ status: string; version: string }> {

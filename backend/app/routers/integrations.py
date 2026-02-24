@@ -15,6 +15,22 @@ from app.services.lightspeed import lightspeed_service
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 
+@router.get("/lightspeed/status")
+def lightspeed_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Returns whether the current user has connected their Lightspeed account."""
+    token = lightspeed_service.get_token(db, current_user.id)
+    if not token:
+        return {"connected": False, "account_id": None, "expires_at": None}
+    return {
+        "connected": True,
+        "account_id": token.account_id,
+        "expires_at": token.expires_at.isoformat(),
+    }
+
+
 @router.get("/lightspeed/connect", response_model=LightspeedAuthURLResponse)
 async def lightspeed_connect(current_user: User = Depends(get_current_user)):
     """Return the OAuth URL so the reseller can authorize Vendora."""
