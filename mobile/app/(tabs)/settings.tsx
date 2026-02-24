@@ -1,5 +1,5 @@
 ﻿/**
- * Settings Screen â€” user profile, tier info, Lightspeed integration, sign out.
+ * Settings Screen — user profile, tier info, Lightspeed integration, sign out.
  */
 import { useEffect, useState } from "react";
 import {
@@ -155,13 +155,13 @@ export default function SettingsScreen() {
                 {user?.is_partner && (
                     <View style={styles.tierRow}>
                         <Text style={styles.tierLabel}>Partner</Text>
-                        <Text style={styles.partnerBadge}>âœ… Active</Text>
+                        <Text style={styles.partnerBadge}>✅ Active</Text>
                     </View>
                 )}
                 {user?.subscription_tier === "free" && (
                     <View style={styles.upgradeBox}>
                         <Text style={styles.upgradeText}>
-                            ðŸš€ Upgrade to Pro ($20/mo) for unlimited inventory, Stripe integration, and barcode scanning.
+                            🚀 Upgrade to Pro ($20/mo) for unlimited inventory, Stripe integration, and barcode scanning.
                         </Text>
                     </View>
                 )}
@@ -176,7 +176,7 @@ export default function SettingsScreen() {
                     <>
                         <View style={styles.tierRow}>
                             <Text style={styles.tierLabel}>Status</Text>
-                            <Text style={styles.connectedBadge}>âœ… Connected</Text>
+                            <Text style={styles.connectedBadge}>✅ Connected</Text>
                         </View>
                         {lsStatus.account_id && (
                             <View style={styles.tierRow}>
@@ -199,7 +199,7 @@ export default function SettingsScreen() {
                         >
                             {lsSyncing
                                 ? <ActivityIndicator size="small" color="#FFF" />
-                                : <Text style={styles.syncButtonText}>ðŸ”„ Sync Now</Text>
+                                : <Text style={styles.syncButtonText}>🔄 Sync Now</Text>
                             }
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.disconnectButton} onPress={handleDisconnectLightspeed}>
@@ -212,7 +212,7 @@ export default function SettingsScreen() {
                             Connect your Lightspeed POS to automatically sync inventory and sales. Background sync runs every 15 minutes.
                         </Text>
                         <TouchableOpacity style={styles.connectButton} onPress={handleConnectLightspeed}>
-                            <Text style={styles.connectButtonText}>ðŸ”— Connect Lightspeed</Text>
+                            <Text style={styles.connectButtonText}>🔗 Connect Lightspeed</Text>
                         </TouchableOpacity>
                     </>
                 )}
@@ -224,7 +224,7 @@ export default function SettingsScreen() {
                 <View style={styles.tierRow}>
                     <Text style={styles.tierLabel}>Member Since</Text>
                     <Text style={styles.tierValue}>
-                        {user?.created_at ? new Date(user.created_at).toLocaleDateString() : "â€”"}
+                        {user?.created_at ? new Date(user.created_at).toLocaleDateString() : "—"}
                     </Text>
                 </View>
             </View>
