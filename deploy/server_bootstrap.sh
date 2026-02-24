@@ -148,7 +148,7 @@ configure_ssh() {
   grep -q '^PubkeyAuthentication' /etc/ssh/sshd_config \
     && sed -i 's/^PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config \
     || echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config
-  systemctl restart sshd
+  systemctl restart ssh || systemctl restart sshd || true
 }
 
 main() {
