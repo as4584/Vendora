@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vendora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vendora}
+      POSTGRES_DB: ${POSTGRES_DB:-vendora}
+    volumes:
+      - vendora_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vendora}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env.prod
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://vendora:vendora@db:5432/vendora}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    ports:
+      - "127.0.0.1:8000:8000"
+
+volumes:
+  vendora_db_data:

@@ -1,8 +1,8 @@
 """User model — Core Engine Layer."""
 import uuid
 
-from sqlalchemy import Column, String, Boolean, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Boolean, CheckConstraint, Uuid
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID # Keep just in case or remove? Remove.
 
 from app.models.base import Base, TimestampMixin, SoftDeleteMixin
 
@@ -16,7 +16,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
         ),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     business_name = Column(String(255), nullable=True)

@@ -11,8 +11,8 @@ Per STATE_MACHINES.md:
 """
 import uuid
 
-from sqlalchemy import Column, String, Numeric, Integer, ForeignKey, CheckConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Numeric, Integer, ForeignKey, CheckConstraint, Index, Uuid
+# from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
 
@@ -29,9 +29,9 @@ class Invoice(Base, TimestampMixin):
         Index("ix_invoices_created_at", "created_at"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -50,14 +50,14 @@ class Invoice(Base, TimestampMixin):
 class InvoiceItem(Base):
     __tablename__ = "invoice_items"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     invoice_id = Column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("invoices.id", ondelete="CASCADE"),
         nullable=False,
     )
     inventory_item_id = Column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("inventory_items.id", ondelete="SET NULL"),
         nullable=True,
     )

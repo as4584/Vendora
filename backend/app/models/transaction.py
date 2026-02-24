@@ -6,8 +6,8 @@ Per STATE_MACHINES.md: Refund creates negative transaction entry.
 """
 import uuid
 
-from sqlalchemy import Column, String, Numeric, ForeignKey, CheckConstraint, Index, Boolean
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Numeric, ForeignKey, CheckConstraint, Index, Boolean, Uuid
+# from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
 
@@ -28,14 +28,14 @@ class Transaction(Base, TimestampMixin):
         Index("ix_transactions_created_at", "created_at"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
     item_id = Column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("inventory_items.id", ondelete="SET NULL"),
         nullable=True,
     )
@@ -48,7 +48,7 @@ class Transaction(Base, TimestampMixin):
     notes = Column(String(500), nullable=True)
     is_refund = Column(Boolean, nullable=False, server_default="false")
     original_transaction_id = Column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("transactions.id", ondelete="SET NULL"),
         nullable=True,
     )

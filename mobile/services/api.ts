@@ -7,8 +7,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const API_BASE_URL = __DEV__
-  ? "http://10.0.2.2:8000/api/v1" // Android emulator → localhost
-  : "https://api.vendora.app/api/v1";
+  ? "http://192.168.1.231:8000/api/v1" // PC WiFi IP → works for Expo Go on iPhone
+  : "https://vendora.lexmakesit.com/api/v1";
 
 const TOKEN_KEY = "vendora_access_token";
 
@@ -46,18 +46,35 @@ async function request<T>(
     headers,
   });
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
+  const contentType = response.headers.get("content-type");
+  const isJson = contentType && contentType.includes("application/json");
 
-  const data = await response.json();
+  let data: any;
+
+  if (isJson) {
+    try {
+      const text = await response.text();
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      console.error("Failed to parse JSON response:", e);
+      throw new Error("Invalid JSON response from server");
+    }
+  } else {
+    // Non-JSON response (e.g. 500 HTML error or 404 text)
+    const text = await response.text();
+    if (!response.ok) {
+      throw new ApiError(text || `Request failed (${response.status})`, response.status);
+    }
+    // If OK but not JSON (e.g. 204), return empty
+    return {} as T;
+  }
 
   if (!response.ok) {
     const message =
       typeof data.detail === "string"
         ? data.detail
-        : data.detail?.message || `Request failed (${response.status})`;
-    throw new ApiError(message, response.status, data.detail);
+        : data?.detail?.message || `Request failed (${response.status})`;
+    throw new ApiError(message, response.status, data?.detail);
   }
 
   return data as T;
@@ -68,6 +85,7 @@ export class ApiError extends Error {
   detail: any;
   constructor(message: string, status: number, detail?: any) {
     super(message);
+    this.name = "ApiError";
     this.status = status;
     this.detail = detail;
   }
