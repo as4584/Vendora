@@ -53,10 +53,10 @@ install_caddy() {
     return
   fi
   log "Installing Caddy"
-  apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+  apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
     | gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/deb/ubuntu/caddy-stable.list' \
+  echo "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/ubuntu focal main" \
     | tee /etc/apt/sources.list.d/caddy-stable.list
   apt-get update -y
   apt-get install -y caddy
