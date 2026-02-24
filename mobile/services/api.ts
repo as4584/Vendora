@@ -566,8 +566,8 @@ export async function getLightspeedStatus(): Promise<LightspeedStatus> {
   return request<LightspeedStatus>("/integrations/lightspeed/status");
 }
 
-export async function getLightspeedConnectUrl(): Promise<{ url: string }> {
-  return request<{ url: string }>("/integrations/lightspeed/connect");
+export async function getLightspeedConnectUrl(): Promise<{ authorization_url: string }> {
+  return request<{ authorization_url: string }>("/integrations/lightspeed/connect");
 }
 
 export async function triggerLightspeedSync(): Promise<{

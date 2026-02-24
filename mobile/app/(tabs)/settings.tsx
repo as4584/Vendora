@@ -67,8 +67,8 @@ export default function SettingsScreen() {
 
     const handleConnectLightspeed = async () => {
         try {
-            const { url } = await api.getLightspeedConnectUrl();
-            await WebBrowser.openBrowserAsync(url);
+            const { authorization_url } = await api.getLightspeedConnectUrl();
+            await WebBrowser.openBrowserAsync(authorization_url);
             // Refresh status after OAuth redirect
             setLsLoading(true);
             await fetchLsStatus();

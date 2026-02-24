@@ -150,19 +150,19 @@ def generate_invoice_pdf(
         ("DATE:", created_str),
         ("DUE DATE:", "On receipt"),
     ]
-    rx: float = L + W * 0.55
-    lbl_w: float = 28
-    val_w: float = W * 0.45 - 5
+    rx: float = L + W * 0.52
+    lbl_w: float = 24
+    val_w: float = (L + W) - rx - lbl_w  # fills exactly to right margin
     for i, (label, value) in enumerate(meta_rows):
         ry = y_meta + i * 7
         pdf.set_font("Helvetica", "B", 8)
         pdf.set_text_color(*BLUE_LBL)
         pdf.set_xy(rx, ry)
-        pdf.cell(lbl_w, 5, label, align="R")
+        pdf.cell(lbl_w, 5, label, align="L")
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(*DARK)
         pdf.set_xy(rx + lbl_w, ry)
-        pdf.cell(val_w, 5, value, align="R")
+        pdf.cell(val_w, 5, value, align="L")
 
     # ── Table header ──────────────────────────────────────────────────────────
     y_table: float = y_meta + 26
