@@ -1,8 +1,10 @@
-🔵 VENDORA BUILD ROADMAP — Last Updated: 2026-02-24
+🔵 VENDORA BUILD ROADMAP — Last Updated: 2026-02-24 (Post-Sprint 6 Hotfix Session)
 
 Production URL: https://vendora.lexmakesit.com
-Git Branch: sprint-5-lightspeed-deploy
+Git Branch: sprint-5-lightspeed-deploy (latest: b8e2deb)
 Expo SDK: 54 | React Native: 0.81.5 | FastAPI backend on Ubuntu VPS
+EAS Project: @lexmakesit/vendora
+EAS Update URL: exp://u.expo.dev/85f51ce2-35b8-4ba2-b3fe-a4f182a412f9?channel-name=production&runtime-version=1.0.0
 
 ---
 
@@ -10,8 +12,13 @@ Expo SDK: 54 | React Native: 0.81.5 | FastAPI backend on Ubuntu VPS
 When running `docker compose up --build -d`, if a new volume is created
 (log shows "Volume vendora_xxx Creating"), ALL user data is wiped.
 After any volume-recreating deploy, run:
-  ssh vendora "cd /opt/vendora/deploy && docker compose exec -T backend python create_user.py"
-Test account: thegamermasterninja@gmail.com / Alexander1221 (Pro tier)
+  ssh vendora "cd /opt/vendora && docker compose -f docker-compose.prod.yml exec -T backend python create_user.py"
+  ssh vendora "cd /opt/vendora && docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head"
+Test account: thegamermasterninja@gmail.com / Alexander1221 (Pro + Partner tier)
+
+⚠️ DEPLOYMENT NOTE — ENV VARS
+`docker compose restart backend` does NOT reload .env.prod changes.
+Must use: `docker compose -f docker-compose.prod.yml up -d backend` to recreate container.
 
 ---
 
@@ -57,13 +64,50 @@ Test account: thegamermasterninja@gmail.com / Alexander1221 (Pro tier)
 ✅ Mobile: 3-column photo grid inventory view
 ✅ Mobile: Add item with front/back photos, barcode scanner, auto-SKU
 ✅ Mobile: Item detail — market price panel, smart pricing suggestion + Apply
-✅ Mobile: Invoice PDF export button (expo-file-system + expo-sharing)
-✅ Mobile: Profile picture upload in Settings (circular, shown on invoices)
+✅ Mobile: Invoice PDF export button (expo-file-system/legacy + expo-sharing)
+✅ Mobile: Profile picture upload in Settings (circular, shown on PDF invoices)
+✅ Mobile: Show/hide password toggle on login screen
+
+🟢 Sprint 6 Hotfix Session — Bug Fixes & Distribution (2026-02-24)
+
+Bug fixes:
+✅ Fixed all garbled UTF-8 mojibake emoji in settings.tsx (✅ 🔗 🚀 🔄 —)
+✅ Fixed all garbled emoji in inventory/add.tsx (📸 ⚡ 🔍 ✅)
+✅ Fixed PDF export crash: "cannot read property 'base64' of undefined"
+   — Root cause: FileSystem.EncodingType.Base64 undefined in Expo Go
+   — Fix: switched to expo-file-system/legacy import + null guard on pdf_base64
+✅ Fixed PDF layout: NUMBER/DATE/DUE DATE values overflowing off right page edge
+   — Root cause: rx + lbl_w + val_w exceeded 190mm A4 usable width
+   — Fix: repositioned metadata block, left-aligned values within margins
+✅ Fixed Lightspeed "Connect" crash: "Cannot cast Optional(nil) to URL"
+   — Root cause: API returns authorization_url key, frontend expected url key
+   — Fix: updated getLightspeedConnectUrl() to return { authorization_url }
+✅ Fixed Lightspeed "not configured" showing as cryptic error
+   — Now shows human-readable "Coming Soon" alert when 503 returned
+✅ Lightspeed OAuth credentials configured on production server
+   — CLIENT_ID + CLIENT_SECRET + REDIRECT_URI set in /opt/vendora/.env.prod
+   — Verified: GET /integrations/lightspeed/connect returns valid OAuth URL
+
+UX improvements:
+✅ Invoice "+ Add Item" button now opens inventory search modal (bottom sheet)
+   — Search bar filters live against full inventory list
+   — Tap inventory item → auto-fills description, price, links inventory_item_id
+   — "✏️ Custom Item" fallback for manual entry
+✅ Renamed "Add Line Item" → "+ Add Item" (clearer CTA)
+
+Distribution:
+✅ EAS CLI installed + logged in as @lexmakesit
+✅ EAS project created: @lexmakesit/vendora (ID: 85f51ce2-35b8-4ba2-b3fe-a4f182a412f9)
+✅ expo-updates installed
+✅ eas.json created
+✅ First EAS Update published to production channel (iOS)
+   — Permanent shareable link: exp://u.expo.dev/85f51ce2-35b8-4ba2-b3fe-a4f182a412f9?channel-name=production&runtime-version=1.0.0
+   — Anyone with Expo Go can open this link without needing your computer on
 
 ---
 
 🔵 Sprint 7 — UX Polish + App Store Prep (NEXT)
-🎯 Goal: Make Vendora App Store submittable.
+🎯 Goal: Make Vendora App Store submittable and distribute via TestFlight.
 
 Deliverables:
 - Onboarding flow (first-time user walkthrough)
@@ -71,10 +115,11 @@ Deliverables:
 - Error boundary components (replace raw Alert calls)
 - Password reset flow (forgot password email)
 - Push notifications (expo-notifications) for invoice paid events
-- App icon + splash screen final assets
+- App icon + splash screen final assets (replace default Expo assets)
 - App Store metadata (screenshots, description, keywords)
-- EAS Build configuration (production build, TestFlight)
+- EAS Build configuration → production iOS build → TestFlight
 - Privacy policy + Terms of service screens
+- Android APK build (EAS Build --platform android)
 
 Success Criteria:
 - No crashes in any happy-path flow
