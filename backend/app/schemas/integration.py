@@ -11,6 +11,8 @@ class LightspeedConnectResponse(BaseModel):
 
 
 class LightspeedSyncResponse(BaseModel):
-    status: str = "scheduled"
+    status: str = "completed"
     items_imported: int = 0
+    items_updated: int = 0
     transactions_imported: int = 0
+    transactions_updated: int = 0

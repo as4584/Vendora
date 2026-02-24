@@ -52,3 +52,5 @@ class Transaction(Base, TimestampMixin):
         ForeignKey("transactions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Integration tracking
+    source = Column(String(50), nullable=True, index=True)  # e.g. "lightspeed", "manual"

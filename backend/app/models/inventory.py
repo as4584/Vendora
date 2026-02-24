@@ -47,3 +47,6 @@ class InventoryItem(Base, TimestampMixin, SoftDeleteMixin):
     actual_sell_price = Column(Numeric(10, 2), nullable=True)
     platform = Column(String(100), nullable=True)
     status = Column(String(20), nullable=False, server_default="in_stock")
+    # Integration tracking — dedup key for synced records
+    source = Column(String(50), nullable=True, index=True)       # e.g. "lightspeed", "manual"
+    external_id = Column(String(255), nullable=True, index=True) # e.g. Lightspeed itemID

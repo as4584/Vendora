@@ -48,10 +48,12 @@ async def lightspeed_sync(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Placeholder sync endpoint — will import inventory & sales in Sprint 5."""
-    token = lightspeed_service.get_token(db, current_user.id)
-    if not token:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connect Lightspeed first.")
-
-    # TODO: Implement actual sync logic (inventory + transactions) in Sprint 5.
-    return LightspeedSyncResponse(status="queued", items_imported=0, transactions_imported=0)
+    """One-way sync: pull latest inventory and sales from Lightspeed into Vendora."""
+    result = await lightspeed_service.sync(db, current_user.id)
+    return LightspeedSyncResponse(
+        status="completed",
+        items_imported=result["items_imported"],
+        items_updated=result["items_updated"],
+        transactions_imported=result["transactions_imported"],
+        transactions_updated=result["transactions_updated"],
+    )
