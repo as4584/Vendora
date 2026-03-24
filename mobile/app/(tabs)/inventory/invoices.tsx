@@ -15,8 +15,13 @@ import {
     Alert,
     ActivityIndicator,
     FlatList,
+    Modal,
+    KeyboardAvoidingView,
+    Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import * as api from "../../../services/api";
 
 interface LineItemDraft {
@@ -164,6 +169,81 @@ export default function InvoicesScreen() {
         }
     };
 
+    const [exportingId, setExportingId] = useState<string | null>(null);
+
+    // ─── Inventory picker modal ───
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [pickerSearch, setPickerSearch] = useState("");
+    const [allInventory, setAllInventory] = useState<api.InventoryItem[]>([]);
+    const [inventoryLoading, setInventoryLoading] = useState(false);
+
+    const loadInventory = async () => {
+        setInventoryLoading(true);
+        try {
+            const data = await api.listItems(1, 50);
+            setAllInventory(data.items);
+        } catch {
+            // silently ignore — user can still enter custom
+        } finally {
+            setInventoryLoading(false);
+        }
+    };
+
+    const openPicker = () => {
+        setPickerSearch("");
+        setPickerOpen(true);
+        loadInventory();
+    };
+
+    const filteredInventory = allInventory.filter((item) =>
+        item.name.toLowerCase().includes(pickerSearch.toLowerCase())
+    );
+
+    const selectInventoryItem = (item: api.InventoryItem) => {
+        setLineItems([
+            ...lineItems,
+            {
+                description: item.name,
+                quantity: "1",
+                unit_price: item.expected_sell_price ?? "",
+                inventory_item_id: item.id,
+            },
+        ]);
+        setPickerOpen(false);
+    };
+
+    const addCustomItem = () => {
+        setLineItems([...lineItems, { description: "", quantity: "1", unit_price: "" }]);
+        setPickerOpen(false);
+    };
+
+    const handleExportPdf = async (inv: api.InvoiceData) => {
+        setExportingId(inv.id);
+        try {
+            const result = await api.exportInvoicePdf(inv.id);
+            const pdf_base64 = result?.pdf_base64;
+            const filename = result?.filename ?? `invoice-${inv.id.slice(0, 8)}.pdf`;
+            if (!pdf_base64) {
+                throw new Error("PDF generation failed — server returned no data.");
+            }
+            const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? "";
+            const fileUri = dir + filename;
+            await FileSystem.writeAsStringAsync(fileUri, pdf_base64, {
+                encoding: "base64" as any,
+            });
+            const canShare = await Sharing.isAvailableAsync();
+            if (canShare) {
+                await Sharing.shareAsync(fileUri, { mimeType: "application/pdf", dialogTitle: "Share Invoice" });
+            } else {
+                Alert.alert("Saved", `Invoice saved to: ${fileUri}`);
+            }
+        } catch (err: any) {
+            Alert.alert("Export Failed", err.message || "Could not generate PDF.");
+        } finally {
+            setExportingId(null);
+        }
+    };
+
     const handleStatusAction = async (invoice: api.InvoiceData) => {
         const actions: { text: string; target: string }[] = [];
         if (invoice.status === "draft") actions.push({ text: "Send", target: "sent" });
@@ -196,6 +276,7 @@ export default function InvoicesScreen() {
     // ─── Create View ───
     if (view === "create") {
         return (
+            <View style={{ flex: 1, backgroundColor: "#0A0A1A" }}>
             <ScrollView style={styles.container} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
                 <Text style={styles.sectionTitle}>Customer</Text>
                 <TextInput
@@ -253,8 +334,8 @@ export default function InvoicesScreen() {
                         </View>
                     </View>
                 ))}
-                <TouchableOpacity style={styles.addItemBtn} onPress={addLineItem}>
-                    <Text style={styles.addItemText}>+ Add Line Item</Text>
+                <TouchableOpacity style={styles.addItemBtn} onPress={openPicker}>
+                    <Text style={styles.addItemText}>+ Add Item</Text>
                 </TouchableOpacity>
 
                 <Text style={styles.sectionTitle}>Adjustments</Text>
@@ -311,6 +392,87 @@ export default function InvoicesScreen() {
                     )}
                 </TouchableOpacity>
             </ScrollView>
+
+            {/* ─── Inventory Picker Modal ─── */}
+            <Modal
+                visible={pickerOpen}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setPickerOpen(false)}
+            >
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === "ios" ? "padding" : "height"}
+                    style={styles.modalOverlay}
+                >
+                    <View style={styles.modalSheet}>
+                        {/* Header */}
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Add Item</Text>
+                            <TouchableOpacity onPress={() => setPickerOpen(false)}>
+                                <Text style={styles.modalClose}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Search bar */}
+                        <TextInput
+                            style={styles.modalSearch}
+                            placeholder="Search inventory..."
+                            placeholderTextColor="#555"
+                            value={pickerSearch}
+                            onChangeText={setPickerSearch}
+                            autoFocus
+                        />
+
+                        {/* Custom item row */}
+                        <TouchableOpacity style={styles.customItemRow} onPress={addCustomItem}>
+                            <Text style={styles.customItemIcon}>✏️</Text>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.customItemTitle}>Custom Item</Text>
+                                <Text style={styles.customItemSub}>Enter description & price manually</Text>
+                            </View>
+                            <Text style={styles.chevron}>›</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.divider} />
+
+                        {/* Inventory results */}
+                        {inventoryLoading ? (
+                            <ActivityIndicator color="#6C5CE7" style={{ marginTop: 20 }} />
+                        ) : filteredInventory.length === 0 ? (
+                            <Text style={styles.noResultsText}>
+                                {pickerSearch ? "No items match your search" : "No inventory items yet"}
+                            </Text>
+                        ) : (
+                            <FlatList
+                                data={filteredInventory}
+                                keyExtractor={(item) => item.id}
+                                style={{ flex: 1 }}
+                                keyboardShouldPersistTaps="handled"
+                                renderItem={({ item }) => (
+                                    <TouchableOpacity
+                                        style={styles.inventoryRow}
+                                        onPress={() => selectInventoryItem(item)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.inventoryRowName}>{item.name}</Text>
+                                            {item.sku && (
+                                                <Text style={styles.inventoryRowSub}>SKU: {item.sku}</Text>
+                                            )}
+                                        </View>
+                                        {item.expected_sell_price != null && (
+                                            <Text style={styles.inventoryRowPrice}>
+                                                ${parseFloat(item.expected_sell_price).toFixed(2)}
+                                            </Text>
+                                        )}
+                                    </TouchableOpacity>
+                                )}
+                            />
+                        )}
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+            </View>
         );
     }
 
@@ -359,6 +521,18 @@ export default function InvoicesScreen() {
                                     </View>
                                 </View>
                             </View>
+                            {/* PDF export button */}
+                            <TouchableOpacity
+                                style={styles.pdfBtn}
+                                onPress={() => handleExportPdf(inv)}
+                                disabled={exportingId === inv.id}
+                            >
+                                {exportingId === inv.id ? (
+                                    <ActivityIndicator size="small" color="#6C5CE7" />
+                                ) : (
+                                    <Text style={styles.pdfBtnText}>📄 Export PDF</Text>
+                                )}
+                            </TouchableOpacity>
                         </TouchableOpacity>
                     )}
                 />
@@ -561,5 +735,124 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: "#888",
         marginTop: 4,
+    },
+    pdfBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        marginTop: 10,
+        paddingVertical: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#6C5CE7",
+    },
+    pdfBtnText: {
+        color: "#6C5CE7",
+        fontWeight: "700",
+        fontSize: 13,
+    },
+    // ─── Modal styles ───
+    modalOverlay: {
+        flex: 1,
+        justifyContent: "flex-end",
+        backgroundColor: "rgba(0,0,0,0.6)",
+    },
+    modalSheet: {
+        backgroundColor: "#12122A",
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingBottom: 34,
+        maxHeight: "80%",
+    },
+    modalHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 12,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: "800",
+        color: "#FFFFFF",
+    },
+    modalClose: {
+        fontSize: 18,
+        color: "#888",
+        paddingLeft: 16,
+    },
+    modalSearch: {
+        backgroundColor: "#1A1A2E",
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        color: "#FFFFFF",
+        fontSize: 15,
+        borderWidth: 1,
+        borderColor: "#2A2A4A",
+        marginHorizontal: 20,
+        marginBottom: 12,
+    },
+    customItemRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+    },
+    customItemIcon: {
+        fontSize: 22,
+        marginRight: 12,
+    },
+    customItemTitle: {
+        color: "#FFFFFF",
+        fontSize: 15,
+        fontWeight: "700",
+    },
+    customItemSub: {
+        color: "#888",
+        fontSize: 12,
+        marginTop: 2,
+    },
+    chevron: {
+        color: "#555",
+        fontSize: 22,
+        fontWeight: "300",
+    },
+    divider: {
+        height: 1,
+        backgroundColor: "#2A2A4A",
+        marginHorizontal: 20,
+        marginBottom: 8,
+    },
+    noResultsText: {
+        color: "#888",
+        textAlign: "center",
+        marginTop: 24,
+        fontSize: 14,
+    },
+    inventoryRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: "#1E1E3A",
+    },
+    inventoryRowName: {
+        color: "#FFFFFF",
+        fontSize: 15,
+        fontWeight: "600",
+    },
+    inventoryRowSub: {
+        color: "#888",
+        fontSize: 12,
+        marginTop: 2,
+    },
+    inventoryRowPrice: {
+        color: "#00B894",
+        fontSize: 16,
+        fontWeight: "800",
+        marginLeft: 12,
     },
 });

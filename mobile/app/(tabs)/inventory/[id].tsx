@@ -1,7 +1,11 @@
 /**
  * Item Detail Screen — /inventory/[id]
  *
- * Displays item details with status transition and soft-delete.
+ * Displays item details with:
+ *  • Front / back photo carousel
+ *  • Market price panel (UPCItemDB + internal history)
+ *  • Smart pricing suggestion banner with one-tap Apply
+ *  • Status transitions and soft-delete
  */
 import { useEffect, useState } from "react";
 import {
@@ -12,6 +16,8 @@ import {
     StyleSheet,
     ActivityIndicator,
     Alert,
+    Image,
+    Dimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as api from "../../../services/api";
@@ -49,6 +55,16 @@ export default function ItemDetailScreen() {
     const router = useRouter();
     const [item, setItem] = useState<api.InventoryItem | null>(null);
     const [loading, setLoading] = useState(true);
+    const [activePhoto, setActivePhoto] = useState<"front" | "back">("front");
+
+    // Market price
+    const [marketPrice, setMarketPrice] = useState<api.MarketPriceResult | null>(null);
+    const [marketLoading, setMarketLoading] = useState(false);
+
+    // Pricing suggestion
+    const [suggestion, setSuggestion] = useState<api.PricingSuggestion | null>(null);
+    const [suggestLoading, setSuggestLoading] = useState(false);
+    const [applyingPrice, setApplyingPrice] = useState(false);
 
     const fetchItem = async () => {
         try {
@@ -66,6 +82,23 @@ export default function ItemDetailScreen() {
     useEffect(() => {
         fetchItem();
     }, [id]);
+
+    // Load market price + suggestion after item loads
+    useEffect(() => {
+        if (!item) return;
+        // Market price
+        setMarketLoading(true);
+        api.getMarketPrice(item.name, item.upc ?? undefined)
+            .then(setMarketPrice)
+            .catch(() => {})
+            .finally(() => setMarketLoading(false));
+        // Pricing suggestion
+        setSuggestLoading(true);
+        api.getPricingSuggestion(item.id)
+            .then(setSuggestion)
+            .catch(() => {})
+            .finally(() => setSuggestLoading(false));
+    }, [item?.id]);
 
     const handleTransition = async (newStatus: string) => {
         try {
@@ -100,6 +133,23 @@ export default function ItemDetailScreen() {
         );
     };
 
+    const handleApplyPrice = async () => {
+        if (!suggestion || !item) return;
+        setApplyingPrice(true);
+        try {
+            const updated = await api.updateItem(item.id, {
+                expected_sell_price: suggestion.suggested_price.toFixed(2),
+            });
+            setItem(updated);
+            setSuggestion(null);
+            Alert.alert("✅ Applied", `Expected price set to $${suggestion.suggested_price.toFixed(2)}`);
+        } catch (err: any) {
+            Alert.alert("Error", err.message);
+        } finally {
+            setApplyingPrice(false);
+        }
+    };
+
     if (loading || !item) {
         return (
             <View style={styles.center}>
@@ -109,16 +159,77 @@ export default function ItemDetailScreen() {
     }
 
     const transitions = VALID_TRANSITIONS[item.status] || [];
+    const frontUri = (item as any).photo_front_url as string | null;
+    const backUri = (item as any).photo_back_url as string | null;
+    const activeUri = activePhoto === "front" ? frontUri : backUri;
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-            {/* Header */}
+            {/* ── Photo Carousel ── */}
+            {(frontUri || backUri) ? (
+                <View style={styles.photoSection}>
+                    <Image
+                        source={{ uri: activeUri ?? undefined }}
+                        style={styles.photoMain}
+                        resizeMode="cover"
+                    />
+                    <View style={styles.photoTabs}>
+                        {(["front", "back"] as const).map((side) => (
+                            <TouchableOpacity
+                                key={side}
+                                style={[styles.photoTab, activePhoto === side && styles.photoTabActive]}
+                                onPress={() => setActivePhoto(side)}
+                            >
+                                <Text style={[styles.photoTabText, activePhoto === side && styles.photoTabTextActive]}>
+                                    {side.toUpperCase()}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
+            ) : null}
+
+            {/* ── Header ── */}
             <Text style={styles.itemName}>{item.name}</Text>
             <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] }]}>
                 <Text style={styles.statusText}>{item.status.replace("_", " ").toUpperCase()}</Text>
             </View>
 
-            {/* Details */}
+            {/* ── Smart Pricing Suggestion ── */}
+            {suggestLoading && (
+                <View style={styles.suggestBox}>
+                    <ActivityIndicator size="small" color="#6C5CE7" />
+                    <Text style={styles.suggestLoading}>Analysing market data…</Text>
+                </View>
+            )}
+            {suggestion && (
+                <View style={styles.suggestBox}>
+                    <View style={styles.suggestHeader}>
+                        <Text style={styles.suggestTitle}>💡 Smart Pricing</Text>
+                        <View style={[
+                            styles.confidenceBadge,
+                            { backgroundColor: suggestion.confidence === "high" ? "#00B894" : suggestion.confidence === "medium" ? "#FDCB6E" : "#E17055" }
+                        ]}>
+                            <Text style={styles.confidenceText}>{suggestion.confidence.toUpperCase()}</Text>
+                        </View>
+                    </View>
+                    <Text style={styles.suggestPrice}>${suggestion.suggested_price.toFixed(2)}</Text>
+                    <Text style={styles.suggestReason}>{suggestion.reason}</Text>
+                    <Text style={styles.suggestBasis}>{suggestion.basis}</Text>
+                    <TouchableOpacity
+                        style={[styles.applyButton, applyingPrice && styles.applyButtonDisabled]}
+                        onPress={handleApplyPrice}
+                        disabled={applyingPrice}
+                    >
+                        {applyingPrice
+                            ? <ActivityIndicator size="small" color="#FFF" />
+                            : <Text style={styles.applyButtonText}>Apply Price</Text>
+                        }
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* ── Details ── */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Details</Text>
                 <DetailRow label="Category" value={item.category} />
@@ -131,18 +242,12 @@ export default function ItemDetailScreen() {
                 <DetailRow label="Platform" value={item.platform} />
             </View>
 
-            {/* Pricing */}
+            {/* ── Pricing ── */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Pricing</Text>
                 <DetailRow label="Buy Price" value={item.buy_price ? `$${item.buy_price}` : null} />
-                <DetailRow
-                    label="Expected Sell"
-                    value={item.expected_sell_price ? `$${item.expected_sell_price}` : null}
-                />
-                <DetailRow
-                    label="Actual Sell"
-                    value={item.actual_sell_price ? `$${item.actual_sell_price}` : null}
-                />
+                <DetailRow label="Expected Sell" value={item.expected_sell_price ? `$${item.expected_sell_price}` : null} />
+                <DetailRow label="Actual Sell" value={item.actual_sell_price ? `$${item.actual_sell_price}` : null} />
                 {item.buy_price && item.expected_sell_price && (
                     <DetailRow
                         label="Expected Profit"
@@ -151,7 +256,68 @@ export default function ItemDetailScreen() {
                 )}
             </View>
 
-            {/* Status Transitions */}
+            {/* ── Market Price Panel ── */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Market Price</Text>
+                {marketLoading && <ActivityIndicator size="small" color="#6C5CE7" style={{ marginVertical: 8 }} />}
+                {!marketLoading && marketPrice && (
+                    <>
+                        {marketPrice.product_info && (
+                            <View style={styles.marketProduct}>
+                                {marketPrice.product_info.image_url && (
+                                    <Image
+                                        source={{ uri: marketPrice.product_info.image_url }}
+                                        style={styles.marketProductImage}
+                                        resizeMode="contain"
+                                    />
+                                )}
+                                <View style={styles.marketProductInfo}>
+                                    <Text style={styles.marketProductTitle} numberOfLines={2}>
+                                        {marketPrice.product_info.title}
+                                    </Text>
+                                    {marketPrice.product_info.brand && (
+                                        <Text style={styles.marketProductBrand}>{marketPrice.product_info.brand}</Text>
+                                    )}
+                                    {marketPrice.product_info.lowest_price != null && (
+                                        <Text style={styles.marketPriceRange}>
+                                            ${marketPrice.product_info.lowest_price.toFixed(2)}
+                                            {marketPrice.product_info.highest_price != null
+                                                ? ` – $${marketPrice.product_info.highest_price.toFixed(2)}`
+                                                : ""}
+                                        </Text>
+                                    )}
+                                </View>
+                            </View>
+                        )}
+                        {marketPrice.internal_history.avg_sold_price != null && (
+                            <View style={styles.historyRow}>
+                                <Text style={styles.historyLabel}>
+                                    Your avg sold price ({marketPrice.internal_history.sample_count} sales)
+                                </Text>
+                                <Text style={styles.historyValue}>
+                                    ${marketPrice.internal_history.avg_sold_price.toFixed(2)}
+                                </Text>
+                            </View>
+                        )}
+                        {marketPrice.sources.map((src) =>
+                            src.price != null ? (
+                                <View key={src.source} style={styles.sourceRow}>
+                                    <Text style={styles.sourceLabel}>{src.label}</Text>
+                                    <Text style={styles.sourceValue}>${src.price.toFixed(2)}</Text>
+                                </View>
+                            ) : null
+                        )}
+                        {!marketPrice.product_info && marketPrice.internal_history.avg_sold_price == null && (
+                            <Text style={styles.noMarket}>No market data found for this item.</Text>
+                        )}
+                    </>
+                )}
+                {!marketLoading && !marketPrice && (
+                    <Text style={styles.noMarket}>Market data unavailable.</Text>
+                )}
+            </View>
+
+            {/* ── Status Transitions ── */}
             {transitions.length > 0 && (
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Actions</Text>
@@ -171,14 +337,14 @@ export default function ItemDetailScreen() {
                 </View>
             )}
 
-            {/* Timestamps */}
+            {/* ── Timestamps ── */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Timestamps</Text>
                 <DetailRow label="Created" value={new Date(item.created_at).toLocaleDateString()} />
                 <DetailRow label="Updated" value={new Date(item.updated_at).toLocaleDateString()} />
             </View>
 
-            {/* Delete */}
+            {/* ── Delete ── */}
             <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
                 <Text style={styles.deleteText}>🗑 Delete Item</Text>
             </TouchableOpacity>
@@ -279,4 +445,84 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: "700",
     },
+
+    // Photos
+    photoSection: { marginBottom: 20 },
+    photoMain: {
+        width: "100%",
+        height: Dimensions.get("window").width * 0.7,
+        borderRadius: 14,
+        backgroundColor: "#16213E",
+    },
+    photoTabs: { flexDirection: "row", gap: 8, marginTop: 10 },
+    photoTab: {
+        flex: 1,
+        paddingVertical: 8,
+        alignItems: "center",
+        borderRadius: 8,
+        backgroundColor: "#1A1A2E",
+        borderWidth: 1,
+        borderColor: "#2A2A4A",
+    },
+    photoTabActive: { backgroundColor: "#6C5CE7", borderColor: "#6C5CE7" },
+    photoTabText: { color: "#888", fontSize: 12, fontWeight: "700" },
+    photoTabTextActive: { color: "#FFF" },
+
+    // Smart pricing
+    suggestBox: {
+        backgroundColor: "#1A1A3E",
+        borderRadius: 14,
+        padding: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: "#6C5CE7",
+    },
+    suggestLoading: { color: "#888", marginLeft: 10 },
+    suggestHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
+    suggestTitle: { color: "#B8A9E8", fontSize: 14, fontWeight: "800" },
+    confidenceBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+    confidenceText: { color: "#FFF", fontSize: 10, fontWeight: "800" },
+    suggestPrice: { color: "#FFFFFF", fontSize: 28, fontWeight: "900", marginBottom: 4 },
+    suggestReason: { color: "#CCC", fontSize: 13, marginBottom: 2 },
+    suggestBasis: { color: "#888", fontSize: 11, marginBottom: 12 },
+    applyButton: {
+        backgroundColor: "#6C5CE7",
+        borderRadius: 10,
+        paddingVertical: 12,
+        alignItems: "center",
+    },
+    applyButtonDisabled: { opacity: 0.6 },
+    applyButtonText: { color: "#FFF", fontSize: 14, fontWeight: "700" },
+
+    // Market price
+    marketProduct: { flexDirection: "row", gap: 12, marginBottom: 12 },
+    marketProductImage: {
+        width: 70,
+        height: 70,
+        borderRadius: 8,
+        backgroundColor: "#16213E",
+    },
+    marketProductInfo: { flex: 1 },
+    marketProductTitle: { color: "#FFF", fontSize: 13, fontWeight: "600", marginBottom: 4 },
+    marketProductBrand: { color: "#888", fontSize: 11, marginBottom: 4 },
+    marketPriceRange: { color: "#00B894", fontSize: 15, fontWeight: "700" },
+    historyRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: "#1A1A2E",
+    },
+    historyLabel: { color: "#888", fontSize: 13 },
+    historyValue: { color: "#6C5CE7", fontSize: 14, fontWeight: "700" },
+    sourceRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: "#1A1A2E",
+    },
+    sourceLabel: { color: "#999", fontSize: 13 },
+    sourceValue: { color: "#FFF", fontSize: 13, fontWeight: "600" },
+    noMarket: { color: "#555", fontSize: 13, fontStyle: "italic" },
 });

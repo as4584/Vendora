@@ -21,6 +21,7 @@ export default function LoginScreen() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleLogin = async () => {
         if (!email.trim() || !password.trim()) {
@@ -65,14 +66,23 @@ export default function LoginScreen() {
                     />
 
                     <Text style={styles.label}>Password</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="••••••••"
-                        placeholderTextColor="#555"
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry
-                    />
+                    <View style={styles.passwordRow}>
+                        <TextInput
+                            style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                            placeholder="••••••••"
+                            placeholderTextColor="#555"
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry={!showPassword}
+                        />
+                        <TouchableOpacity
+                            style={styles.eyeBtn}
+                            onPress={() => setShowPassword((v) => !v)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Text style={styles.eyeIcon}>{showPassword ? "🙈" : "👁️"}</Text>
+                        </TouchableOpacity>
+                    </View>
 
                     <TouchableOpacity
                         style={[styles.button, loading && styles.buttonDisabled]}
@@ -151,6 +161,22 @@ const styles = StyleSheet.create({
         fontSize: 16,
         borderWidth: 1,
         borderColor: "#2A2A4A",
+    },
+    passwordRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#1A1A2E",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#2A2A4A",
+        paddingRight: 4,
+    },
+    eyeBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 14,
+    },
+    eyeIcon: {
+        fontSize: 18,
     },
     button: {
         backgroundColor: "#6C5CE7",

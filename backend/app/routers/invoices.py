@@ -7,10 +7,12 @@ Endpoints:
     PATCH  /api/v1/invoices/{id}/status — Transition invoice status
     POST   /api/v1/invoices/{id}/pay   — Create Stripe PaymentIntent (Pro only)
 """
+import base64
 from decimal import Decimal
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -30,6 +32,7 @@ from app.services.invoice import (
     transition_invoice,
     process_invoice_payment,
 )
+from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.stripe_service import create_payment_intent
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -211,3 +214,40 @@ def create_invoice_payment(
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     return create_payment_intent(db, invoice, current_user)
+
+
+@router.get("/{invoice_id}/pdf")
+def export_invoice_pdf(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a styled PDF invoice and return it as a base64 string.
+
+    Response: { pdf_base64: str, filename: str }
+    """
+    invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.user_id == current_user.id,
+    ).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    items = db.query(InvoiceItem).filter(InvoiceItem.invoice_id == invoice.id).all()
+
+    # Compute a sequential invoice number for this user
+    inv_seq = (
+        db.query(func.count(Invoice.id))
+        .filter(
+            Invoice.user_id == invoice.user_id,
+            Invoice.created_at <= invoice.created_at,
+        )
+        .scalar()
+        or 1
+    )
+    inv_number = f"INV{inv_seq:04d}"
+
+    pdf_bytes = generate_invoice_pdf(invoice, items, current_user, inv_number)
+    pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+
+    return {"pdf_base64": pdf_b64, "filename": f"invoice-{inv_number}.pdf"}

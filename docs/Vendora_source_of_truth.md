@@ -1,8 +1,134 @@
-📘 VENDORA — SOURCE OF TRUTH v1.0
+📘 VENDORA — SOURCE OF TRUTH v2.1
+Last Updated: 2026-02-24 (Sprint 6 Hotfix + EAS Distribution)
 
-Product Type: Mobile-First Reseller Operating System
-Positioning: Inventory + Payments + Profit + Trust — Unified
-Primary Users: Resellers (sneakers, clothing, watches, pet gear, handmade, Instagram brands)
+## ✅ LIVE DEPLOYMENT STATE
+
+| Component | Status | Detail |
+|-----------|--------|--------|
+| Production URL | ✅ Live | https://vendora.lexmakesit.com |
+| Backend | ✅ Running | FastAPI + Uvicorn on Ubuntu VPS via Docker |
+| Database | ✅ PostgreSQL | 6 migrations applied (001–006) |
+| Git Branch | sprint-5-lightspeed-deploy | latest commit: b8e2deb |
+| Expo SDK | 54 | React Native 0.81.5 |
+| Dev Tunnel | exp://fsl2bsc-anonymous-8085.exp.direct | port 8085 |
+| EAS Project | @lexmakesit/vendora | ID: 85f51ce2-35b8-4ba2-b3fe-a4f182a412f9 |
+| EAS Update | ✅ Published | Production channel, iOS, Group: 7b2814b4-a34a-46c0-a84e-e26a86d207ac |
+| Lightspeed OAuth | ✅ Configured | Credentials in /opt/vendora/.env.prod |
+
+## ✅ EAS DISTRIBUTION
+
+**Expo Account:** `lexmakesit`
+**EAS Project:** `@lexmakesit/vendora`
+**Project ID:** `85f51ce2-35b8-4ba2-b3fe-a4f182a412f9`
+**updates.url:** `https://u.expo.dev/85f51ce2-35b8-4ba2-b3fe-a4f182a412f9`
+**Runtime Version Policy:** `appVersion` (tied to app.json version field)
+
+**Shareable App Link (Expo Go):**
+```
+exp://u.expo.dev/85f51ce2-35b8-4ba2-b3fe-a4f182a412f9?channel-name=production&runtime-version=1.0.0
+```
+
+**Publishing a new update:**
+```bash
+cd mobile
+npx eas-cli update --channel production --platform ios
+```
+Anyone with Expo Go can scan the QR or open the link above — no build required.
+
+**Build profiles (eas.json):**
+- `development` — internal distribution, development client
+- `preview` — internal distribution, no store
+- `production` — App Store build (requires Apple account)
+
+## ✅ DATABASE SCHEMA (migration sequence)
+- 001: users, inventory_items
+- 002: transactions
+- 003: invoices, invoice_items, subscriptions, webhook_events
+- 004: lightspeed_tokens
+- 005: source + external_id on inventory_items + transactions
+- 006: profile_picture on users
+
+## ✅ DEPLOYED ENDPOINTS
+
+**Auth:** POST /auth/register, POST /auth/login, GET /auth/me, PATCH /auth/profile
+
+**Inventory:** GET/POST /inventory, GET/PATCH/DELETE /inventory/{id},
+GET /inventory/market-price, GET /inventory/{id}/pricing-suggestion
+
+**Invoices:** GET/POST /invoices, GET /invoices/{id}, PATCH /invoices/{id}/status,
+POST /invoices/{id}/pay, GET /invoices/{id}/pdf
+
+**Transactions:** GET/POST /transactions, GET /transactions/{id}
+
+**Dashboard:** GET /dashboard/summary
+
+**Sellers:** GET /sellers/{user_id}
+
+**Export (Pro):** GET /export/inventory, GET /export/transactions
+
+**Lightspeed:** GET /integrations/lightspeed/status,
+GET /integrations/lightspeed/connect,
+POST /integrations/lightspeed/sync
+
+**Webhooks:** POST /webhooks/stripe
+
+## ✅ MOBILE SCREENS (Expo Router)
+
+- `/(auth)/login` — JWT login with show/hide password toggle
+- `/(auth)/register` — Account creation
+- `/(tabs)/dashboard` — Revenue/profit summary
+- `/(tabs)/inventory/index` — 3-column photo grid
+- `/(tabs)/inventory/add` — Add item (photos, barcode scanner, auto-SKU)
+- `/(tabs)/inventory/[id]` — Item detail (market price panel, pricing suggestion)
+- `/(tabs)/inventory/invoices` — Invoice list + create + 📄 Export PDF (inventory search modal on "+ Add Item")
+- `/(tabs)/settings` — Profile picture, Lightspeed integration (OAuth connect/sync/disconnect), tier info, sign out
+
+## ✅ INSTALLED MOBILE PACKAGES
+- expo ~54.0.33, expo-router ~6.0.23
+- react-native-reanimated 4.1.6, react-native-worklets 0.5.1
+- expo-camera ~17.0.10, expo-image-picker ~17.0.10
+- expo-background-fetch ~14.0.9, expo-task-manager ~14.0.9
+- expo-web-browser ~15.0.10
+- expo-file-system 19.0.21 (import via `expo-file-system/legacy`), expo-sharing 14.0.8
+- expo-updates ~0.32.0 (OTA updates via EAS Update)
+
+## ⚠️ KNOWN OPERATIONAL RISKS
+
+**DB Volume Wipe:** `docker compose up --build -d` may recreate the Postgres
+volume, wiping all data. After any deploy that shows "Volume ... Creating", re-run:
+```bash
+docker compose -f docker-compose.prod.yml exec -T backend python create_user.py
+docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+```
+Test account: thegamermasterninja@gmail.com / Alexander1221 (Pro + Partner tier)
+
+**Env Var Reload:** `docker compose restart backend` does NOT reload .env.prod.
+Must recreate container: `docker compose -f docker-compose.prod.yml up -d backend`
+
+**Migration Missing After Redeploy:** If a container is recreated without a volume
+wipe, the DB persists but alembic_version may still need a head run if the
+migration was added after the last deploy. Always run `alembic upgrade head`
+after any backend container recreate as a safety step.
+
+**Expo Go Limitations:** expo-background-fetch and expo-task-manager are
+no-ops in Expo Go (wrapped in try/catch). Full background sync only works
+in a development build (EAS Build).
+
+**expo-file-system Import:** Use `expo-file-system/legacy` (not the default
+`expo-file-system`) when calling `writeAsStringAsync` — the default export in
+Expo 54/SDK 52+ renames `EncodingType`, causing a crash in Expo Go.
+
+**QR Code in Windows Terminal:** Renders rectangular — use manual URL entry
+in Expo Go or open http://localhost:8085 in browser for proper QR.
+
+**EAS Update Runtime Version:** The `appVersion` policy means the Expo Go
+shareable link only works when the runtime version (from app.json `version`)
+exactly matches. If app.json version changes, republish the update and share
+the new link.
+
+---
+
+
 
 🧱 CORE SYSTEM
 1️⃣ User Accounts & Authentication

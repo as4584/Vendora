@@ -1,9 +1,38 @@
 """Vendora API — FastAPI application entrypoint."""
-from fastapi import FastAPI
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from alembic.config import Config
+from alembic import command as alembic_command
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.errors import RateLimitExceeded
 
 from app.routers import auth, inventory, transactions, dashboard, invoices, webhooks
-from app.routers import export, features, sellers
+from app.routers import export, features, sellers, integrations
+
+logger = logging.getLogger(__name__)
+
+# Disable rate limiting in test environment so test suites don't hit the cap
+_rate_limits = [] if os.getenv("ENVIRONMENT") == "testing" else ["100/minute"]
+limiter = Limiter(key_func=get_remote_address, default_limits=_rate_limits)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run DB migrations automatically on every startup."""
+    try:
+        alembic_cfg = Config("/app/alembic.ini")
+        alembic_command.upgrade(alembic_cfg, "head")
+        logger.info("Alembic migrations applied.")
+    except Exception as exc:
+        logger.warning(f"Migration warning (non-fatal): {exc}")
+    yield
 
 app = FastAPI(
     title="Vendora API",
@@ -12,12 +41,19 @@ app = FastAPI(
     docs_url="/api/v1/docs",
     redoc_url="/api/v1/redoc",
     openapi_url="/api/v1/openapi.json",
+    lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+_allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGIN", "").split(",") if o.strip()]
 
 # CORS — allow mobile app to connect
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten in production
+    allow_origins=_allowed_origins or ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,9 +69,11 @@ app.include_router(webhooks.router, prefix="/api/v1")
 app.include_router(export.router, prefix="/api/v1")
 app.include_router(features.router, prefix="/api/v1")
 app.include_router(sellers.router, prefix="/api/v1")
+app.include_router(integrations.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health", tags=["health"])
 def health_check():
     """Health check endpoint."""
     return {"status": "ok", "version": "4.0.0"}
+# trigger reload

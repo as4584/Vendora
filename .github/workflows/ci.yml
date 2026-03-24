@@ -2,9 +2,16 @@ name: Vendora CI
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
+    paths:
+      - 'backend/**'
   pull_request:
     branches: [main]
+    paths:
+      - 'backend/**'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   backend-tests:
@@ -48,7 +55,10 @@ jobs:
       - name: Run tests with coverage
         working-directory: backend
         run: |
-          pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=80
+          pytest tests/ -v --tb=short \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-fail-under=80
 
       - name: Upload coverage report
         if: always()

@@ -1,0 +1,25 @@
+appId: com.vendora.app
+---
+# Smoke test — verifies app launches and login screen renders (not blank)
+# Run locally: maestro test mobile/.maestro/01-smoke.yaml
+
+- launchApp:
+    clearState: true
+
+# Wait for the loading spinner to finish
+- waitForAnimationToEnd
+
+# Login screen must be visible — if this fails the app white-screened or crashed
+- assertVisible:
+    text: "Vendora"
+
+- assertVisible:
+    text: "Your Reseller OS"
+
+- assertVisible:
+    text: "Email"
+
+- assertVisible:
+    text: "Password"
+
+- takeScreenshot: "login-screen"

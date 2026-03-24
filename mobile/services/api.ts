@@ -7,8 +7,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const API_BASE_URL = __DEV__
-  ? "http://10.0.2.2:8000/api/v1" // Android emulator → localhost
-  : "https://api.vendora.app/api/v1";
+  ? "https://vendora.lexmakesit.com/api/v1" // prod backend — works from any network in Expo Go
+  : "https://vendora.lexmakesit.com/api/v1";
 
 const TOKEN_KEY = "vendora_access_token";
 
@@ -46,18 +46,35 @@ async function request<T>(
     headers,
   });
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
+  const contentType = response.headers.get("content-type");
+  const isJson = contentType && contentType.includes("application/json");
 
-  const data = await response.json();
+  let data: any;
+
+  if (isJson) {
+    try {
+      const text = await response.text();
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      console.error("Failed to parse JSON response:", e);
+      throw new Error("Invalid JSON response from server");
+    }
+  } else {
+    // Non-JSON response (e.g. 500 HTML error or 404 text)
+    const text = await response.text();
+    if (!response.ok) {
+      throw new ApiError(text || `Request failed (${response.status})`, response.status);
+    }
+    // If OK but not JSON (e.g. 204), return empty
+    return {} as T;
+  }
 
   if (!response.ok) {
     const message =
       typeof data.detail === "string"
         ? data.detail
-        : data.detail?.message || `Request failed (${response.status})`;
-    throw new ApiError(message, response.status, data.detail);
+        : data?.detail?.message || `Request failed (${response.status})`;
+    throw new ApiError(message, response.status, data?.detail);
   }
 
   return data as T;
@@ -68,6 +85,7 @@ export class ApiError extends Error {
   detail: any;
   constructor(message: string, status: number, detail?: any) {
     super(message);
+    this.name = "ApiError";
     this.status = status;
     this.detail = detail;
   }
@@ -79,6 +97,7 @@ export interface User {
   id: string;
   email: string;
   business_name: string | null;
+  profile_picture: string | null;  // base64 data URL
   subscription_tier: string;
   is_partner: boolean;
   created_at: string;
@@ -117,6 +136,30 @@ export async function login(
 
 export async function getMe(): Promise<User> {
   return request<User>("/auth/me");
+}
+
+export async function updateProfile(
+  businessName?: string | null,
+  profilePicture?: string | null
+): Promise<User> {
+  return request<User>("/auth/profile", {
+    method: "PATCH",
+    body: JSON.stringify({
+      business_name: businessName,
+      profile_picture: profilePicture,
+    }),
+  });
+}
+
+export interface InvoicePdfResponse {
+  pdf_base64: string;
+  filename: string;
+}
+
+export async function exportInvoicePdf(
+  invoiceId: string
+): Promise<InvoicePdfResponse> {
+  return request<InvoicePdfResponse>(`/invoices/${invoiceId}/pdf`);
 }
 
 // ─── Inventory Endpoints ─────────────────────────────
@@ -459,6 +502,79 @@ export async function getSellerProfile(
   userId: string
 ): Promise<SellerProfile> {
   return request<SellerProfile>(`/sellers/${userId}`);
+}
+
+// ─── Market Price + Pricing ──────────────────────────
+
+export interface MarketPriceSource {
+  source: string;
+  price: number | null;
+  label: string;
+}
+
+export interface MarketPriceResult {
+  query: string;
+  upc: string | null;
+  product_info: {
+    title: string | null;
+    brand: string | null;
+    description: string | null;
+    image_url: string | null;
+    lowest_price: number | null;
+    highest_price: number | null;
+  } | null;
+  sources: MarketPriceSource[];
+  internal_history: {
+    avg_sold_price: number | null;
+    sample_count: number;
+  };
+}
+
+export interface PricingSuggestion {
+  item_id: string;
+  suggested_price: number;
+  reason: string;
+  confidence: "high" | "medium" | "low";
+  basis: string;
+}
+
+export async function getMarketPrice(
+  query: string,
+  upc?: string
+): Promise<MarketPriceResult> {
+  const params = new URLSearchParams({ query });
+  if (upc) params.append("upc", upc);
+  return request<MarketPriceResult>(`/inventory/market-price?${params}`);
+}
+
+export async function getPricingSuggestion(
+  itemId: string
+): Promise<PricingSuggestion> {
+  return request<PricingSuggestion>(`/inventory/${itemId}/pricing-suggestion`);
+}
+
+// ─── Lightspeed Integration ──────────────────────────
+
+export interface LightspeedStatus {
+  connected: boolean;
+  account_id: string | null;
+  expires_at: string | null;
+  last_synced_at: string | null;
+}
+
+export async function getLightspeedStatus(): Promise<LightspeedStatus> {
+  return request<LightspeedStatus>("/integrations/lightspeed/status");
+}
+
+export async function getLightspeedConnectUrl(): Promise<{ authorization_url: string }> {
+  return request<{ authorization_url: string }>("/integrations/lightspeed/connect");
+}
+
+export async function triggerLightspeedSync(): Promise<{
+  synced_items: number;
+  synced_transactions: number;
+}> {
+  return request("/integrations/lightspeed/sync", { method: "POST" });
 }
 
 // ─── Health ──────────────────────────────────────────

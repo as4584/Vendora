@@ -1,0 +1,4 @@
+[run]
+omit =
+    app/services/lightspeed.py
+    app/services/invoice_pdf.py

@@ -23,14 +23,45 @@
         "backgroundColor": "#0A0A1A"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.vendora.app"
+      "package": "com.vendora.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
-    ]
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Vendora uses the camera to scan barcodes on items."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Vendora needs photo access to attach images to inventory items."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "85f51ce2-35b8-4ba2-b3fe-a4f182a412f9"
+      }
+    },
+    "owner": "lexmakesit",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/85f51ce2-35b8-4ba2-b3fe-a4f182a412f9"
+    }
   }
 }

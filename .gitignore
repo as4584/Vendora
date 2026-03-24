@@ -19,6 +19,7 @@ env/
 .env
 .env.local
 .env.production
+.env.prod
 
 # IDE
 .vscode/
@@ -37,6 +38,10 @@ node_modules/
 
 # Docker
 vendora_data/
+
+# Local artifacts
+backend/vendora.db
+logs.txt
 
 # Coverage
 .coverage

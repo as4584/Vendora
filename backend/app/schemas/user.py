@@ -20,12 +20,18 @@ class UserResponse(BaseModel):
     id: UUID
     email: str
     business_name: str | None
+    profile_picture: str | None = None
     subscription_tier: str
     is_partner: bool
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserProfileUpdate(BaseModel):
+    business_name: str | None = Field(None, max_length=255)
+    profile_picture: str | None = None  # base64 data URL, e.g. 'data:image/jpeg;base64,...'
 
 
 class TokenResponse(BaseModel):

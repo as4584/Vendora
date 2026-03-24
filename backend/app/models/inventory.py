@@ -1,8 +1,8 @@
 """Inventory item model — Core Engine Layer."""
 import uuid
 
-from sqlalchemy import Column, String, Numeric, ForeignKey, CheckConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, Numeric, ForeignKey, CheckConstraint, Index, Uuid, JSON, text
+from sqlalchemy.dialects.postgresql import UUID, JSONB # Removed for generic compat
 
 from app.models.base import Base, TimestampMixin, SoftDeleteMixin
 
@@ -27,9 +27,9 @@ class InventoryItem(Base, TimestampMixin, SoftDeleteMixin):
         ),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -41,9 +41,12 @@ class InventoryItem(Base, TimestampMixin, SoftDeleteMixin):
     color = Column(String(50), nullable=True)
     condition = Column(String(50), nullable=True)
     serial_number = Column(String(100), nullable=True)
-    custom_attributes = Column(JSONB, nullable=True, server_default="{}")
+    custom_attributes = Column(JSON, nullable=True, server_default=text("'{}'"))
     buy_price = Column(Numeric(10, 2), nullable=True)
     expected_sell_price = Column(Numeric(10, 2), nullable=True)
     actual_sell_price = Column(Numeric(10, 2), nullable=True)
     platform = Column(String(100), nullable=True)
     status = Column(String(20), nullable=False, server_default="in_stock")
+    # Integration tracking — dedup key for synced records
+    source = Column(String(50), nullable=True, index=True)       # e.g. "lightspeed", "manual"
+    external_id = Column(String(255), nullable=True, index=True) # e.g. Lightspeed itemID

@@ -7,8 +7,8 @@ Per ARCHITECTURE.md:
 """
 import uuid
 
-from sqlalchemy import Column, String, Numeric, Boolean, ForeignKey, CheckConstraint, Index, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Numeric, Boolean, ForeignKey, CheckConstraint, Index, DateTime, Uuid
+# from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
 
@@ -28,9 +28,9 @@ class Subscription(Base, TimestampMixin):
         Index("ix_subscriptions_stripe_id", "stripe_subscription_id"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -49,7 +49,7 @@ class WebhookEvent(Base, TimestampMixin):
         Index("ix_webhook_events_event_id", "event_id", unique=True),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     event_id = Column(String(255), nullable=False, unique=True)
     event_type = Column(String(100), nullable=False)
     processed = Column(Boolean, nullable=False, server_default="true")
