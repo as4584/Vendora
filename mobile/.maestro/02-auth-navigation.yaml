@@ -1,0 +1,41 @@
+appId: com.vendora.app
+---
+# Auth navigation test — verifies login → register navigation works
+# Run locally: maestro test mobile/.maestro/02-auth-navigation.yaml
+
+- launchApp:
+    clearState: true
+
+- waitForAnimationToEnd
+
+# Confirm on login screen
+- assertVisible:
+    text: "Vendora"
+
+- takeScreenshot: "01-login"
+
+# Navigate to Register
+- tapOn:
+    text: "Register"
+
+- waitForAnimationToEnd
+
+# Register screen must render (not blank)
+- assertVisible:
+    text: "Email"
+
+- assertVisible:
+    text: "Password"
+
+- takeScreenshot: "02-register"
+
+# Navigate back to Login
+- tapOn:
+    text: "Login"
+
+- waitForAnimationToEnd
+
+- assertVisible:
+    text: "Vendora"
+
+- takeScreenshot: "03-back-to-login"

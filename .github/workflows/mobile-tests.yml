@@ -1,0 +1,93 @@
+name: Mobile iPhone Tests
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'mobile/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Fast: Expo Web + Playwright with iPhone viewport ──────────────────────
+  # Catches white pages, JS crashes, broken navigation.
+  # No backend needed — unauthenticated state redirects to login locally.
+  iphone-web-smoke:
+    name: iPhone Web Smoke (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile deps
+        working-directory: mobile
+        run: npm ci
+
+      - name: Build Expo web
+        working-directory: mobile
+        run: npx expo export --platform web
+
+      - name: Install Playwright + browsers
+        working-directory: mobile
+        run: |
+          npm install --save-dev @playwright/test serve
+          npx playwright install --with-deps chromium
+
+      - name: Run iPhone smoke tests
+        working-directory: mobile
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-playwright-report
+          path: mobile/playwright-report
+
+  # ── Slow (on-demand): Real iOS Simulator via Maestro ──────────────────────
+  # Triggers manually or on main pushes only. Needs macOS runner.
+  # Requires: EAS build or `expo run:ios` in CI (uncomment when ready).
+  #
+  # ios-simulator:
+  #   name: iOS Simulator (Maestro)
+  #   runs-on: macos-latest
+  #   if: github.ref == 'refs/heads/main'
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 22
+  #     - name: Install deps
+  #       working-directory: mobile
+  #       run: npm ci
+  #     - name: Install Maestro
+  #       run: curl -Ls "https://get.maestro.mobile.dev" | bash
+  #     - name: Boot iPhone 16 simulator
+  #       run: |
+  #         xcrun simctl boot "iPhone 16" || true
+  #         open -a Simulator
+  #     - name: Build and run on simulator
+  #       working-directory: mobile
+  #       run: npx expo run:ios --device "iPhone 16" --no-bundler &
+  #     - name: Wait for app to launch
+  #       run: sleep 60
+  #     - name: Run Maestro flows
+  #       run: |
+  #         ~/.maestro/bin/maestro test mobile/.maestro/01-smoke.yaml
+  #         ~/.maestro/bin/maestro test mobile/.maestro/02-auth-navigation.yaml
+  #     - name: Upload screenshots
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: maestro-screenshots
+  #         path: ~/.maestro/tests/
