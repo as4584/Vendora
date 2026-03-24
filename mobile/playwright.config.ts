@@ -16,11 +16,11 @@ export default defineConfig({
   projects: [
     {
       name: 'iPhone 12',
-      use: { ...devices['iPhone 12'] },
+      use: { ...devices['iPhone 12'], defaultBrowserType: 'chromium' },
     },
     {
       name: 'iPhone SE',
-      use: { ...devices['iPhone SE'] },
+      use: { ...devices['iPhone SE'], defaultBrowserType: 'chromium' },
     },
   ],
   webServer: {

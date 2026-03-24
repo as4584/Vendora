@@ -48,12 +48,11 @@ test.describe('Register screen', () => {
     await page.goto('/');
     await expect(page.locator('text=Vendora')).toBeVisible();
 
-    // Navigate to register
-    await page.click('text=Register');
+    // Navigate to register via "Sign Up" link
+    await page.click('text=Sign Up');
 
-    // Check register form rendered
-    await expect(page.locator('text=Email')).toBeVisible();
-    await expect(page.locator('text=Password')).toBeVisible();
+    // Check register form rendered (use unique field to avoid strict mode with login page remnants)
+    await expect(page.locator('text=Confirm Password')).toBeVisible();
 
     const html = await page.content();
     expect(html.length).toBeGreaterThan(500);
