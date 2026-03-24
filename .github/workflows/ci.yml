@@ -58,7 +58,6 @@ jobs:
           pytest tests/ -v --tb=short \
             --cov=app \
             --cov-report=term-missing \
-            --cov-omit=app/services/lightspeed.py,app/services/invoice_pdf.py \
             --cov-fail-under=80
 
       - name: Upload coverage report
