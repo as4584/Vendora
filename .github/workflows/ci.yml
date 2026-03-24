@@ -2,9 +2,16 @@ name: Vendora CI
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
+    paths:
+      - 'backend/**'
   pull_request:
     branches: [main]
+    paths:
+      - 'backend/**'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   backend-tests:
