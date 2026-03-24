@@ -30,7 +30,7 @@ jobs:
 
       - name: Install deps
         working-directory: mobile
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Build Expo web
         working-directory: mobile
@@ -72,7 +72,7 @@ jobs:
 
       - name: Install deps
         working-directory: mobile
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Install EAS CLI
         run: npm install -g eas-cli
