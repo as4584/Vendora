@@ -53,11 +53,11 @@ jobs:
           name: iphone-playwright-report
           path: mobile/playwright-report
 
-  # ── Publish OTA update to preview channel ─────────────────────────────────
+  # ── Publish OTA update to production channel ────────────────────────────────
   # Only runs on push to main (not PRs), only if smoke tests pass.
-  # Cousin's Expo Go picks this up automatically on next app open.
+  # App picks this up automatically on next open.
   publish-preview:
-    name: Publish OTA → Preview Channel
+    name: Publish OTA → Production Channel
     runs-on: ubuntu-latest
     needs: iphone-smoke
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -81,6 +81,6 @@ jobs:
         working-directory: mobile
         run: |
           eas update \
-            --channel preview \
-            --message "ci: ${{ github.sha }}" \
+            --channel production \
+            --message "ci: ${{ github.event.head_commit.message }}" \
             --non-interactive
