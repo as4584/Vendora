@@ -40,6 +40,33 @@ function MetricCard({
     );
 }
 
+/** Margin % card — colour-coded by threshold. */
+function MarginCard({
+    label,
+    pct,
+    subtitle,
+}: {
+    label: string;
+    pct: number | null;
+    subtitle?: string;
+}) {
+    const color =
+        pct === null ? "#888"
+        : pct >= 30 ? "#00B894"
+        : pct >= 15 ? "#FDCB6E"
+        : "#E17055";
+
+    return (
+        <View style={[styles.metricCard, { borderColor: color + "55" }]}>
+            <Text style={styles.metricLabel}>{label}</Text>
+            <Text style={[styles.metricValue, { color }]}>
+                {pct !== null ? `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%` : "—"}
+            </Text>
+            {subtitle && <Text style={styles.metricSubtitle}>{subtitle}</Text>}
+        </View>
+    );
+}
+
 function CountCard({
     label,
     value,
@@ -136,6 +163,31 @@ export default function DashboardScreen() {
                 <MetricCard label="Potential Profit" value={data.potential_profit} color="#00B894" />
             </View>
 
+            {/* Margin % — computed client-side from existing response fields */}
+            {(() => {
+                const cost = parseFloat(data.total_inventory_value as any);
+                const expected = parseFloat(data.total_expected_value as any);
+                const profit = parseFloat(data.potential_profit as any);
+                // Gross margin %: profit / expected * 100
+                const grossMargin = expected > 0 ? (profit / expected) * 100 : null;
+                // Markup %: profit / cost * 100
+                const markup = cost > 0 ? (profit / cost) * 100 : null;
+                return (
+                    <View style={styles.row}>
+                        <MarginCard
+                            label="Gross Margin %"
+                            pct={grossMargin !== null ? Math.round(grossMargin * 10) / 10 : null}
+                            subtitle="Profit ÷ Expected"
+                        />
+                        <MarginCard
+                            label="Markup %"
+                            pct={markup !== null ? Math.round(markup * 10) / 10 : null}
+                            subtitle="Profit ÷ Cost"
+                        />
+                    </View>
+                );
+            })()}
+
             {/* Counts */}
             <Text style={styles.sectionTitle}>📈 Overview</Text>
             <View style={styles.countsRow}>
@@ -200,6 +252,11 @@ const styles = StyleSheet.create({
     metricValue: {
         fontSize: 24,
         fontWeight: "800",
+    },
+    metricSubtitle: {
+        color: "#666",
+        fontSize: 10,
+        marginTop: 4,
     },
     countsRow: {
         flexDirection: "row",

@@ -18,18 +18,18 @@ REPO_URL='$RepoUrl'
 BRANCH='$Branch'
 REMOTE_USER='$RemoteUser'
 
-if [ ! -d "${APP_DIR}/.git" ]; then
-  sudo rm -rf "$APP_DIR"
-  sudo mkdir -p "$APP_DIR"
-  sudo chown "${REMOTE_USER}:${REMOTE_USER}" "$APP_DIR"
-  git clone -b "$BRANCH" "$REPO_URL" "$APP_DIR"
+if [ ! -d "`$`{APP_DIR`}/.git" ]; then
+  sudo rm -rf "`$APP_DIR"
+  sudo mkdir -p "`$APP_DIR"
+  sudo chown "`$`{REMOTE_USER`}:`$`{REMOTE_USER`}" "`$APP_DIR"
+  git clone -b "`$BRANCH" "`$REPO_URL" "`$APP_DIR"
 else
-  git -C "$APP_DIR" fetch --all
-  git -C "$APP_DIR" checkout "$BRANCH"
-  git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+  git -C "`$APP_DIR" fetch --all
+  git -C "`$APP_DIR" checkout "`$BRANCH"
+  git -C "`$APP_DIR" reset --hard "origin/`$BRANCH"
 fi
 
-cd "$APP_DIR"
+cd "`$APP_DIR"
 sudo bash deploy/server_bootstrap.sh
 "@
 

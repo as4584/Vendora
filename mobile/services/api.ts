@@ -164,6 +164,12 @@ export async function exportInvoicePdf(
 
 // ─── Inventory Endpoints ─────────────────────────────
 
+/** A single size/quantity pair for clothing variants. */
+export interface SizeVariant {
+  size: string;
+  quantity: number;
+}
+
 export interface InventoryItem {
   id: string;
   user_id: string;
@@ -181,6 +187,9 @@ export interface InventoryItem {
   actual_sell_price: string | null;
   platform: string | null;
   status: string;
+  photo_front_url: string | null;
+  photo_back_url: string | null;
+  quantity: number;
   created_at: string;
   updated_at: string;
 }
@@ -207,6 +216,7 @@ export interface CreateItemPayload {
   expected_sell_price?: string;
   actual_sell_price?: string;
   platform?: string;
+  quantity?: number;
 }
 
 export async function listItems(
@@ -252,6 +262,39 @@ export async function updateItemStatus(
   return request<InventoryItem>(`/inventory/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+}
+
+/**
+ * Upload front and/or back photos for an inventory item.
+ * Each photo should be a base64 data URL (e.g. "data:image/jpeg;base64,...").
+ */
+export async function uploadItemPhotos(
+  id: string,
+  photoFront?: string | null,
+  photoBack?: string | null
+): Promise<InventoryItem> {
+  return request<InventoryItem>(`/inventory/${id}/photos`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      photo_front: photoFront ?? null,
+      photo_back: photoBack ?? null,
+    }),
+  });
+}
+
+/**
+ * Save size variants for a clothing item.
+ * Variants are stored in custom_attributes.variants.
+ */
+export async function updateItemVariants(
+  id: string,
+  variants: SizeVariant[]
+): Promise<InventoryItem> {
+  const item = await getItem(id);
+  const existing = item.custom_attributes ?? {};
+  return updateItem(id, {
+    custom_attributes: { ...existing, variants },
   });
 }
 
@@ -401,6 +444,21 @@ export interface CreateInvoicePayload {
   notes?: string;
 }
 
+export interface UpdateInvoicePayload {
+  customer_name: string;
+  customer_email?: string;
+  items: {
+    inventory_item_id?: string;
+    description: string;
+    quantity: number;
+    unit_price: string;
+  }[];
+  tax?: string;
+  shipping?: string;
+  discount?: string;
+  notes?: string;
+}
+
 export async function createInvoice(
   payload: CreateInvoicePayload
 ): Promise<InvoiceData> {
@@ -421,6 +479,16 @@ export async function listInvoices(
 
 export async function getInvoice(id: string): Promise<InvoiceData> {
   return request<InvoiceData>(`/invoices/${id}`);
+}
+
+export async function updateInvoice(
+  id: string,
+  payload: UpdateInvoicePayload
+): Promise<InvoiceData> {
+  return request<InvoiceData>(`/invoices/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function updateInvoiceStatus(

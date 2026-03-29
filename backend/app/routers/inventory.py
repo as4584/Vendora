@@ -20,6 +20,7 @@ from app.schemas.inventory import (
     ItemResponse,
     StatusUpdate,
     PaginatedItems,
+    PhotoUpdate,
 )
 from app.dependencies.auth import get_current_user
 from app.dependencies.tier_limiter import enforce_item_limit
@@ -69,6 +70,7 @@ def create_item(
         expected_sell_price=payload.expected_sell_price,
         actual_sell_price=payload.actual_sell_price,
         platform=payload.platform,
+        quantity=payload.quantity,
     )
     db.add(item)
     db.commit()
@@ -272,6 +274,25 @@ def delete_item(
     db.add(item)
     db.commit()
     return None
+
+
+@router.patch("/{item_id}/photos", response_model=ItemResponse)
+def update_item_photos(
+    item_id: str,
+    payload: PhotoUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update front/back photo (base64 data URL). Called after createItem succeeds."""
+    item = _get_active_item(item_id, current_user.id, db)
+    if payload.photo_front is not None:
+        item.photo_front_url = payload.photo_front
+    if payload.photo_back is not None:
+        item.photo_back_url = payload.photo_back
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
 
 
 @router.patch("/{item_id}/status", response_model=ItemResponse)

@@ -3,9 +3,10 @@
  *
  * Instagram-style 3-column photo grid. Each cell shows a photo
  * thumbnail (or placeholder icon), item name, status colour dot,
- * and a "LOW STOCK" badge when the item has no stock.
+ * and a quantity badge. Tapping any card opens ItemQuickSheet
+ * instead of navigating away (prevents the black-screen crash).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     View,
     Text,
@@ -18,12 +19,15 @@ import {
     Image,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import * as api from "../../../services/api";
+import ItemQuickSheet from "./components/ItemQuickSheet";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const GAP = 3;
 const COLS = 3;
 const CELL_SIZE = (SCREEN_W - GAP * (COLS + 1)) / COLS;
+const IS_SMALL_SCREEN = SCREEN_W < 390;
 
 const STATUS_COLORS: Record<string, string> = {
     in_stock: "#00B894",
@@ -34,15 +38,30 @@ const STATUS_COLORS: Record<string, string> = {
     archived: "#636E72",
 };
 
-function GridCell({ item }: { item: api.InventoryItem }) {
-    const router = useRouter();
+/** Returns total qty: sum of variants if available, else item.quantity */
+function resolveQty(item: api.InventoryItem): number {
+    const v = item.custom_attributes?.variants;
+    if (Array.isArray(v) && v.length > 0) {
+        return v.reduce((acc: number, x: any) => acc + (x.quantity ?? 0), 0);
+    }
+    return item.quantity ?? 1;
+}
+
+function GridCell({
+    item,
+    onPress,
+}: {
+    item: api.InventoryItem;
+    onPress: () => void;
+}) {
     const dotColor = STATUS_COLORS[item.status] ?? "#636E72";
-    const photoUri = (item as any).photo_front_url as string | null;
+    const photoUri = (item.custom_attributes?.photo_front as string | undefined) ?? item.photo_front_url;
+    const qty = resolveQty(item);
 
     return (
         <TouchableOpacity
             style={[styles.cell, { width: CELL_SIZE }]}
-            onPress={() => router.push(`/(tabs)/inventory/${item.id}`)}
+            onPress={onPress}
             activeOpacity={0.82}
         >
             {photoUri ? (
@@ -69,6 +88,11 @@ function GridCell({ item }: { item: api.InventoryItem }) {
                 )}
             </View>
 
+            {/* Quantity badge — top-left */}
+            <View style={styles.qtyBadge}>
+                <Text style={styles.qtyBadgeText}>{qty}</Text>
+            </View>
+
             {item.status === "in_stock" && (
                 <View style={styles.restockBadge}>
                     <Text style={styles.restockText}>IN</Text>
@@ -78,6 +102,16 @@ function GridCell({ item }: { item: api.InventoryItem }) {
     );
 }
 
+function getBrand(item: api.InventoryItem): string {
+    const raw = item.custom_attributes?.brand;
+    if (typeof raw === "string" && raw.trim()) return raw.trim();
+    return "Unbranded";
+}
+
+type GridEntry =
+    | { type: "header"; key: string; brand: string; count: number }
+    | { type: "row"; key: string; brand: string; items: (api.InventoryItem | null)[] };
+
 export default function InventoryGridScreen() {
     const router = useRouter();
     const [items, setItems] = useState<api.InventoryItem[]>([]);
@@ -86,6 +120,32 @@ export default function InventoryGridScreen() {
     const [pages, setPages] = useState(0);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [selectedBrandFilter, setSelectedBrandFilter] = useState<string | null>(null);
+
+    // Quick Sheet state
+    const [selectedItem, setSelectedItem] = useState<api.InventoryItem | null>(null);
+    const [sheetOpen, setSheetOpen] = useState(false);
+
+    const openSheet = (item: api.InventoryItem) => {
+        setSelectedItem(item);
+        setSheetOpen(true);
+    };
+
+    const closeSheet = () => setSheetOpen(false);
+
+    // When a save happens in the sheet, update the item in-place
+    const handleItemUpdated = (updated: api.InventoryItem) => {
+        setItems((prev) =>
+            prev.map((i) => (i.id === updated.id ? updated : i))
+        );
+        setSelectedItem(updated);
+    };
+
+    // When deleted in the sheet, remove from grid
+    const handleItemDeleted = (id: string) => {
+        setItems((prev) => prev.filter((i) => i.id !== id));
+        setTotal((t) => Math.max(0, t - 1));
+    };
 
     const fetchItems = useCallback(async (pageNum: number, refresh = false) => {
         try {
@@ -108,8 +168,71 @@ export default function InventoryGridScreen() {
 
     useEffect(() => { fetchItems(1); }, []);
 
+    // Refresh when screen regains focus (e.g. returning from edit)
+    useFocusEffect(
+        useCallback(() => {
+            fetchItems(1, true);
+        }, [])
+    );
+
     const onRefresh = () => { setRefreshing(true); fetchItems(1, true); };
     const onLoadMore = () => { if (page < pages && !loading) fetchItems(page + 1); };
+
+    const existingBrands = useMemo<string[]>(() => {
+        const set = new Set<string>();
+        for (const item of items) {
+            const brand = getBrand(item);
+            if (brand !== "Unbranded") set.add(brand);
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [items]);
+
+    const groupedEntries = useMemo<GridEntry[]>(() => {
+        const sourceItems = selectedBrandFilter
+            ? items.filter((item) => getBrand(item) === selectedBrandFilter)
+            : items;
+
+        const groups = new Map<string, api.InventoryItem[]>();
+        for (const item of sourceItems) {
+            const brand = getBrand(item);
+            const existing = groups.get(brand);
+            if (existing) {
+                existing.push(item);
+            } else {
+                groups.set(brand, [item]);
+            }
+        }
+
+        const brands = Array.from(groups.keys()).sort((a, b) => {
+            if (a === "Unbranded") return 1;
+            if (b === "Unbranded") return -1;
+            return a.localeCompare(b);
+        });
+
+        const out: GridEntry[] = [];
+        for (const brand of brands) {
+            const brandItems = groups.get(brand) ?? [];
+            out.push({
+                type: "header",
+                key: `header-${brand}`,
+                brand,
+                count: brandItems.length,
+            });
+
+            for (let i = 0; i < brandItems.length; i += COLS) {
+                const chunk = brandItems.slice(i, i + COLS);
+                while (chunk.length < COLS) chunk.push(null);
+                out.push({
+                    type: "row",
+                    key: `row-${brand}-${i}`,
+                    brand,
+                    items: chunk,
+                });
+            }
+        }
+
+        return out;
+    }, [items, selectedBrandFilter]);
 
     if (loading && items.length === 0) {
         return (
@@ -145,13 +268,66 @@ export default function InventoryGridScreen() {
                 ))}
             </View>
 
+            {selectedBrandFilter && (
+                <View style={styles.filterBar}>
+                    <Text style={styles.filterLabel}>Filtered: {selectedBrandFilter}</Text>
+                    <TouchableOpacity
+                        style={styles.clearFilterBtn}
+                        onPress={() => setSelectedBrandFilter(null)}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.clearFilterText}>Clear</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
             {/* ── Grid ── */}
             <FlatList
-                data={items}
-                keyExtractor={(item) => item.id}
-                numColumns={COLS}
-                renderItem={({ item }) => <GridCell item={item} />}
-                columnWrapperStyle={styles.row}
+                data={groupedEntries}
+                keyExtractor={(entry) => entry.key}
+                renderItem={({ item: entry }) => (
+                    entry.type === "header" ? (
+                        <TouchableOpacity
+                            style={[
+                                styles.brandHeader,
+                                selectedBrandFilter === entry.brand && styles.brandHeaderActive,
+                            ]}
+                            onPress={() =>
+                                setSelectedBrandFilter((prev) =>
+                                    prev === entry.brand ? null : entry.brand
+                                )
+                            }
+                            activeOpacity={0.8}
+                        >
+                            <Text
+                                style={[
+                                    styles.brandTitle,
+                                    selectedBrandFilter === entry.brand && styles.brandTitleActive,
+                                ]}
+                            >
+                                {entry.brand}
+                            </Text>
+                            <Text
+                                style={[
+                                    styles.brandCount,
+                                    selectedBrandFilter === entry.brand && styles.brandCountActive,
+                                ]}
+                            >
+                                {entry.count}
+                            </Text>
+                        </TouchableOpacity>
+                    ) : (
+                        <View style={styles.row}>
+                            {entry.items.map((it, idx) =>
+                                it ? (
+                                    <GridCell key={it.id} item={it} onPress={() => openSheet(it)} />
+                                ) : (
+                                    <View key={`${entry.key}-spacer-${idx}`} style={[styles.cellSpacer, { width: CELL_SIZE }]} />
+                                )
+                            )}
+                        </View>
+                    )
+                )}
                 contentContainerStyle={styles.grid}
                 refreshControl={
                     <RefreshControl
@@ -173,6 +349,16 @@ export default function InventoryGridScreen() {
                     </View>
                 }
             />
+
+            {/* ── Item Quick Sheet ── */}
+            <ItemQuickSheet
+                item={selectedItem}
+                visible={sheetOpen}
+                existingBrands={existingBrands}
+                onClose={closeSheet}
+                onItemUpdated={handleItemUpdated}
+                onItemDeleted={handleItemDeleted}
+            />
         </View>
     );
 }
@@ -189,8 +375,8 @@ const styles = StyleSheet.create({
         paddingTop: 14,
         paddingBottom: 10,
     },
-    headerTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
-    headerSub: { color: "#888", fontSize: 12, marginTop: 2 },
+    headerTitle: { color: "#FFFFFF", fontSize: IS_SMALL_SCREEN ? 17 : 18, fontWeight: "800" },
+    headerSub: { color: "#888", fontSize: IS_SMALL_SCREEN ? 11 : 12, marginTop: 2 },
     addButton: {
         backgroundColor: "#00B894",
         paddingHorizontal: 14,
@@ -208,16 +394,84 @@ const styles = StyleSheet.create({
     },
     legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
     legendDot: { width: 6, height: 6, borderRadius: 3 },
-    legendLabel: { color: "#666", fontSize: 10 },
+    legendLabel: { color: "#666", fontSize: IS_SMALL_SCREEN ? 9 : 10 },
+    filterBar: {
+        marginHorizontal: 14,
+        marginBottom: 6,
+        paddingHorizontal: 10,
+        paddingVertical: IS_SMALL_SCREEN ? 7 : 8,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: "#2A2A4A",
+        backgroundColor: "#12122A",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+    },
+    filterLabel: {
+        color: "#B7B7C7",
+        fontSize: IS_SMALL_SCREEN ? 10 : 11,
+        fontWeight: "700",
+        flexShrink: 1,
+        paddingRight: 8,
+    },
+    clearFilterBtn: {
+        borderWidth: 1,
+        borderColor: "#6C5CE7",
+        borderRadius: 999,
+        paddingHorizontal: IS_SMALL_SCREEN ? 8 : 10,
+        paddingVertical: IS_SMALL_SCREEN ? 3 : 4,
+        backgroundColor: "#1E1B3A",
+    },
+    clearFilterText: {
+        color: "#A69BFF",
+        fontSize: IS_SMALL_SCREEN ? 10 : 11,
+        fontWeight: "700",
+    },
 
     grid: { paddingHorizontal: GAP, paddingBottom: 30 },
     row: { gap: GAP, marginBottom: GAP },
+    brandHeader: {
+        marginTop: 10,
+        marginBottom: 6,
+        paddingHorizontal: 2,
+        paddingVertical: 4,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+    brandHeaderActive: {
+        backgroundColor: "#1E1B3A",
+        borderRadius: 8,
+        paddingHorizontal: 8,
+    },
+    brandTitle: {
+        color: "#B7B7C7",
+        fontSize: IS_SMALL_SCREEN ? 11 : 12,
+        fontWeight: "800",
+        letterSpacing: 0.4,
+        textTransform: "uppercase",
+    },
+    brandTitleActive: {
+        color: "#6C5CE7",
+    },
+    brandCount: {
+        color: "#777",
+        fontSize: IS_SMALL_SCREEN ? 10 : 11,
+        fontWeight: "700",
+    },
+    brandCountActive: {
+        color: "#A69BFF",
+    },
 
     cell: {
         height: CELL_SIZE,
         backgroundColor: "#1A1A2E",
         borderRadius: 6,
         overflow: "hidden",
+    },
+    cellSpacer: {
+        height: CELL_SIZE,
     },
     cellImage: { width: "100%", height: "100%" },
     cellPlaceholder: {
@@ -239,6 +493,20 @@ const styles = StyleSheet.create({
     dot: { width: 6, height: 6, borderRadius: 3, marginBottom: 3 },
     cellName: { color: "#FFF", fontSize: 10, fontWeight: "600", lineHeight: 13 },
     cellPrice: { color: "#00B894", fontSize: 10, fontWeight: "700", marginTop: 1 },
+
+    // Quantity badge — top-left corner
+    qtyBadge: {
+        position: "absolute",
+        top: 4,
+        left: 4,
+        backgroundColor: "rgba(0,0,0,0.70)",
+        borderRadius: 8,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+        minWidth: 18,
+        alignItems: "center",
+    },
+    qtyBadgeText: { color: "#FFF", fontSize: 9, fontWeight: "800" },
 
     restockBadge: {
         position: "absolute",

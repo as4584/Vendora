@@ -22,6 +22,7 @@ from app.models.invoice import Invoice, InvoiceItem
 from app.models.inventory import InventoryItem
 from app.schemas.invoice import (
     InvoiceCreate,
+    InvoiceUpdate,
     InvoiceResponse,
     InvoiceListResponse,
     InvoiceItemResponse,
@@ -168,6 +169,76 @@ def get_invoice(
     ).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    return _invoice_to_response(invoice, db)
+
+
+@router.put("/{invoice_id}", response_model=InvoiceResponse)
+def update_invoice(
+    invoice_id: str,
+    payload: InvoiceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update invoice details and line items.
+
+    Allowed only for draft/sent invoices. Paid/cancelled are immutable.
+    """
+    invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.user_id == current_user.id,
+    ).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if invoice.status in ("paid", "cancelled"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Paid or cancelled invoices cannot be edited",
+        )
+
+    for item in payload.items:
+        if item.inventory_item_id:
+            inv = db.query(InventoryItem).filter(
+                InventoryItem.id == item.inventory_item_id,
+                InventoryItem.user_id == current_user.id,
+                InventoryItem.deleted_at.is_(None),
+            ).first()
+            if not inv:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Inventory item {item.inventory_item_id} not found.",
+                )
+
+    totals = calculate_invoice_totals(
+        payload.items, payload.tax, payload.shipping, payload.discount
+    )
+
+    invoice.customer_name = payload.customer_name
+    invoice.customer_email = payload.customer_email
+    invoice.subtotal = totals["subtotal"]
+    invoice.tax = payload.tax
+    invoice.shipping = payload.shipping
+    invoice.discount = payload.discount
+    invoice.total = totals["total"]
+    invoice.notes = payload.notes
+
+    db.query(InvoiceItem).filter(InvoiceItem.invoice_id == invoice.id).delete()
+
+    for item_data, line_total in zip(payload.items, totals["line_totals"]):
+        line_item = InvoiceItem(
+            invoice_id=invoice.id,
+            inventory_item_id=item_data.inventory_item_id,
+            description=item_data.description,
+            quantity=item_data.quantity,
+            unit_price=item_data.unit_price,
+            line_total=line_total,
+        )
+        db.add(line_item)
+
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+
     return _invoice_to_response(invoice, db)
 
 

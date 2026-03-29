@@ -1,6 +1,7 @@
 """Inventory item model — Core Engine Layer."""
 import uuid
 
+import sqlalchemy as sa
 from sqlalchemy import Column, String, Numeric, ForeignKey, CheckConstraint, Index, Uuid, JSON, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB # Removed for generic compat
 
@@ -47,6 +48,13 @@ class InventoryItem(Base, TimestampMixin, SoftDeleteMixin):
     actual_sell_price = Column(Numeric(10, 2), nullable=True)
     platform = Column(String(100), nullable=True)
     status = Column(String(20), nullable=False, server_default="in_stock")
+    # Photos — stored as base64 data URLs (consistent with profile_picture approach)
+    photo_front_url = Column(sa.Text, nullable=True)
+    photo_back_url = Column(sa.Text, nullable=True)
+
+    # Quantity — number of units (variants per-size breakdown lives in custom_attributes.variants)
+    quantity = Column(sa.Integer, nullable=False, server_default="1")
+
     # Integration tracking — dedup key for synced records
     source = Column(String(50), nullable=True, index=True)       # e.g. "lightspeed", "manual"
     external_id = Column(String(255), nullable=True, index=True) # e.g. Lightspeed itemID

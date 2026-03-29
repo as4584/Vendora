@@ -1,5 +1,5 @@
-📘 VENDORA — SOURCE OF TRUTH v2.1
-Last Updated: 2026-02-24 (Sprint 6 Hotfix + EAS Distribution)
+📘 VENDORA — SOURCE OF TRUTH v2.2
+Last Updated: 2026-02-25 (Sprint 7 — Inventory UX + Dashboard Margins)
 
 ## ✅ LIVE DEPLOYMENT STATE
 
@@ -7,8 +7,8 @@ Last Updated: 2026-02-24 (Sprint 6 Hotfix + EAS Distribution)
 |-----------|--------|--------|
 | Production URL | ✅ Live | https://vendora.lexmakesit.com |
 | Backend | ✅ Running | FastAPI + Uvicorn on Ubuntu VPS via Docker |
-| Database | ✅ PostgreSQL | 6 migrations applied (001–006) |
-| Git Branch | sprint-5-lightspeed-deploy | latest commit: b8e2deb |
+| Database | ✅ PostgreSQL | 7 migrations applied (001–007) |
+| Git Branch | sprint-5-lightspeed-deploy | latest commit: pending push |
 | Expo SDK | 54 | React Native 0.81.5 |
 | Dev Tunnel | exp://fsl2bsc-anonymous-8085.exp.direct | port 8085 |
 | EAS Project | @lexmakesit/vendora | ID: 85f51ce2-35b8-4ba2-b3fe-a4f182a412f9 |
@@ -40,6 +40,57 @@ Anyone with Expo Go can scan the QR or open the link above — no build required
 - `preview` — internal distribution, no store
 - `production` — App Store build (requires Apple account)
 
+## ✅ SPRINT 7 CHANGES (2026-02-25)
+
+### Problem → Solution
+| Field Tester Bug | Fix Applied |
+|---|---|
+| Same item added 3 times = 3 cards | Cards now show qty badge; use ItemQuickSheet to adjust quantity |
+| Box icon instead of photo | `photo_front_url` now stored in DB and uploaded after item create |
+| Clicking item shows black screen | Tapping a card opens QuickSheet (no route navigation) — crash eliminated |
+| Clothing needs size variants | QuickSheet + Add screen detect clothing category and show per-size breakdown |
+| Inventory logs → Quick Sale redirect | Tapping card no longer navigates; QuickSheet opens inline |
+| Dashboard needs margin % | Gross Margin % and Markup % cards added (client-computed) |
+
+### New DB Columns (migration 007)
+```
+inventory_items.photo_front_url  TEXT       nullable
+inventory_items.photo_back_url   TEXT       nullable
+inventory_items.quantity         INTEGER    default 1, not null
+```
+
+### Clothing Detection
+The `category` field is matched against a keyword list:
+```
+clothing, apparel, shirt, pants, jeans, dress, jacket, hoodie,
+sweater, shorts, shoes, sneakers, boots, sandals, coat, blazer,
+skirt, leggings, tracksuit
+```
+When matched → ItemQuickSheet and Add screen show the **Sizes & Quantities** section.
+Size inputs are free-text: `S`, `M`, `XL`, `32x32`, `10.5` — no preset enum.
+
+### Size Variants Storage
+Variants live in the existing `custom_attributes` JSON column:
+```json
+{ "variants": [{ "size": "M", "quantity": 2 }, { "size": "32x32", "quantity": 1 }] }
+```
+No new table required.
+
+### Margin % Formula
+```
+Gross Margin % = (potential_profit / total_expected_value) * 100
+Markup %       = (potential_profit / total_inventory_value) * 100
+```
+Both computed client-side from the existing `/dashboard` response.
+
+### Auto-Migration
+`backend/app/main.py` now runs `alembic upgrade head` inside a lifespan context
+on every container startup. After deploying, just restart the backend container —
+no manual `alembic upgrade head` SSH step needed.
+
+---
+
+
 ## ✅ DATABASE SCHEMA (migration sequence)
 - 001: users, inventory_items
 - 002: transactions
@@ -47,12 +98,17 @@ Anyone with Expo Go can scan the QR or open the link above — no build required
 - 004: lightspeed_tokens
 - 005: source + external_id on inventory_items + transactions
 - 006: profile_picture on users
+- 007: photo_front_url, photo_back_url, quantity on inventory_items
+
+> **Auto-migration:** `app/main.py` lifespan hook runs `alembic upgrade head`
+> automatically on every backend container start. No manual step needed after deploy.
 
 ## ✅ DEPLOYED ENDPOINTS
 
 **Auth:** POST /auth/register, POST /auth/login, GET /auth/me, PATCH /auth/profile
 
-**Inventory:** GET/POST /inventory, GET/PATCH/DELETE /inventory/{id},
+**Inventory:** GET/POST /inventory, GET/PUT/DELETE /inventory/{id},
+PATCH /inventory/{id}/status, PATCH /inventory/{id}/photos,
 GET /inventory/market-price, GET /inventory/{id}/pricing-suggestion
 
 **Invoices:** GET/POST /invoices, GET /invoices/{id}, PATCH /invoices/{id}/status,
@@ -76,12 +132,13 @@ POST /integrations/lightspeed/sync
 
 - `/(auth)/login` — JWT login with show/hide password toggle
 - `/(auth)/register` — Account creation
-- `/(tabs)/dashboard` — Revenue/profit summary
-- `/(tabs)/inventory/index` — 3-column photo grid
-- `/(tabs)/inventory/add` — Add item (photos, barcode scanner, auto-SKU)
-- `/(tabs)/inventory/[id]` — Item detail (market price panel, pricing suggestion)
-- `/(tabs)/inventory/invoices` — Invoice list + create + 📄 Export PDF (inventory search modal on "+ Add Item")
-- `/(tabs)/settings` — Profile picture, Lightspeed integration (OAuth connect/sync/disconnect), tier info, sign out
+- `/(tabs)/dashboard` — Revenue/profit summary + **Gross Margin % & Markup % cards**
+- `/(tabs)/inventory/index` — 3-column photo grid; **qty badge top-left; tap opens ItemQuickSheet (no navigation)**
+- `/(tabs)/inventory/add` — Add item (photos → uploaded as base64 after create, barcode scanner, auto-SKU, **quantity stepper**, **clothing/footwear: per-size variant entry with free-text size input**)
+- `/(tabs)/inventory/[id]` — Item detail (market price panel, pricing suggestion) — now only reached via "Full Edit" in QuickSheet
+- `/(tabs)/inventory/components/ItemQuickSheet` — **NEW** bottom-sheet modal on card tap. Shows photo, name, status, margin %. Clothing items show size variant manager (free-text: S / 32x32 / 10.5 etc.). All items show qty stepper. Save / Full Edit / Delete actions.
+- `/(tabs)/inventory/invoices` — Invoice list + create + 📄 Export PDF
+- `/(tabs)/settings` — Profile picture, Lightspeed integration, tier info, sign out
 
 ## ✅ INSTALLED MOBILE PACKAGES
 - expo ~54.0.33, expo-router ~6.0.23

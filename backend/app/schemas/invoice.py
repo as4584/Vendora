@@ -37,6 +37,16 @@ class InvoiceCreate(BaseModel):
     notes: Optional[str] = Field(None, max_length=1000)
 
 
+class InvoiceUpdate(BaseModel):
+    customer_name: str = Field(max_length=255)
+    customer_email: Optional[str] = Field(None, max_length=255)
+    items: list[InvoiceItemCreate] = Field(min_length=1)
+    tax: Decimal = Field(default=Decimal("0.00"), ge=0)
+    shipping: Decimal = Field(default=Decimal("0.00"), ge=0)
+    discount: Decimal = Field(default=Decimal("0.00"), ge=0)
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
 class InvoiceResponse(BaseModel):
     id: UUID
     user_id: UUID

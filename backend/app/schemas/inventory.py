@@ -2,9 +2,21 @@
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
-from typing import Any
+from typing import Any, List
 
 from pydantic import BaseModel, Field
+
+
+class SizeVariant(BaseModel):
+    """A single size/quantity pair stored inside custom_attributes.variants."""
+    size: str
+    quantity: int = Field(1, ge=0)
+
+
+class PhotoUpdate(BaseModel):
+    """Payload for PATCH /inventory/{id}/photos."""
+    photo_front: str | None = None   # base64 data URL or remote URL
+    photo_back: str | None = None    # base64 data URL or remote URL
 
 
 VALID_STATUSES = ["in_stock", "listed", "sold", "shipped", "paid", "archived"]
@@ -24,6 +36,7 @@ class ItemCreate(BaseModel):
     expected_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     actual_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     platform: str | None = Field(None, max_length=100)
+    quantity: int = Field(1, ge=1)
 
 
 class ItemUpdate(BaseModel):
@@ -40,6 +53,7 @@ class ItemUpdate(BaseModel):
     expected_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     actual_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     platform: str | None = Field(None, max_length=100)
+    quantity: int | None = Field(None, ge=0)
 
 
 class StatusUpdate(BaseModel):
@@ -63,6 +77,9 @@ class ItemResponse(BaseModel):
     actual_sell_price: Decimal | None
     platform: str | None
     status: str
+    photo_front_url: str | None = None
+    photo_back_url: str | None = None
+    quantity: int = 1
     created_at: datetime
     updated_at: datetime
 

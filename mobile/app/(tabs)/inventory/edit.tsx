@@ -1,12 +1,10 @@
-﻿/**
- * Add Item Screen
+/**
+ * Edit Item Screen
  *
- * Form for creating a new inventory item with:
- *  â€¢ Front/back photo picker (expo-image-picker)
- *  â€¢ Barcode scanner modal (expo-camera)
- *  â€¢ Auto-SKU generator
+ * Full edit form for an existing inventory item. Pre-populates all fields
+ * from the current item data and saves changes via updateItem.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as FileSystem from "expo-file-system/legacy";
 import {
     View,
@@ -23,23 +21,11 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
 
-const CATEGORY_PREFIXES: Record<string, string> = {
-    sneakers: "SNK",
-    clothing: "CLO",
-    electronics: "ELC",
-    accessories: "ACC",
-    collectibles: "COL",
-    books: "BKS",
-    toys: "TOY",
-    other: "OTH",
-};
-
-// Categories that unlock per-size variant entry
 const CLOTHING_KEYWORDS = [
     "clothing", "apparel", "shirt", "pants", "jeans", "dress", "jacket",
     "hoodie", "sweater", "shorts", "shoes", "sneakers", "boots", "sandals",
@@ -51,18 +37,13 @@ function isSizeCategory(cat: string): boolean {
     return CLOTHING_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
-function generateSKU(category: string): string {
-    const prefix = CATEGORY_PREFIXES[category.toLowerCase()] ?? "VND";
-    const ts = Date.now().toString(36).toUpperCase().slice(-5);
-    const rand = Math.random().toString(36).substring(2, 4).toUpperCase();
-    return `${prefix}-${ts}${rand}`;
-}
-
 type PhotoSide = "front" | "back";
 
-export default function AddItemScreen() {
+export default function EditItemScreen() {
     const router = useRouter();
-    const [loading, setLoading] = useState(false);
+    const { id } = useLocalSearchParams<{ id: string }>();
+    const [loadingItem, setLoadingItem] = useState(true);
+    const [saving, setSaving] = useState(false);
 
     // Form state
     const [name, setName] = useState("");
@@ -74,23 +55,72 @@ export default function AddItemScreen() {
     const [condition, setCondition] = useState("");
     const [buyPrice, setBuyPrice] = useState("");
     const [expectedPrice, setExpectedPrice] = useState("");
+    const [actualPrice, setActualPrice] = useState("");
     const [platform, setPlatform] = useState("");
+    const [brand, setBrand] = useState("");
 
     // Quantity + variants
     const [quantity, setQuantity] = useState(1);
     const [variants, setVariants] = useState<api.SizeVariant[]>([]);
     const [newVariantSize, setNewVariantSize] = useState("");
 
-    // Photo state
+    // Photo state — URI for display (could be base64 data url or file uri)
     const [frontPhoto, setFrontPhoto] = useState<string | null>(null);
     const [backPhoto, setBackPhoto] = useState<string | null>(null);
+    const [frontChanged, setFrontChanged] = useState(false);
+    const [backChanged, setBackChanged] = useState(false);
 
     // Barcode scanner
     const [scannerOpen, setScannerOpen] = useState(false);
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
 
-    // â”€â”€ Photo picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Load existing item ──
+    useEffect(() => {
+        if (!id) return;
+        (async () => {
+            try {
+                const item = await api.getItem(id);
+                setName(item.name ?? "");
+                setCategory(item.category ?? "");
+                setSku(item.sku ?? "");
+                setUpc(item.upc ?? "");
+                setSize(item.size ?? "");
+                setColor(item.color ?? "");
+                setCondition(item.condition ?? "");
+                setBuyPrice(item.buy_price ?? "");
+                setExpectedPrice(item.expected_sell_price ?? "");
+                setActualPrice(item.actual_sell_price ?? "");
+                setPlatform(item.platform ?? "");
+                setBrand(
+                    typeof item.custom_attributes?.brand === "string"
+                        ? item.custom_attributes.brand
+                        : ""
+                );
+                setQuantity(item.quantity ?? 1);
+
+                const v = item.custom_attributes?.variants;
+                if (Array.isArray(v)) setVariants(v as api.SizeVariant[]);
+
+                // Photos: prefer custom_attributes photos, fallback to url fields
+                const photoF =
+                    (item.custom_attributes?.photo_front as string | undefined) ??
+                    item.photo_front_url;
+                const photoB =
+                    (item.custom_attributes?.photo_back as string | undefined) ??
+                    item.photo_back_url;
+                if (photoF) setFrontPhoto(photoF);
+                if (photoB) setBackPhoto(photoB);
+            } catch (err: any) {
+                Alert.alert("Error", err.message || "Failed to load item.");
+                router.back();
+            } finally {
+                setLoadingItem(false);
+            }
+        })();
+    }, [id]);
+
+    // ── Photo picker ──
     const pickPhoto = async (side: PhotoSide) => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== "granted") {
@@ -104,8 +134,8 @@ export default function AddItemScreen() {
             quality: 0.8,
         });
         if (!result.canceled && result.assets[0]) {
-            if (side === "front") setFrontPhoto(result.assets[0].uri);
-            else setBackPhoto(result.assets[0].uri);
+            if (side === "front") { setFrontPhoto(result.assets[0].uri); setFrontChanged(true); }
+            else { setBackPhoto(result.assets[0].uri); setBackChanged(true); }
         }
     };
 
@@ -121,8 +151,8 @@ export default function AddItemScreen() {
             quality: 0.8,
         });
         if (!result.canceled && result.assets[0]) {
-            if (side === "front") setFrontPhoto(result.assets[0].uri);
-            else setBackPhoto(result.assets[0].uri);
+            if (side === "front") { setFrontPhoto(result.assets[0].uri); setFrontChanged(true); }
+            else { setBackPhoto(result.assets[0].uri); setBackChanged(true); }
         }
     };
 
@@ -138,7 +168,7 @@ export default function AddItemScreen() {
         );
     };
 
-    // â”€â”€ Barcode scanner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Barcode scanner ──
     const openScanner = async () => {
         if (!cameraPermission?.granted) {
             const { granted } = await requestCameraPermission();
@@ -156,15 +186,9 @@ export default function AddItemScreen() {
         setScanned(true);
         setScannerOpen(false);
         setUpc(data);
-        Alert.alert("Barcode Scanned", `UPC: ${data}`);
     };
 
-    // â”€â”€ Auto-SKU â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const handleAutoSKU = () => {
-        setSku(generateSKU(category || "other"));
-    };
-
-    // Variant helpers (clothing / size categories)
+    // Variant helpers
     const addVariant = () => {
         const s = newVariantSize.trim();
         if (!s) return;
@@ -188,20 +212,53 @@ export default function AddItemScreen() {
         setVariants((prev) => prev.filter((_, i) => i !== idx));
     };
 
-    // â”€â”€ Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const handleSubmit = async () => {
+    // ── Save ──
+    const handleSave = async () => {
+        if (!id) return;
         if (!name.trim()) {
             Alert.alert("Required", "Item name is required.");
             return;
         }
-        setLoading(true);
+        setSaving(true);
         try {
             const clothingMode = isSizeCategory(category);
             const totalQty = clothingMode
                 ? variants.reduce((acc, v) => acc + v.quantity, 0)
                 : quantity;
 
-            const payload: api.CreateItemPayload = {
+            const existingAttrs: Record<string, any> = {};
+
+            // Preserve/update brand
+            if (brand.trim()) {
+                existingAttrs.brand = brand.trim();
+            }
+
+            // Preserve/update variants
+            if (clothingMode && variants.length > 0) {
+                existingAttrs.variants = variants;
+            }
+
+            // Handle photo changes
+            const readB64 = async (uri: string): Promise<string> => {
+                const b64 = await FileSystem.readAsStringAsync(uri, {
+                    encoding: FileSystem.EncodingType.Base64,
+                });
+                return `data:image/jpeg;base64,${b64}`;
+            };
+
+            if (frontChanged && frontPhoto && !frontPhoto.startsWith("data:")) {
+                existingAttrs.photo_front = await readB64(frontPhoto);
+            } else if (frontPhoto?.startsWith("data:")) {
+                existingAttrs.photo_front = frontPhoto;
+            }
+
+            if (backChanged && backPhoto && !backPhoto.startsWith("data:")) {
+                existingAttrs.photo_back = await readB64(backPhoto);
+            } else if (backPhoto?.startsWith("data:")) {
+                existingAttrs.photo_back = backPhoto;
+            }
+
+            const payload: Partial<api.CreateItemPayload> = {
                 name: name.trim(),
                 category: category.trim() || undefined,
                 sku: sku.trim() || undefined,
@@ -211,54 +268,32 @@ export default function AddItemScreen() {
                 condition: condition.trim() || undefined,
                 buy_price: buyPrice.trim() || undefined,
                 expected_sell_price: expectedPrice.trim() || undefined,
+                actual_sell_price: actualPrice.trim() || undefined,
                 platform: platform.trim() || undefined,
                 quantity: totalQty,
-                custom_attributes: clothingMode && variants.length > 0
-                    ? { variants }
-                    : undefined,
+                custom_attributes: existingAttrs,
             };
 
-            const created = await api.createItem(payload);
+            await api.updateItem(id, payload);
 
-            // Save photos after item is created (stored in custom_attributes)
-            if (frontPhoto || backPhoto) {
-                try {
-                    const readB64 = async (uri: string): Promise<string> => {
-                        const b64 = await FileSystem.readAsStringAsync(uri, {
-                            encoding: FileSystem.EncodingType.Base64,
-                        });
-                        return `data:image/jpeg;base64,${b64}`;
-                    };
-                    const frontB64 = frontPhoto ? await readB64(frontPhoto) : null;
-                    const backB64 = backPhoto ? await readB64(backPhoto) : null;
-                    const existing = created.custom_attributes ?? {};
-                    await api.updateItem(created.id, {
-                        custom_attributes: {
-                            ...existing,
-                            photo_front: frontB64,
-                            photo_back: backB64,
-                        },
-                    });
-                } catch {
-                    console.warn("Photo save failed — item still created.");
-                }
-            }
-
-            Alert.alert("✅ Added", "Item saved to inventory!", [
-                { text: "OK", onPress: () => router.replace("/(tabs)/inventory") },
+            Alert.alert("✅ Updated", "Item changes saved!", [
+                { text: "OK", onPress: () => router.back() },
             ]);
         } catch (err: any) {
-            if (err.detail?.error === "tier_limit_reached") {
-                Alert.alert("Tier Limit", err.detail.message || "Upgrade to Pro for unlimited inventory.");
-            } else {
-                Alert.alert("Error", err.message || "Failed to create item.");
-            }
+            Alert.alert("Error", err.message || "Failed to update item.");
         } finally {
-            setLoading(false);
+            setSaving(false);
         }
     };
 
-    // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    if (loadingItem) {
+        return (
+            <View style={styles.center}>
+                <ActivityIndicator size="large" color="#6C5CE7" />
+            </View>
+        );
+    }
+
     return (
         <KeyboardAvoidingView
             style={{ flex: 1, backgroundColor: "#0A0A1A" }}
@@ -271,7 +306,14 @@ export default function AddItemScreen() {
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
             >
-                {/* â”€â”€ Photos â”€â”€ */}
+                {/* Back button */}
+                <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+                    <Text style={styles.backBtnText}>← Back</Text>
+                </TouchableOpacity>
+
+                <Text style={styles.screenTitle}>Edit Item</Text>
+
+                {/* ── Photos ── */}
                 <Text style={styles.sectionTitle}>Photos</Text>
                 <View style={styles.photoRow}>
                     <TouchableOpacity
@@ -302,7 +344,7 @@ export default function AddItemScreen() {
                     </TouchableOpacity>
                 </View>
 
-                {/* â”€â”€ Required â”€â”€ */}
+                {/* ── Required ── */}
                 <Text style={styles.sectionTitle}>Required</Text>
                 <Text style={styles.label}>Item Name</Text>
                 <TextInput
@@ -313,8 +355,17 @@ export default function AddItemScreen() {
                     onChangeText={setName}
                 />
 
-                {/* â”€â”€ Details â”€â”€ */}
+                {/* ── Details ── */}
                 <Text style={styles.sectionTitle}>Details</Text>
+
+                <Text style={styles.label}>Brand</Text>
+                <TextInput
+                    style={styles.input}
+                    placeholder="Nike, Adidas, etc."
+                    placeholderTextColor="#555"
+                    value={brand}
+                    onChangeText={setBrand}
+                />
 
                 <View style={styles.row}>
                     <View style={styles.halfField}>
@@ -330,22 +381,14 @@ export default function AddItemScreen() {
                     </View>
                     <View style={styles.halfField}>
                         <Text style={styles.label}>SKU</Text>
-                        <View style={styles.skuRow}>
-                            <TextInput
-                                style={[styles.input, styles.skuInput]}
-                                placeholder="SKU-001"
-                                placeholderTextColor="#555"
-                                value={sku}
-                                onChangeText={setSku}
-                                autoCapitalize="characters"
-                            />
-                            <TouchableOpacity
-                                style={styles.autoButton}
-                                onPress={handleAutoSKU}
-                            >
-                                <Text style={styles.autoButtonText}>⚡</Text>
-                            </TouchableOpacity>
-                        </View>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="SKU-001"
+                            placeholderTextColor="#555"
+                            value={sku}
+                            onChangeText={setSku}
+                            autoCapitalize="characters"
+                        />
                     </View>
                 </View>
 
@@ -397,7 +440,7 @@ export default function AddItemScreen() {
                     onChangeText={setCondition}
                 />
 
-                {/* â”€â”€ Pricing â”€â”€ */}
+                {/* ── Pricing ── */}
                 <Text style={styles.sectionTitle}>Pricing</Text>
                 <View style={styles.row}>
                     <View style={styles.halfField}>
@@ -424,6 +467,16 @@ export default function AddItemScreen() {
                     </View>
                 </View>
 
+                <Text style={styles.label}>Actual Sell Price ($)</Text>
+                <TextInput
+                    style={styles.input}
+                    placeholder="0.00"
+                    placeholderTextColor="#555"
+                    value={actualPrice}
+                    onChangeText={setActualPrice}
+                    keyboardType="decimal-pad"
+                />
+
                 <Text style={styles.label}>Platform</Text>
                 <TextInput
                     style={styles.input}
@@ -436,7 +489,7 @@ export default function AddItemScreen() {
                 {/* ── Sizes (clothing / footwear) ── */}
                 {isSizeCategory(category) && (
                     <>
-                        <Text style={styles.sectionTitle}>Sizes &amp; Quantities</Text>
+                        <Text style={styles.sectionTitle}>Sizes & Quantities</Text>
                         <Text style={styles.sizeHint}>
                             Add each size you stock. Any format: S, M, L, XL, 32x32, 10.5…
                         </Text>
@@ -495,7 +548,7 @@ export default function AddItemScreen() {
                         <View style={styles.qtyRow}>
                             <TouchableOpacity
                                 style={styles.qtyBtnLarge}
-                                onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+                                onPress={() => setQuantity((q) => Math.max(0, q - 1))}
                             >
                                 <Text style={styles.qtyBtnLargeText}>−</Text>
                             </TouchableOpacity>
@@ -510,70 +563,68 @@ export default function AddItemScreen() {
                     </>
                 )}
 
-                {/* ── Submit ── */}
+                {/* ── Save Button ── */}
                 <TouchableOpacity
-                    style={[styles.button, loading && styles.buttonDisabled]}
-                    onPress={handleSubmit}
-                    disabled={loading}
+                    style={[styles.saveButton, saving && { opacity: 0.6 }]}
+                    onPress={handleSave}
+                    disabled={saving}
                 >
-                    {loading ? (
+                    {saving ? (
                         <ActivityIndicator color="#fff" />
                     ) : (
-                        <Text style={styles.buttonText}>Add to Inventory</Text>
+                        <Text style={styles.saveText}>💾 Save Changes</Text>
                     )}
                 </TouchableOpacity>
             </ScrollView>
 
-            {/* â”€â”€ Barcode Scanner Modal â”€â”€ */}
-            <Modal visible={scannerOpen} animationType="slide" onRequestClose={() => setScannerOpen(false)}>
+            {/* ── Barcode Scanner Modal ── */}
+            <Modal
+                visible={scannerOpen}
+                animationType="slide"
+                onRequestClose={() => setScannerOpen(false)}
+            >
                 <View style={styles.scannerContainer}>
                     <CameraView
-                        style={styles.camera}
-                        facing="back"
-                        barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] }}
+                        style={StyleSheet.absoluteFillObject}
                         onBarcodeScanned={scanned ? undefined : onBarcodeScanned}
+                        barcodeScannerSettings={{
+                            barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"],
+                        }}
                     />
-                    <View style={styles.scannerOverlay}>
-                        <View style={styles.scannerFrame} />
-                        <Text style={styles.scannerHint}>Point at a barcode to scan</Text>
-                        <TouchableOpacity
-                            style={styles.cancelScan}
-                            onPress={() => setScannerOpen(false)}
-                        >
-                            <Text style={styles.cancelScanText}>Cancel</Text>
-                        </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity
+                        style={styles.scannerClose}
+                        onPress={() => setScannerOpen(false)}
+                    >
+                        <Text style={styles.scannerCloseText}>✕ Cancel</Text>
+                    </TouchableOpacity>
                 </View>
             </Modal>
         </KeyboardAvoidingView>
     );
 }
 
-const { width: SCREEN_W } = Dimensions.get("window");
-const PHOTO_SIZE = (SCREEN_W - 60) / 2;
-
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#0A0A1A" },
-    content: { padding: 20, paddingBottom: 40 },
-
+    center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0A0A1A" },
+    content: { padding: 20, paddingBottom: 50 },
+    backBtn: { marginBottom: 8, alignSelf: "flex-start" },
+    backBtnText: { color: "#6C5CE7", fontSize: 16, fontWeight: "700" },
+    screenTitle: {
+        color: "#FFFFFF",
+        fontSize: 22,
+        fontWeight: "800",
+        marginBottom: 16,
+    },
     sectionTitle: {
-        fontSize: 13,
+        fontSize: 14,
         fontWeight: "800",
         color: "#6C5CE7",
         marginTop: 22,
-        marginBottom: 8,
-        textTransform: "uppercase",
-        letterSpacing: 1,
-    },
-    label: {
-        color: "#999",
-        fontSize: 11,
-        fontWeight: "600",
-        marginBottom: 6,
-        marginTop: 8,
+        marginBottom: 10,
         textTransform: "uppercase",
         letterSpacing: 0.5,
     },
+    label: { color: "#B7B7C7", fontSize: 12, fontWeight: "600", marginBottom: 4, marginTop: 6 },
     input: {
         backgroundColor: "#1A1A2E",
         borderRadius: 10,
@@ -583,98 +634,37 @@ const styles = StyleSheet.create({
         fontSize: 15,
         borderWidth: 1,
         borderColor: "#2A2A4A",
+        marginBottom: 6,
     },
-    row: { flexDirection: "row", gap: 12 },
+    row: { flexDirection: "row", gap: 10 },
     halfField: { flex: 1 },
-
-    // Photos
-    photoRow: { flexDirection: "row", gap: 12, marginBottom: 4 },
-    photoSlot: {
-        width: PHOTO_SIZE,
-        height: PHOTO_SIZE,
-        borderRadius: 12,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: "#2A2A4A",
-    },
-    photoThumb: { width: "100%", height: "100%" },
-    photoPlaceholder: {
-        flex: 1,
-        backgroundColor: "#16213E",
+    skuRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    skuInput: { flex: 1 },
+    scanButton: {
+        backgroundColor: "#6C5CE7",
+        borderRadius: 10,
+        width: 44,
+        height: 44,
         justifyContent: "center",
         alignItems: "center",
-        gap: 6,
+        marginBottom: 6,
     },
-    photoIcon: { fontSize: 32 },
-    photoLabel: { color: "#555", fontSize: 12, fontWeight: "600" },
-
-    // SKU row with auto-button
-    skuRow: { flexDirection: "row", gap: 8, alignItems: "flex-end" },
-    skuInput: { flex: 1 },
-    autoButton: {
-        backgroundColor: "#2A1B4E",
-        borderWidth: 1,
-        borderColor: "#6C5CE7",
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 12,
-    },
-    autoButtonText: { fontSize: 16 },
-
-    // Scan button
-    scanButton: {
-        backgroundColor: "#1A2E1A",
-        borderWidth: 1,
-        borderColor: "#00B894",
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 12,
-    },
-    scanButtonText: { fontSize: 16 },
-
-    // Submit
-    button: {
-        backgroundColor: "#6C5CE7",
+    scanButtonText: { fontSize: 20 },
+    photoRow: { flexDirection: "row", gap: 12, marginBottom: 6 },
+    photoSlot: {
+        width: 100,
+        height: 100,
         borderRadius: 12,
-        paddingVertical: 16,
-        alignItems: "center",
-        marginTop: 28,
+        borderWidth: 1.5,
+        borderColor: "#2A2A4A",
+        overflow: "hidden",
+        backgroundColor: "#1A1A2E",
     },
-    buttonDisabled: { opacity: 0.6 },
-    buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
-
-    // Scanner modal
-    scannerContainer: { flex: 1, backgroundColor: "#000" },
-    camera: { flex: 1 },
-    scannerOverlay: {
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        alignItems: "center",
-        paddingBottom: 50,
-        backgroundColor: "rgba(0,0,0,0.4)",
-        paddingTop: 20,
-    },
-    scannerFrame: {
-        width: 240,
-        height: 240,
-        borderWidth: 2,
-        borderColor: "#00B894",
-        borderRadius: 16,
-        marginBottom: 20,
-    },
-    scannerHint: { color: "#CCC", fontSize: 14, marginBottom: 20 },
-    cancelScan: {
-        backgroundColor: "#E17055",
-        paddingHorizontal: 32,
-        paddingVertical: 14,
-        borderRadius: 12,
-    },
-    cancelScanText: { color: "#FFF", fontSize: 15, fontWeight: "700" },
-
-    // Variants / Sizes section
-    sizeHint: { color: "#666", fontSize: 12, marginBottom: 8, marginTop: 4 },
+    photoThumb: { width: "100%", height: "100%" },
+    photoPlaceholder: { flex: 1, justifyContent: "center", alignItems: "center" },
+    photoIcon: { fontSize: 28 },
+    photoLabel: { color: "#555", fontSize: 11, marginTop: 4 },
+    sizeHint: { color: "#888", fontSize: 12, marginBottom: 4 },
     variantRow: {
         flexDirection: "row",
         alignItems: "center",
@@ -695,15 +685,10 @@ const styles = StyleSheet.create({
         alignItems: "center",
     },
     qtyBtnText: { color: "#FFF", fontSize: 18, fontWeight: "700", lineHeight: 22 },
-    qtyValue: { color: "#FFF", fontSize: 15, fontWeight: "700", minWidth: 26, textAlign: "center" },
+    qtyValue: { color: "#FFF", fontSize: 16, fontWeight: "700", minWidth: 28, textAlign: "center" },
     removeBtn: { marginLeft: 10, padding: 4 },
     removeBtnText: { color: "#E17055", fontSize: 14, fontWeight: "700" },
-    addSizeRow: {
-        flexDirection: "row",
-        gap: 8,
-        marginTop: 4,
-        alignItems: "center",
-    },
+    addSizeRow: { flexDirection: "row", gap: 8, marginTop: 6, alignItems: "center" },
     sizeInput: {
         flex: 1,
         backgroundColor: "#1A1A2E",
@@ -722,8 +707,6 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
     },
     addSizeBtnText: { color: "#FFF", fontSize: 13, fontWeight: "700" },
-
-    // Quantity stepper (non-clothing)
     qtyRow: {
         flexDirection: "row",
         alignItems: "center",
@@ -731,8 +714,7 @@ const styles = StyleSheet.create({
         gap: 20,
         backgroundColor: "#1A1A2E",
         borderRadius: 12,
-        padding: 14,
-        marginBottom: 6,
+        padding: 12,
     },
     qtyBtnLarge: {
         width: 42,
@@ -744,4 +726,23 @@ const styles = StyleSheet.create({
     },
     qtyBtnLargeText: { color: "#FFF", fontSize: 22, fontWeight: "700" },
     qtyValueLarge: { color: "#FFF", fontSize: 28, fontWeight: "800", minWidth: 50, textAlign: "center" },
+    saveButton: {
+        backgroundColor: "#6C5CE7",
+        borderRadius: 14,
+        paddingVertical: 18,
+        alignItems: "center",
+        marginTop: 24,
+    },
+    saveText: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
+    scannerContainer: { flex: 1, backgroundColor: "#000" },
+    scannerClose: {
+        position: "absolute",
+        bottom: 60,
+        alignSelf: "center",
+        backgroundColor: "rgba(0,0,0,0.7)",
+        borderRadius: 20,
+        paddingHorizontal: 24,
+        paddingVertical: 14,
+    },
+    scannerCloseText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
 });
