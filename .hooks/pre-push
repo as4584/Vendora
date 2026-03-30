@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  Vendora pre-push hook
+#  Uses `act` to replay the real GitHub Actions workflow locally.
+#  BLOCKS the push if any job fails — nothing broken ever reaches GitHub.
+#
+#  Setup: run scripts/install-hooks.ps1 (Windows) or
+#             git config core.hooksPath .hooks  (any platform)
+# =============================================================================
+set -euo pipefail
+
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+banner() { echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; }
+
+banner
+echo -e "${CYAN}  Vendora pre-push — running CI locally via act${NC}"
+banner
+
+# ── Guards ────────────────────────────────────────────────────────────────────
+if ! command -v act &>/dev/null; then
+  echo -e "${RED}❌  'act' not found.${NC}"
+  echo "    Install with:  winget install nektos.act"
+  echo "    Or see:        https://nektosact.com/installation/"
+  exit 1
+fi
+
+if ! docker info &>/dev/null 2>&1; then
+  echo -e "${RED}❌  Docker is not running. Start Docker Desktop and retry.${NC}"
+  exit 1
+fi
+
+# ── Move to repo root (hook runs from .git dir) ───────────────────────────────
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# ── Detect what files are changing in this push ───────────────────────────────
+MOBILE_CHANGED=false
+BACKEND_CHANGED=false
+
+while IFS=' ' read -r _local_ref local_sha _remote_ref remote_sha; do
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    # New branch — diff vs the empty tree
+    BASE=$(git hash-object -t tree /dev/null)
+    DIFF=$(git diff-tree --no-commit-id -r --name-only "$BASE" "$local_sha" 2>/dev/null || true)
+  else
+    DIFF=$(git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null || true)
+  fi
+
+  echo "$DIFF" | grep -q "^mobile/"  && MOBILE_CHANGED=true
+  echo "$DIFF" | grep -q "^backend/" && BACKEND_CHANGED=true
+done
+
+if [ "$MOBILE_CHANGED" = false ] && [ "$BACKEND_CHANGED" = false ]; then
+  echo -e "${YELLOW}⚡  No mobile/backend changes — skipping CI.${NC}"
+  exit 0
+fi
+
+FAILED=false
+
+# ── Mobile: smoke tests only (no OTA deploy) ──────────────────────────────────
+if [ "$MOBILE_CHANGED" = true ]; then
+  echo ""
+  echo -e "${CYAN}📱  Mobile changes detected — running iphone-smoke job…${NC}"
+  echo ""
+  if act -j iphone-smoke \
+        -W .github/workflows/mobile-tests.yml \
+        2>&1; then
+    echo ""
+    echo -e "${GREEN}✅  Mobile smoke tests passed.${NC}"
+  else
+    echo ""
+    echo -e "${RED}❌  Mobile smoke tests FAILED.${NC}"
+    FAILED=true
+  fi
+fi
+
+# ── Backend: unit + integration tests ────────────────────────────────────────
+if [ "$BACKEND_CHANGED" = true ]; then
+  echo ""
+  echo -e "${CYAN}🐍  Backend changes detected — running backend-tests job…${NC}"
+  echo ""
+  if act -j backend-tests \
+        -W .github/workflows/ci.yml \
+        2>&1; then
+    echo ""
+    echo -e "${GREEN}✅  Backend tests passed.${NC}"
+  else
+    echo ""
+    echo -e "${RED}❌  Backend tests FAILED.${NC}"
+    FAILED=true
+  fi
+fi
+
+# ── Result ────────────────────────────────────────────────────────────────────
+echo ""
+banner
+if [ "$FAILED" = true ]; then
+  echo -e "${RED}  PUSH BLOCKED — fix the failures above, then try again.${NC}"
+  banner
+  exit 1
+fi
+
+echo -e "${GREEN}  All checks passed — push proceeding to GitHub. 🚀${NC}"
+banner
+exit 0

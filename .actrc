@@ -1,0 +1,7 @@
+# act local runner config
+# Uses a slim Ubuntu image (~500 MB) instead of the full GitHub runner (~18 GB)
+-P ubuntu-latest=catthehacker/ubuntu:act-22.04
+# Load local secrets from .act.secrets (git-ignored)
+--secret-file .act.secrets
+# Store workflow artifacts locally
+--artifact-server-path /tmp/act-artifacts

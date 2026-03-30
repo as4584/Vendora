@@ -46,3 +46,6 @@ logs.txt
 # Coverage
 .coverage
 htmlcov/
+
+# act (local GitHub Actions runner)
+.act.secrets

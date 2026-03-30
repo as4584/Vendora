@@ -1,0 +1,6 @@
+# Git attributes — enforce LF on shell scripts so hooks work on all platforms
+* text=auto
+
+# Hook scripts must always be LF (bash requires it on Windows via Git for Windows)
+.hooks/pre-push text eol=lf
+scripts/*.sh    text eol=lf
