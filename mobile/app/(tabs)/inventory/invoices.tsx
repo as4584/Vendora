@@ -18,6 +18,8 @@ import {
     Modal,
     KeyboardAvoidingView,
     Platform,
+    Share,
+    Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as FileSystem from "expo-file-system/legacy";
@@ -54,6 +56,7 @@ export default function InvoicesScreen() {
     const [previewDiscount, setPreviewDiscount] = useState("");
     const [previewNotes, setPreviewNotes] = useState("");
     const [inventorySizeById, setInventorySizeById] = useState<Record<string, string>>({});
+    const [sellerUser, setSellerUser] = useState<api.User | null>(null);
 
     // Create form state
     const [customerName, setCustomerName] = useState("");
@@ -82,6 +85,7 @@ export default function InvoicesScreen() {
 
     useEffect(() => {
         fetchInvoices();
+        api.getMe().then(setSellerUser).catch(() => {});
     }, []);
 
     const addLineItem = () => {
@@ -425,25 +429,51 @@ export default function InvoicesScreen() {
         );
     };
 
-    // ─── Send invoice as PDF via native share sheet (iMessage/WhatsApp/Mail/AirDrop) ───
+    // ─── Send invoice — PDF via share sheet, text fallback ───
     const handleSendInvoice = async (inv: api.InvoiceData) => {
         setSendingId(inv.id);
         try {
-            const result = await api.exportInvoicePdf(inv.id);
-            const pdf_base64 = result?.pdf_base64;
-            const filename = result?.filename ?? `invoice-${inv.id.slice(0, 8)}.pdf`;
-            if (!pdf_base64) throw new Error("PDF generation failed.");
+            let shared = false;
+            // Try PDF first
+            try {
+                const result = await api.exportInvoicePdf(inv.id);
+                const pdf_base64 = result?.pdf_base64;
+                const filename = result?.filename ?? `invoice-${inv.id.slice(0, 8)}.pdf`;
+                if (pdf_base64) {
+                    const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? "";
+                    const fileUri = dir + filename;
+                    await FileSystem.writeAsStringAsync(fileUri, pdf_base64, {
+                        encoding: "base64" as any,
+                    });
+                    await Sharing.shareAsync(fileUri, {
+                        mimeType: "application/pdf",
+                        dialogTitle: `Send Invoice to ${inv.customer_name}`,
+                        UTI: "com.adobe.pdf",
+                    });
+                    shared = true;
+                }
+            } catch { /* fall through to text share */ }
 
-            const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? "";
-            const fileUri = dir + filename;
-            await FileSystem.writeAsStringAsync(fileUri, pdf_base64, {
-                encoding: "base64" as any,
-            });
-            await Sharing.shareAsync(fileUri, {
-                mimeType: "application/pdf",
-                dialogTitle: `Send Invoice to ${inv.customer_name}`,
-                UTI: "com.adobe.pdf",
-            });
+            // Fallback: native share sheet with text summary
+            if (!shared) {
+                const lines = inv.items
+                    .map((it) => `• ${it.description}  ×${it.quantity}  $${it.line_total}`)
+                    .join("\n");
+                const msg =
+                    `INVOICE #${inv.id.slice(0, 8).toUpperCase()}\n` +
+                    `To: ${inv.customer_name}${inv.customer_email ? ` <${inv.customer_email}>` : ""}\n` +
+                    `Date: ${new Date(inv.created_at).toLocaleDateString()}\n\n` +
+                    `${lines}\n\n` +
+                    `Subtotal:  $${inv.subtotal}\n` +
+                    (parseFloat(inv.tax ?? "0") > 0 ? `Tax:       $${inv.tax}\n` : "") +
+                    (parseFloat(inv.shipping ?? "0") > 0 ? `Shipping:  $${inv.shipping}\n` : "") +
+                    (parseFloat(inv.discount ?? "0") > 0 ? `Discount: -$${inv.discount}\n` : "") +
+                    `Total:     $${inv.total}`;
+                await Share.share(
+                    { message: msg, title: `Invoice — ${inv.customer_name}` },
+                    { dialogTitle: `Send Invoice to ${inv.customer_name}` }
+                );
+            }
 
             if (inv.status === "draft") {
                 try {
@@ -452,7 +482,9 @@ export default function InvoicesScreen() {
                 } catch { }
             }
         } catch (err: any) {
-            Alert.alert("Error", err.message || "Could not generate invoice PDF.");
+            if ((err as any)?.code !== "ENOSHARE") {
+                Alert.alert("Error", err.message || "Could not share invoice.");
+            }
         } finally {
             setSendingId(null);
         }
@@ -796,7 +828,7 @@ export default function InvoicesScreen() {
 
                         {viewingInvoice && (
                             <ScrollView
-                                style={{ maxHeight: "78%" }}
+                                style={{ maxHeight: "72%" }}
                                 contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
                             >
                                 {isEditingPreview ? (
@@ -947,59 +979,157 @@ export default function InvoicesScreen() {
                                     </>
                                 ) : (
                                     <>
-                                        <Text style={styles.viewSectionTitle}>Customer</Text>
-                                        <Text style={styles.inventoryRowName}>{viewingInvoice.customer_name}</Text>
-                                        {viewingInvoice.customer_email ? (
-                                            <Text style={styles.inventoryRowSub}>{viewingInvoice.customer_email}</Text>
-                                        ) : null}
-                                        <Text style={styles.inventoryRowSub}>
-                                            Date: {new Date(viewingInvoice.created_at).toLocaleDateString()}
-                                        </Text>
+                                        {/* ── Invoice Fly-style branded document ── */}
+                                        <View style={styles.invoiceDoc}>
 
-                                        <Text style={styles.viewSectionTitle}>Items</Text>
-                                        {viewingInvoice.items.map((item) => (
-                                            <View key={item.id} style={styles.viewLineRow}>
-                                                <View style={{ flex: 1 }}>
-                                                    <Text style={styles.inventoryRowName}>{invoiceItemLabel(item)}</Text>
-                                                    <Text style={styles.inventoryRowSub}>Qty {item.quantity} × ${item.unit_price}</Text>
+                                            {/* ── Seller branding row ── */}
+                                            <View style={styles.invoiceBrandRow}>
+                                                {/* Logo / avatar left */}
+                                                {sellerUser?.profile_picture ? (
+                                                    <Image
+                                                        source={{ uri: sellerUser.profile_picture }}
+                                                        style={styles.invoiceBrandLogo}
+                                                    />
+                                                ) : (
+                                                    <View style={styles.invoiceBrandLogoPlaceholder}>
+                                                        <Text style={styles.invoiceBrandLogoInitial}>
+                                                            {(sellerUser?.business_name ?? sellerUser?.email ?? "V")[0].toUpperCase()}
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                                {/* Seller info right */}
+                                                <View style={styles.invoiceBrandInfo}>
+                                                    <Text style={styles.invoiceBrandName}>
+                                                        {sellerUser?.business_name ?? sellerUser?.email ?? ""}
+                                                    </Text>
+                                                    {sellerUser?.email && sellerUser.business_name ? (
+                                                        <Text style={styles.invoiceBrandEmail}>{sellerUser.email}</Text>
+                                                    ) : null}
                                                 </View>
-                                                <Text style={styles.inventoryRowPrice}>${item.line_total}</Text>
                                             </View>
-                                        ))}
 
-                                        <Text style={styles.viewSectionTitle}>Totals</Text>
-                                        <View style={styles.totalsCard}>
-                                            <View style={styles.totalRow}>
-                                                <Text style={styles.totalLabel}>Subtotal</Text>
-                                                <Text style={styles.totalValue}>${viewingInvoice.subtotal}</Text>
+                                            <View style={styles.invoiceDocDivider} />
+
+                                            {/* ── Two-column: CLIENT left, status badge right ── */}
+                                            <View style={styles.invoiceMetaRow}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={styles.invoiceDocLabel}>CLIENT</Text>
+                                                    <Text style={styles.invoiceDocCustomer}>{viewingInvoice.customer_name}</Text>
+                                                    {viewingInvoice.customer_email ? (
+                                                        <Text style={styles.invoiceDocEmail}>{viewingInvoice.customer_email}</Text>
+                                                    ) : null}
+                                                </View>
+                                                <View style={styles.invoiceMetaRight}>
+                                                    <View style={[styles.invoiceDocBadge, { backgroundColor: STATUS_COLORS[viewingInvoice.status] }]}>
+                                                        <Text style={styles.invoiceDocBadgeText}>{viewingInvoice.status.toUpperCase()}</Text>
+                                                    </View>
+                                                </View>
                                             </View>
-                                            <View style={styles.totalRow}>
-                                                <Text style={styles.totalLabel}>Tax</Text>
-                                                <Text style={styles.totalValue}>${viewingInvoice.tax}</Text>
+
+                                            <View style={styles.invoiceDocDivider} />
+
+                                            {/* ── Line items table ── */}
+                                            <View style={styles.invoiceTableHeader}>
+                                                <Text style={[styles.invoiceTableHeaderCell, { flex: 3 }]}>DESCRIPTION</Text>
+                                                <Text style={[styles.invoiceTableHeaderCell, { flex: 1, textAlign: "center" }]}>QTY</Text>
+                                                <Text style={[styles.invoiceTableHeaderCell, { flex: 2, textAlign: "right" }]}>SUBTOTAL</Text>
                                             </View>
-                                            <View style={styles.totalRow}>
-                                                <Text style={styles.totalLabel}>Shipping</Text>
-                                                <Text style={styles.totalValue}>${viewingInvoice.shipping}</Text>
+                                            {viewingInvoice.items.map((item) => (
+                                                <View key={item.id} style={styles.invoiceTableRow}>
+                                                    <View style={{ flex: 3 }}>
+                                                        <Text style={styles.invoiceTableItemName}>{invoiceItemLabel(item)}</Text>
+                                                        <Text style={styles.invoiceTableItemPrice}>${item.unit_price} each</Text>
+                                                    </View>
+                                                    <Text style={[styles.invoiceTableCell, { flex: 1, textAlign: "center" }]}>{item.quantity}</Text>
+                                                    <Text style={[styles.invoiceTableCell, { flex: 2, textAlign: "right", fontWeight: "700" }]}>
+                                                        ${item.line_total}
+                                                    </Text>
+                                                </View>
+                                            ))}
+
+                                            <View style={styles.invoiceDocDivider} />
+
+                                            {/* ── Footer: invoice # / date / total (Invoice Fly style) ── */}
+                                            <View style={styles.invoiceFooterRow}>
+                                                <View style={styles.invoiceFooterCol}>
+                                                    <Text style={styles.invoiceDocLabel}>INVOICE NO.</Text>
+                                                    <Text style={styles.invoiceFooterVal}>{viewingInvoice.id.slice(0, 8).toUpperCase()}</Text>
+                                                </View>
+                                                <View style={styles.invoiceFooterCol}>
+                                                    <Text style={styles.invoiceDocLabel}>DATE</Text>
+                                                    <Text style={styles.invoiceFooterVal}>
+                                                        {new Date(viewingInvoice.created_at).toLocaleDateString("en-US", {
+                                                            month: "short", day: "numeric", year: "numeric",
+                                                        })}
+                                                    </Text>
+                                                </View>
+                                                <View style={[styles.invoiceFooterCol, { alignItems: "flex-end" }]}>
+                                                    <Text style={styles.invoiceDocLabel}>TOTAL</Text>
+                                                    <Text style={styles.invoiceFooterTotal}>${viewingInvoice.total}</Text>
+                                                </View>
                                             </View>
-                                            <View style={styles.totalRow}>
-                                                <Text style={styles.totalLabel}>Discount</Text>
-                                                <Text style={styles.totalValue}>-${viewingInvoice.discount}</Text>
-                                            </View>
-                                            <View style={styles.totalRow}>
-                                                <Text style={styles.totalLabel}>Total</Text>
-                                                <Text style={[styles.totalValue, { color: "#00B894" }]}>${viewingInvoice.total}</Text>
-                                            </View>
+
+                                            {/* Adjustments breakdown (hidden if all zero) */}
+                                            {(parseFloat(viewingInvoice.tax ?? "0") > 0 ||
+                                              parseFloat(viewingInvoice.shipping ?? "0") > 0 ||
+                                              parseFloat(viewingInvoice.discount ?? "0") > 0) && (
+                                                <View style={styles.invoiceAdjustBlock}>
+                                                    {parseFloat(viewingInvoice.tax ?? "0") > 0 && (
+                                                        <View style={styles.invoiceAdjustRow}>
+                                                            <Text style={styles.invoiceAdjustLabel}>Subtotal</Text>
+                                                            <Text style={styles.invoiceAdjustVal}>${viewingInvoice.subtotal}</Text>
+                                                        </View>
+                                                    )}
+                                                    {parseFloat(viewingInvoice.tax ?? "0") > 0 && (
+                                                        <View style={styles.invoiceAdjustRow}>
+                                                            <Text style={styles.invoiceAdjustLabel}>Tax</Text>
+                                                            <Text style={styles.invoiceAdjustVal}>${viewingInvoice.tax}</Text>
+                                                        </View>
+                                                    )}
+                                                    {parseFloat(viewingInvoice.shipping ?? "0") > 0 && (
+                                                        <View style={styles.invoiceAdjustRow}>
+                                                            <Text style={styles.invoiceAdjustLabel}>Shipping</Text>
+                                                            <Text style={styles.invoiceAdjustVal}>${viewingInvoice.shipping}</Text>
+                                                        </View>
+                                                    )}
+                                                    {parseFloat(viewingInvoice.discount ?? "0") > 0 && (
+                                                        <View style={styles.invoiceAdjustRow}>
+                                                            <Text style={styles.invoiceAdjustLabel}>Discount</Text>
+                                                            <Text style={styles.invoiceAdjustVal}>−${viewingInvoice.discount}</Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            )}
+
+                                            {viewingInvoice.notes ? (
+                                                <>
+                                                    <View style={styles.invoiceDocDivider} />
+                                                    <Text style={[styles.invoiceDocLabel, { paddingHorizontal: 20 }]}>NOTES</Text>
+                                                    <Text style={styles.invoiceDocNotes}>{viewingInvoice.notes}</Text>
+                                                </>
+                                            ) : null}
+
+                                            {/* Bottom accent bar */}
+                                            <View style={styles.invoiceDocBar} />
                                         </View>
-
-                                        {viewingInvoice.notes ? (
-                                            <>
-                                                <Text style={styles.viewSectionTitle}>Notes</Text>
-                                                <Text style={styles.inventoryRowSub}>{viewingInvoice.notes}</Text>
-                                            </>
-                                        ) : null}
                                     </>
                                 )}
                             </ScrollView>
+                        )}
+                        {viewingInvoice && !isEditingPreview && (
+                            <View style={styles.modalSendRow}>
+                                <TouchableOpacity
+                                    style={styles.modalSendBtn}
+                                    onPress={() => handleSendInvoice(viewingInvoice)}
+                                    disabled={sendingId === viewingInvoice.id}
+                                >
+                                    {sendingId === viewingInvoice.id ? (
+                                        <ActivityIndicator color="#fff" size="small" />
+                                    ) : (
+                                        <Text style={styles.modalSendBtnText}>↑  Share Invoice</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
                         )}
                     </View>
                 </View>
@@ -1350,7 +1480,211 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         paddingBottom: 24,
-        maxHeight: "88%",
+        maxHeight: "92%",
+    },
+    // ── Invoice Fly-style branded document ──
+    invoiceDoc: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 12,
+        overflow: "hidden",
+        marginTop: 4,
+        borderWidth: 1,
+        borderColor: "#E8E8EE",
+    },
+    // Seller branding
+    invoiceBrandRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 20,
+        paddingBottom: 0,
+        gap: 14,
+    },
+    invoiceBrandLogo: {
+        width: 52,
+        height: 52,
+        borderRadius: 8,
+        backgroundColor: "#1A1A2E",
+    },
+    invoiceBrandLogoPlaceholder: {
+        width: 52,
+        height: 52,
+        borderRadius: 8,
+        backgroundColor: "#1A1A2E",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    invoiceBrandLogoInitial: {
+        color: "#FFF",
+        fontSize: 22,
+        fontWeight: "900",
+    },
+    invoiceBrandInfo: {
+        flex: 1,
+    },
+    invoiceBrandName: {
+        fontSize: 15,
+        fontWeight: "700",
+        color: "#1A1A2E",
+    },
+    invoiceBrandEmail: {
+        fontSize: 12,
+        color: "#777",
+        marginTop: 2,
+    },
+    // Meta row
+    invoiceMetaRow: {
+        flexDirection: "row",
+        paddingHorizontal: 20,
+        alignItems: "flex-start",
+    },
+    invoiceMetaRight: {
+        alignItems: "flex-end",
+        paddingTop: 2,
+    },
+    invoiceDocDivider: {
+        height: 1,
+        backgroundColor: "#ECECF2",
+        marginHorizontal: 20,
+        marginVertical: 14,
+    },
+    invoiceDocLabel: {
+        fontSize: 9,
+        fontWeight: "800",
+        color: "#AAA",
+        letterSpacing: 1.5,
+        marginBottom: 5,
+        textTransform: "uppercase",
+    },
+    invoiceDocCustomer: {
+        fontSize: 15,
+        fontWeight: "700",
+        color: "#1A1A2E",
+        marginBottom: 2,
+    },
+    invoiceDocEmail: {
+        fontSize: 12,
+        color: "#555",
+    },
+    invoiceDocBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 6,
+    },
+    invoiceDocBadgeText: {
+        color: "#FFF",
+        fontSize: 10,
+        fontWeight: "800",
+        letterSpacing: 0.5,
+    },
+    // Table
+    invoiceTableHeader: {
+        flexDirection: "row",
+        paddingHorizontal: 20,
+        paddingBottom: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: "#ECECF2",
+        marginBottom: 4,
+    },
+    invoiceTableHeaderCell: {
+        fontSize: 9,
+        fontWeight: "800",
+        color: "#AAA",
+        letterSpacing: 1,
+        textTransform: "uppercase",
+    },
+    invoiceTableRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: "#F4F4F8",
+    },
+    invoiceTableItemName: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: "#1A1A2E",
+    },
+    invoiceTableItemPrice: {
+        fontSize: 11,
+        color: "#999",
+        marginTop: 1,
+    },
+    invoiceTableCell: {
+        fontSize: 13,
+        color: "#444",
+    },
+    // Footer row (Invoice No. / Date / Total)
+    invoiceFooterRow: {
+        flexDirection: "row",
+        paddingHorizontal: 20,
+        justifyContent: "space-between",
+        alignItems: "flex-end",
+    },
+    invoiceFooterCol: {
+        flex: 1,
+    },
+    invoiceFooterVal: {
+        fontSize: 13,
+        fontWeight: "600",
+        color: "#333",
+    },
+    invoiceFooterTotal: {
+        fontSize: 22,
+        fontWeight: "900",
+        color: "#6C5CE7",
+        textAlign: "right",
+    },
+    // Adjustments
+    invoiceAdjustBlock: {
+        paddingHorizontal: 20,
+        marginTop: 10,
+        gap: 4,
+    },
+    invoiceAdjustRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+    },
+    invoiceAdjustLabel: {
+        fontSize: 12,
+        color: "#888",
+    },
+    invoiceAdjustVal: {
+        fontSize: 12,
+        color: "#555",
+        fontWeight: "600",
+    },
+    invoiceDocNotes: {
+        fontSize: 12,
+        color: "#666",
+        lineHeight: 18,
+        paddingHorizontal: 20,
+    },
+    // Bottom bar
+    invoiceDocBar: {
+        height: 8,
+        backgroundColor: "#1A1A2E",
+        marginTop: 20,
+    },
+    // ── Modal send footer ──
+    modalSendRow: {
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 4,
+        borderTopWidth: 1,
+        borderTopColor: "#1E1E3A",
+    },
+    modalSendBtn: {
+        backgroundColor: "#6C5CE7",
+        borderRadius: 12,
+        paddingVertical: 14,
+        alignItems: "center",
+    },
+    modalSendBtnText: {
+        color: "#FFF",
+        fontSize: 15,
+        fontWeight: "800",
+        letterSpacing: 0.3,
     },
     viewSectionTitle: {
         fontSize: 13,

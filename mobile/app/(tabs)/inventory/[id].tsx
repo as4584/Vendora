@@ -18,8 +18,11 @@ import {
     Alert,
     Image,
     Dimensions,
+    Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import * as api from "../../../services/api";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -56,6 +59,7 @@ export default function ItemDetailScreen() {
     const [item, setItem] = useState<api.InventoryItem | null>(null);
     const [loading, setLoading] = useState(true);
     const [activePhoto, setActivePhoto] = useState<"front" | "back">("front");
+    const [photoUploading, setPhotoUploading] = useState(false);
 
     // Market price
     const [marketPrice, setMarketPrice] = useState<api.MarketPriceResult | null>(null);
@@ -133,6 +137,72 @@ export default function ItemDetailScreen() {
         );
     };
 
+    // ── Photo editing ──
+    const changePhoto = async (side: "front" | "back", uri: string) => {
+        setPhotoUploading(true);
+        try {
+            const b64 = await FileSystem.readAsStringAsync(uri, {
+                encoding: FileSystem.EncodingType.Base64,
+            });
+            const dataUrl = `data:image/jpeg;base64,${b64}`;
+            const updated = await api.uploadItemPhotos(
+                item!.id,
+                side === "front" ? dataUrl : undefined,
+                side === "back" ? dataUrl : undefined,
+            );
+            setItem(updated);
+        } catch (err: any) {
+            Alert.alert("Upload Failed", err.message || "Could not save photo.");
+        } finally {
+            setPhotoUploading(false);
+        }
+    };
+
+    const pickPhotoForSide = async (side: "front" | "back") => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+            Alert.alert("Permission Required", "Allow photo access to change item photos.");
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]) {
+            await changePhoto(side, result.assets[0].uri);
+        }
+    };
+
+    const takePhotoForSide = async (side: "front" | "back") => {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+            Alert.alert("Permission Required", "Allow camera access to take a photo.");
+            return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]) {
+            await changePhoto(side, result.assets[0].uri);
+        }
+    };
+
+    const showPhotoOptions = (side: "front" | "back") => {
+        Alert.alert(
+            `Change ${side === "front" ? "Front" : "Back"} Photo`,
+            "Choose a source",
+            [
+                { text: "Take Photo", onPress: () => takePhotoForSide(side) },
+                { text: "Choose from Library", onPress: () => pickPhotoForSide(side) },
+                { text: "Cancel", style: "cancel" },
+            ]
+        );
+    };
+
     const handleApplyPrice = async () => {
         if (!suggestion || !item) return;
         setApplyingPrice(true);
@@ -166,28 +236,52 @@ export default function ItemDetailScreen() {
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.content}>
             {/* ── Photo Carousel ── */}
-            {(frontUri || backUri) ? (
-                <View style={styles.photoSection}>
-                    <Image
-                        source={{ uri: activeUri ?? undefined }}
-                        style={styles.photoMain}
-                        resizeMode="cover"
-                    />
-                    <View style={styles.photoTabs}>
-                        {(["front", "back"] as const).map((side) => (
-                            <TouchableOpacity
-                                key={side}
-                                style={[styles.photoTab, activePhoto === side && styles.photoTabActive]}
-                                onPress={() => setActivePhoto(side)}
-                            >
-                                <Text style={[styles.photoTabText, activePhoto === side && styles.photoTabTextActive]}>
-                                    {side.toUpperCase()}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
+            <View style={styles.photoSection}>
+                <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() =>
+                        Platform.OS === "web"
+                            ? pickPhotoForSide(activePhoto)
+                            : showPhotoOptions(activePhoto)
+                    }
+                    disabled={photoUploading}
+                >
+                    {activeUri ? (
+                        <Image
+                            source={{ uri: activeUri }}
+                            style={styles.photoMain}
+                            resizeMode="cover"
+                        />
+                    ) : (
+                        <View style={[styles.photoMain, styles.photoPlaceholder]}>
+                            <Text style={styles.photoPlaceholderIcon}>📷</Text>
+                            <Text style={styles.photoPlaceholderText}>Tap to add photo</Text>
+                        </View>
+                    )}
+                    {photoUploading ? (
+                        <View style={styles.photoUploadOverlay}>
+                            <ActivityIndicator size="large" color="#FFF" />
+                        </View>
+                    ) : (
+                        <View style={styles.photoEditOverlay}>
+                            <Text style={styles.photoEditOverlayText}>📷  Change</Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
+                <View style={styles.photoTabs}>
+                    {(["front", "back"] as const).map((side) => (
+                        <TouchableOpacity
+                            key={side}
+                            style={[styles.photoTab, activePhoto === side && styles.photoTabActive]}
+                            onPress={() => setActivePhoto(side)}
+                        >
+                            <Text style={[styles.photoTabText, activePhoto === side && styles.photoTabTextActive]}>
+                                {side.toUpperCase()}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
                 </View>
-            ) : null}
+            </View>
 
             {/* ── Header ── */}
             <Text style={styles.itemName}>{item.name}</Text>
@@ -453,6 +547,36 @@ const styles = StyleSheet.create({
         height: Dimensions.get("window").width * 0.7,
         borderRadius: 14,
         backgroundColor: "#16213E",
+    },
+    photoPlaceholder: {
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 2,
+        borderColor: "#2A2A4A",
+        borderStyle: "dashed",
+    },
+    photoPlaceholderIcon: { fontSize: 36, marginBottom: 8 },
+    photoPlaceholderText: { color: "#555", fontSize: 14, fontWeight: "600" },
+    photoUploadOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: "rgba(0,0,0,0.55)",
+        borderRadius: 14,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    photoEditOverlay: {
+        position: "absolute",
+        bottom: 10,
+        right: 10,
+        backgroundColor: "rgba(0,0,0,0.55)",
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+    },
+    photoEditOverlayText: {
+        color: "#FFF",
+        fontSize: 12,
+        fontWeight: "700",
     },
     photoTabs: { flexDirection: "row", gap: 8, marginTop: 10 },
     photoTab: {
