@@ -38,7 +38,10 @@ class ItemCreate(BaseModel):
     platform: str | None = Field(None, max_length=100)
     quantity: int = Field(1, ge=1)
     vendor_name: str | None = Field(None, max_length=255)
-    notes: str | None = None(BaseModel):
+    notes: str | None = None
+
+
+class ItemUpdate(BaseModel):
     name: str | None = Field(None, max_length=255)
     category: str | None = Field(None, max_length=100)
     sku: str | None = Field(None, max_length=100)
