@@ -75,6 +75,8 @@ export default function AddItemScreen() {
     const [buyPrice, setBuyPrice] = useState("");
     const [expectedPrice, setExpectedPrice] = useState("");
     const [platform, setPlatform] = useState("");
+    const [vendorName, setVendorName] = useState("");
+    const [notes, setNotes] = useState("");
 
     // Quantity + variants
     const [quantity, setQuantity] = useState(1);
@@ -212,6 +214,8 @@ export default function AddItemScreen() {
                 buy_price: buyPrice.trim() || undefined,
                 expected_sell_price: expectedPrice.trim() || undefined,
                 platform: platform.trim() || undefined,
+                vendor_name: vendorName.trim() || undefined,
+                notes: notes.trim() || undefined,
                 quantity: totalQty,
                 custom_attributes: clothingMode && variants.length > 0
                     ? { variants }
@@ -431,6 +435,26 @@ export default function AddItemScreen() {
                     placeholderTextColor="#555"
                     value={platform}
                     onChangeText={setPlatform}
+                />
+
+                <Text style={styles.label}>Vendor / Supplier</Text>
+                <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Nike, local thrift, auction"
+                    placeholderTextColor="#555"
+                    value={vendorName}
+                    onChangeText={setVendorName}
+                />
+
+                <Text style={styles.label}>Notes</Text>
+                <TextInput
+                    style={[styles.input, { height: 90, textAlignVertical: "top" }]}
+                    placeholder="Any extra details about this item…"
+                    placeholderTextColor="#555"
+                    value={notes}
+                    onChangeText={setNotes}
+                    multiline
+                    numberOfLines={4}
                 />
 
                 {/* ── Sizes (clothing / footwear) ── */}

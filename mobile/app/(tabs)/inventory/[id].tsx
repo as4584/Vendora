@@ -334,6 +334,13 @@ export default function ItemDetailScreen() {
                 <DetailRow label="Condition" value={item.condition} />
                 <DetailRow label="Serial Number" value={item.serial_number} />
                 <DetailRow label="Platform" value={item.platform} />
+                <DetailRow label="Vendor" value={(item as any).vendor_name} />
+                {(item as any).notes ? (
+                    <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Notes</Text>
+                        <Text style={[styles.detailValue, { flex: 1 }]}>{(item as any).notes}</Text>
+                    </View>
+                ) : null}
             </View>
 
             {/* ── Pricing ── */}

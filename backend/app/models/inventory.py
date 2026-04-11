@@ -55,6 +55,12 @@ class InventoryItem(Base, TimestampMixin, SoftDeleteMixin):
     # Quantity — number of units (variants per-size breakdown lives in custom_attributes.variants)
     quantity = Column(sa.Integer, nullable=False, server_default="1")
 
+    # Vendor / sourcing
+    vendor_name = Column(String(255), nullable=True)
+
+    # Free-form notes
+    notes = Column(sa.Text, nullable=True)
+
     # Integration tracking — dedup key for synced records
     source = Column(String(50), nullable=True, index=True)       # e.g. "lightspeed", "manual"
     external_id = Column(String(255), nullable=True, index=True) # e.g. Lightspeed itemID

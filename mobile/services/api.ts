@@ -190,6 +190,8 @@ export interface InventoryItem {
   photo_front_url: string | null;
   photo_back_url: string | null;
   quantity: number;
+  vendor_name: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -217,6 +219,8 @@ export interface CreateItemPayload {
   actual_sell_price?: string;
   platform?: string;
   quantity?: number;
+  vendor_name?: string;
+  notes?: string;
 }
 
 export async function listItems(

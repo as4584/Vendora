@@ -37,9 +37,8 @@ class ItemCreate(BaseModel):
     actual_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     platform: str | None = Field(None, max_length=100)
     quantity: int = Field(1, ge=1)
-
-
-class ItemUpdate(BaseModel):
+    vendor_name: str | None = Field(None, max_length=255)
+    notes: str | None = None(BaseModel):
     name: str | None = Field(None, max_length=255)
     category: str | None = Field(None, max_length=100)
     sku: str | None = Field(None, max_length=100)
@@ -54,6 +53,8 @@ class ItemUpdate(BaseModel):
     actual_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     platform: str | None = Field(None, max_length=100)
     quantity: int | None = Field(None, ge=0)
+    vendor_name: str | None = Field(None, max_length=255)
+    notes: str | None = None
 
 
 class StatusUpdate(BaseModel):
@@ -80,6 +81,8 @@ class ItemResponse(BaseModel):
     photo_front_url: str | None = None
     photo_back_url: str | None = None
     quantity: int = 1
+    vendor_name: str | None = None
+    notes: str | None = None
     created_at: datetime
     updated_at: datetime
 
