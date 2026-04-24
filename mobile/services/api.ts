@@ -192,6 +192,8 @@ export interface InventoryItem {
   quantity: number;
   vendor_name: string | null;
   notes: string | null;
+  source: string | null;
+  external_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -223,13 +225,38 @@ export interface CreateItemPayload {
   notes?: string;
 }
 
+export interface ListItemsParams {
+  page?: number;
+  perPage?: number;
+  q?: string;
+  status?: string;
+  source?: string;
+}
+
 export async function listItems(
-  page = 1,
+  pageOrParams: number | ListItemsParams = 1,
   perPage = 20
 ): Promise<PaginatedItems> {
-  return request<PaginatedItems>(
-    `/inventory?page=${page}&per_page=${perPage}`
-  );
+  let page: number;
+  let params: ListItemsParams;
+
+  if (typeof pageOrParams === "number") {
+    page = pageOrParams;
+    params = { page, perPage };
+  } else {
+    params = pageOrParams;
+    page = params.page ?? 1;
+    perPage = params.perPage ?? 20;
+  }
+
+  const qs = new URLSearchParams();
+  qs.set("page", String(page));
+  qs.set("per_page", String(perPage));
+  if (params.q) qs.set("q", params.q);
+  if (params.status) qs.set("status", params.status);
+  if (params.source) qs.set("source", params.source);
+
+  return request<PaginatedItems>(`/inventory?${qs.toString()}`);
 }
 
 export async function getItem(id: string): Promise<InventoryItem> {
