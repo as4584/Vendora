@@ -15,6 +15,7 @@ os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql://vendora:vendora@localhost:5433/vendora_test",
 )
+os.environ.setdefault("ENVIRONMENT", "testing")  # disables rate limiter in main.py
 
 from app.main import app
 from app.database import get_db
@@ -23,6 +24,17 @@ from app.models.user import User
 from app.models.transaction import Transaction  # noqa: F401
 from app.models.invoice import Invoice, InvoiceItem  # noqa: F401
 from app.models.subscription import Subscription, WebhookEvent  # noqa: F401
+from app.models.inventory import (  # noqa: F401
+    InventoryItem,
+    InventoryStockLedger,
+    InventoryExternalLink,
+    InventoryImportJob,
+    InventoryImportRow,
+)
+from app.models.integration import LightspeedToken  # noqa: F401
+from app.models.square import SquareCredential  # noqa: F401
+from app.models.clover import CloverCredential  # noqa: F401
+from app.models.provider import ProviderSyncRun, ReconciliationIssue, ProviderWebhookEvent  # noqa: F401
 from app.services.auth import hash_password, create_access_token
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
@@ -69,7 +81,13 @@ def setup_database():
 
     yield
 
-    Base.metadata.drop_all(bind=engine)
+    # Drop all tables using CASCADE to handle FK constraints that exist in the DB
+    # but are not declared in the ORM (e.g. migration-created FKs with auto-generated names).
+    with engine.connect() as conn:
+        table_names = [t.name for t in reversed(Base.metadata.sorted_tables)]
+        for tbl in table_names:
+            conn.execute(text(f'DROP TABLE IF EXISTS "{tbl}" CASCADE'))
+        conn.commit()
 
 
 @pytest.fixture()

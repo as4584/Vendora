@@ -24,7 +24,11 @@ try {
         return BackgroundFetch.BackgroundFetchResult.NoData;
       }
       const result = await triggerLightspeedSync();
-      const hadWork = result.synced_items > 0 || result.synced_transactions > 0;
+      const hadWork =
+        result.items_imported > 0 ||
+        result.items_updated > 0 ||
+        result.transactions_imported > 0 ||
+        result.transactions_updated > 0;
       return hadWork
         ? BackgroundFetch.BackgroundFetchResult.NewData
         : BackgroundFetch.BackgroundFetchResult.NoData;

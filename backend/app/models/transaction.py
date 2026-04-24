@@ -6,6 +6,7 @@ Per STATE_MACHINES.md: Refund creates negative transaction entry.
 """
 import uuid
 
+import sqlalchemy as sa
 from sqlalchemy import Column, String, Numeric, ForeignKey, CheckConstraint, Index, Boolean, Uuid
 # from sqlalchemy.dialects.postgresql import UUID
 
@@ -26,6 +27,7 @@ class Transaction(Base, TimestampMixin):
         Index("ix_transactions_user_id", "user_id"),
         Index("ix_transactions_item_id", "item_id"),
         Index("ix_transactions_created_at", "created_at"),
+        Index("ix_transactions_invoice_id", "invoice_id"),
     )
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -52,5 +54,13 @@ class Transaction(Base, TimestampMixin):
         ForeignKey("transactions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Invoice linkage — set when transaction was created by process_invoice_payment
+    invoice_id = Column(
+        Uuid,
+        ForeignKey("invoices.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Number of inventory units this transaction covers
+    quantity = Column(sa.Integer, nullable=False, server_default="1")
     # Integration tracking
     source = Column(String(50), nullable=True, index=True)  # e.g. "lightspeed", "manual"

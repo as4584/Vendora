@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     LIGHTSPEED_CLIENT_ID: str = ""
     LIGHTSPEED_CLIENT_SECRET: str = ""
     LIGHTSPEED_REDIRECT_URI: str = "http://localhost:8000/integrations/lightspeed/callback"
+    # Provider token encryption key (Fernet — 32-byte URL-safe base64).
+    # Generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # If empty, a key is derived from SECRET_KEY via SHA-256 (acceptable for dev/test).
+    PROVIDER_TOKEN_KEY: str = ""
+    # Square webhook signature key for HMAC-SHA256 verification.
+    # Set to the Signature Key shown in the Square Developer Console for your webhook endpoint.
+    SQUARE_WEBHOOK_SIGNATURE_KEY: str = ""
 
     class Config:
         env_file = ".env"

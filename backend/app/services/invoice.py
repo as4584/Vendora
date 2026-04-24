@@ -11,6 +11,7 @@ Rules:
     Cancelled invoices cannot be paid.
     Stripe webhook triggers paid transition.
 """
+import logging
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -20,6 +21,9 @@ from app.models.invoice import Invoice, InvoiceItem
 from app.models.inventory import InventoryItem
 from app.models.transaction import Transaction
 from app.services.profit import calculate_net_amount
+from app.services.inventory import deduct_stock
+
+logger = logging.getLogger(__name__)
 
 
 VALID_INVOICE_TRANSITIONS: dict[str, list[str]] = {
@@ -90,39 +94,66 @@ def calculate_invoice_totals(
 
 
 def process_invoice_payment(invoice: Invoice, db: Session) -> None:
-    """Called when invoice is marked as paid (via webhook or manual).
+    """Called when an invoice is marked as paid (via Stripe webhook or manual transition).
 
-    Creates transactions for each invoice item and transitions
-    linked inventory items to 'sold'.
+    For each line item:
+    - Creates a Transaction record linked back to the invoice.
+    - Deducts stock from any linked inventory item via the shared stock service.
+      Uses an idempotency key so that webhook replays or double-calls are safe no-ops.
     """
     invoice_items = db.query(InvoiceItem).filter(
         InvoiceItem.invoice_id == invoice.id
     ).all()
 
     for inv_item in invoice_items:
-        # Create transaction
+        method = "stripe" if invoice.stripe_payment_intent_id else "other"
         txn = Transaction(
             user_id=invoice.user_id,
             item_id=inv_item.inventory_item_id,
-            method="stripe" if invoice.stripe_payment_intent_id else "other",
+            invoice_id=invoice.id,
+            method=method,
             status="completed",
             gross_amount=inv_item.line_total,
             fee_amount=Decimal("0.00"),
             net_amount=inv_item.line_total,
-            notes=f"Invoice #{str(invoice.id)[:8]} - {inv_item.description}",
+            quantity=inv_item.quantity,
+            notes=f"Invoice #{str(invoice.id)[:8]} \u2014 {inv_item.description}",
             is_refund=False,
         )
         db.add(txn)
 
-        # Transition linked inventory item to sold
         if inv_item.inventory_item_id:
             item = db.query(InventoryItem).filter(
                 InventoryItem.id == inv_item.inventory_item_id,
                 InventoryItem.deleted_at.is_(None),
             ).first()
-            if item and item.status in ("in_stock", "listed"):
-                item.status = "sold"
+            if item:
+                # Set actual sell price regardless of stock path taken
                 item.actual_sell_price = inv_item.unit_price
                 db.add(item)
+                # Route stock deduction through the shared service with idempotency
+                idem_key = f"invoice:{invoice.id}:invitem:{inv_item.id}:pay"
+                try:
+                    deduct_stock(
+                        db,
+                        item,
+                        quantity=inv_item.quantity,
+                        event_type="sale",
+                        source_type="invoice",
+                        source_id=str(invoice.id),
+                        idempotency_key=idem_key,
+                    )
+                except HTTPException:
+                    # Migration compatibility: item may already be in 'sold' state from
+                    # a prior flow that didn't track quantity.  Fall back to a direct
+                    # status flip so existing data keeps working.
+                    logger.warning(
+                        "deduct_stock failed for item %s on invoice %s — "
+                        "falling back to direct status transition.",
+                        item.id, invoice.id,
+                    )
+                    if item.status in ("in_stock", "listed"):
+                        item.status = "sold"
+                        db.add(item)
 
     db.commit()

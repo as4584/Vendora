@@ -35,6 +35,7 @@ from app.services.invoice import (
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.stripe_service import create_payment_intent
+from app.services.inventory import check_availability
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -74,7 +75,7 @@ def create_invoice(
 
     Pro tier required for Stripe features, but all tiers can create invoices.
     """
-    # Validate inventory items ownership if linked
+    # Validate inventory items ownership and availability if linked
     for item in payload.items:
         if item.inventory_item_id:
             inv = db.query(InventoryItem).filter(
@@ -87,6 +88,8 @@ def create_invoice(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Inventory item {item.inventory_item_id} not found.",
                 )
+            # Validate stock is available for the requested quantity
+            check_availability(inv, item.quantity)
 
     # Calculate totals
     totals = calculate_invoice_totals(
@@ -208,6 +211,8 @@ def update_invoice(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Inventory item {item.inventory_item_id} not found.",
                 )
+            # Validate stock is available for the requested quantity
+            check_availability(inv, item.quantity)
 
     totals = calculate_invoice_totals(
         payload.items, payload.tax, payload.shipping, payload.discount

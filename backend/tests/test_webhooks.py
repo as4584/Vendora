@@ -102,6 +102,172 @@ class TestPaymentIntentWebhook:
         assert dashboard["items_sold"] >= 1
 
 
+class TestWebhookStockDeduction:
+    """Integration tests: Stripe webhook → process_invoice_payment → deduct_stock.
+
+    Covers the full chain:
+      webhook event → WebhookEvent dedup check → handle_payment_intent_succeeded
+      → transition_invoice(paid) → process_invoice_payment
+      → deduct_stock (idempotency key) → InventoryStockLedger entry written
+    """
+
+    def _fire_paid_webhook(self, client, auth_headers, quantity=1, item_qty=5):
+        """Helper: create item, create+send invoice, fire webhook, return state."""
+        item = client.post("/api/v1/inventory", json={
+            "name": "Webhook Stock Item",
+            "buy_price": "50.00",
+            "quantity": item_qty,
+        }, headers=auth_headers).json()
+
+        invoice = client.post("/api/v1/invoices", json={
+            "customer_name": "Webhook Buyer",
+            "items": [{
+                "description": "Webhook Stock Item",
+                "quantity": quantity,
+                "unit_price": "120.00",
+                "inventory_item_id": item["id"],
+            }],
+        }, headers=auth_headers).json()
+
+        client.patch(
+            f"/api/v1/invoices/{invoice['id']}/status",
+            json={"status": "sent"},
+            headers=auth_headers,
+        )
+
+        pi_id = f"pi_{uuid.uuid4().hex}"
+        event = _make_event("payment_intent.succeeded", {
+            "object": {
+                "id": pi_id,
+                "metadata": {"invoice_id": str(invoice["id"]), "user_id": "any"},
+            },
+        })
+        resp = client.post("/api/v1/webhooks/stripe", content=json.dumps(event))
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "processed"
+
+        return item, invoice, event
+
+    def test_webhook_deducts_stock_and_writes_ledger(self, client, auth_headers, db):
+        """Webhook fires deduct_stock; a ledger entry is written with correct delta."""
+        from app.models.inventory import InventoryStockLedger
+        import uuid as _uuid
+
+        item, invoice, _ = self._fire_paid_webhook(
+            client, auth_headers, quantity=2, item_qty=5
+        )
+
+        entries = (
+            db.query(InventoryStockLedger)
+            .filter(InventoryStockLedger.inventory_item_id == _uuid.UUID(item["id"]))
+            .all()
+        )
+        assert len(entries) == 1
+        assert entries[0].delta_quantity == -2
+        assert entries[0].quantity_after == 3
+        assert entries[0].event_type == "sale"
+        assert entries[0].source_type == "invoice"
+        assert entries[0].idempotency_key is not None
+
+    def test_webhook_sets_actual_sell_price(self, client, auth_headers):
+        """After webhook, item.actual_sell_price equals invoice line unit_price."""
+        item, _, _ = self._fire_paid_webhook(client, auth_headers)
+
+        updated_item = client.get(
+            f"/api/v1/inventory/{item['id']}", headers=auth_headers
+        ).json()
+        assert updated_item["actual_sell_price"] == "120.00"
+
+    def test_webhook_links_transaction_to_invoice(self, client, auth_headers, db):
+        """Transaction created by process_invoice_payment has invoice_id set."""
+        from app.models.transaction import Transaction
+        import uuid as _uuid
+
+        item, invoice, _ = self._fire_paid_webhook(client, auth_headers)
+
+        txn = (
+            db.query(Transaction)
+            .filter(Transaction.invoice_id == _uuid.UUID(invoice["id"]))
+            .first()
+        )
+        assert txn is not None
+        assert txn.status == "completed"
+        assert txn.quantity == 1
+        assert txn.is_refund is False
+
+    def test_webhook_replay_is_idempotent(self, client, auth_headers, db):
+        """Re-sending the same event deduplicates at webhook layer; stock is not double-deducted."""
+        from app.models.inventory import InventoryStockLedger
+        import uuid as _uuid
+
+        item, _, event = self._fire_paid_webhook(
+            client, auth_headers, quantity=1, item_qty=3
+        )
+
+        # Replay the identical event
+        resp2 = client.post("/api/v1/webhooks/stripe", content=json.dumps(event))
+        assert resp2.status_code == 200
+        assert resp2.json()["status"] == "already_processed"
+
+        # Exactly one ledger entry, quantity deducted only once
+        entries = (
+            db.query(InventoryStockLedger)
+            .filter(InventoryStockLedger.inventory_item_id == _uuid.UUID(item["id"]))
+            .all()
+        )
+        assert len(entries) == 1
+
+        updated_item = client.get(
+            f"/api/v1/inventory/{item['id']}", headers=auth_headers
+        ).json()
+        assert updated_item["quantity"] == 2  # 3 - 1, not 1
+
+    def test_webhook_full_deduction_transitions_item_to_sold(self, client, auth_headers):
+        """When the deduction exhausts stock, item.status becomes 'sold'."""
+        item, _, _ = self._fire_paid_webhook(
+            client, auth_headers, quantity=3, item_qty=3
+        )
+
+        updated_item = client.get(
+            f"/api/v1/inventory/{item['id']}", headers=auth_headers
+        ).json()
+        assert updated_item["status"] == "sold"
+        assert updated_item["quantity"] == 0
+
+    def test_webhook_stock_idempotency_key_prevents_double_deduction(
+        self, client, auth_headers, db
+    ):
+        """Calling process_invoice_payment twice with the same invoice uses idempotency key.
+
+        This simulates a race between two concurrent webhook deliveries that both
+        slip through the WebhookEvent dedup (different event IDs, same invoice).
+        """
+        from app.models.inventory import InventoryStockLedger
+        from app.services.invoice import process_invoice_payment
+        from app.models.invoice import Invoice
+        import uuid as _uuid
+
+        item, invoice, _ = self._fire_paid_webhook(
+            client, auth_headers, quantity=2, item_qty=10
+        )
+
+        # Simulate a second call to process_invoice_payment (already paid invoice)
+        inv_obj = db.query(Invoice).filter(
+            Invoice.id == _uuid.UUID(invoice["id"])
+        ).first()
+        process_invoice_payment(inv_obj, db)
+
+        # Only one ledger entry despite two calls
+        entries = (
+            db.query(InventoryStockLedger)
+            .filter(InventoryStockLedger.inventory_item_id == _uuid.UUID(item["id"]))
+            .all()
+        )
+        assert len(entries) == 1
+        assert entries[0].delta_quantity == -2
+        assert entries[0].quantity_after == 8
+
+
 class TestSubscriptionWebhook:
     def test_subscription_created_upgrades_user(self, client, auth_headers, test_user):
         """Subscription webhook upgrades user to Pro."""

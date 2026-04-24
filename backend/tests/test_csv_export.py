@@ -49,10 +49,13 @@ class TestCSVExportContent:
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "text/csv; charset=utf-8"
 
-        # Parse CSV
+        # Parse CSV — canonical worksheet: first column is now "id"
         reader = csv.reader(io.StringIO(resp.text))
         rows = list(reader)
-        assert rows[0][0] == "Name"  # Header
+        assert rows[0][0] == "id"           # canonical worksheet header
+        assert "name" in rows[0]
+        assert "quantity" in rows[0]
+        assert "vendor_name" in rows[0]
         assert len(rows) == 3  # header + 2 items
 
     def test_transactions_csv(self, client, pro_headers):

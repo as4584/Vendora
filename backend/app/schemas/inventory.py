@@ -2,7 +2,7 @@
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
-from typing import Any, List
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -86,6 +86,8 @@ class ItemResponse(BaseModel):
     quantity: int = 1
     vendor_name: str | None = None
     notes: str | None = None
+    source: str | None = None
+    external_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -98,3 +100,57 @@ class PaginatedItems(BaseModel):
     page: int
     per_page: int
     pages: int
+
+
+# ─── Import schemas ────────────────────────────────────────────────────
+
+class ImportRowResult(BaseModel):
+    """Preview or commit result for a single CSV row."""
+    row_number: int
+    action: Optional[str]           # create | update | skip | error
+    inventory_item_id: Optional[UUID] = None
+    mapped_data: Optional[dict[str, Any]] = None
+    match_key: Optional[str] = None
+    match_value: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class ImportJobResponse(BaseModel):
+    """Status and summary for a spreadsheet import job."""
+    id: UUID
+    status: str                     # pending | previewed | committed | failed
+    filename: Optional[str] = None
+    field_mapping: Optional[dict[str, Any]] = None
+    total_rows: int
+    rows_created: int
+    rows_updated: int
+    rows_skipped: int
+    rows_errored: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ImportPreviewResponse(BaseModel):
+    """Response for POST /inventory/imports/preview."""
+    job_id: UUID
+    status: str
+    filename: Optional[str] = None
+    detected_mapping: dict[str, str]  # csv_col → canonical_field
+    rows: list[ImportRowResult]
+    total_rows: int
+    rows_to_create: int
+    rows_to_update: int
+    rows_to_skip: int
+    rows_errored: int
+
+
+class ImportCommitResponse(BaseModel):
+    """Response for POST /inventory/imports/{job_id}/commit."""
+    job_id: UUID
+    status: str
+    rows_created: int
+    rows_updated: int
+    rows_skipped: int
+    rows_errored: int

@@ -188,3 +188,123 @@ class TestRefund:
         resp = client.post(f"/api/v1/transactions/{refund['id']}/refund", json={}, headers=auth_headers)
         assert resp.status_code == 400
         assert resp.json()["detail"]["error"] == "cannot_refund_refund"
+
+
+class TestQuantityAndStockLedger:
+    def test_quantity_field_in_response(self, client, auth_headers):
+        """quantity field is present in transaction response (defaults to 1)."""
+        resp = client.post("/api/v1/transactions", json={
+            "method": "cash",
+            "gross_amount": "100.00",
+        }, headers=auth_headers)
+        assert resp.status_code == 201
+        assert resp.json()["quantity"] == 1
+
+    def test_quantity_sent_is_stored(self, client, auth_headers):
+        """quantity value from request is persisted."""
+        item = client.post("/api/v1/inventory", json={
+            "name": "Multi-pack Socks",
+            "quantity": 10,
+        }, headers=auth_headers).json()
+
+        resp = client.post("/api/v1/transactions", json={
+            "item_id": item["id"],
+            "method": "cash",
+            "gross_amount": "30.00",
+            "quantity": 3,
+        }, headers=auth_headers)
+        assert resp.status_code == 201
+        assert resp.json()["quantity"] == 3
+
+    def test_partial_deduction_keeps_item_in_stock(self, client, auth_headers):
+        """Buying some but not all units keeps the item in_stock with reduced quantity."""
+        item = client.post("/api/v1/inventory", json={
+            "name": "Bulk T-Shirt",
+            "quantity": 5,
+        }, headers=auth_headers).json()
+        assert item["quantity"] == 5
+
+        client.post("/api/v1/transactions", json={
+            "item_id": item["id"],
+            "method": "cash",
+            "gross_amount": "50.00",
+            "quantity": 2,
+        }, headers=auth_headers)
+
+        updated = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
+        assert updated["quantity"] == 3
+        assert updated["status"] == "in_stock"
+
+    def test_full_deduction_transitions_to_sold(self, client, auth_headers):
+        """Buying all units transitions status to sold."""
+        item = client.post("/api/v1/inventory", json={
+            "name": "Last Pair Jordans",
+            "quantity": 1,
+        }, headers=auth_headers).json()
+
+        client.post("/api/v1/transactions", json={
+            "item_id": item["id"],
+            "method": "cash",
+            "gross_amount": "250.00",
+            "quantity": 1,
+        }, headers=auth_headers)
+
+        updated = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
+        assert updated["status"] == "sold"
+        assert updated["quantity"] == 0
+
+    def test_insufficient_stock_returns_409(self, client, auth_headers):
+        """Requesting more units than available returns HTTP 409."""
+        item = client.post("/api/v1/inventory", json={
+            "name": "Low Stock Item",
+            "quantity": 1,
+        }, headers=auth_headers).json()
+
+        resp = client.post("/api/v1/transactions", json={
+            "item_id": item["id"],
+            "method": "cash",
+            "gross_amount": "100.00",
+            "quantity": 5,
+        }, headers=auth_headers)
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["error"] == "insufficient_stock"
+
+    def test_refund_restores_quantity(self, client, auth_headers):
+        """Refund increments item quantity and reverts status to in_stock."""
+        item = client.post("/api/v1/inventory", json={
+            "name": "Returnable Item",
+            "quantity": 2,
+        }, headers=auth_headers).json()
+
+        txn = client.post("/api/v1/transactions", json={
+            "item_id": item["id"],
+            "method": "cash",
+            "gross_amount": "80.00",
+            "quantity": 2,
+        }, headers=auth_headers).json()
+
+        # Item should be sold now
+        assert client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()["status"] == "sold"
+
+        # Refund
+        client.post(f"/api/v1/transactions/{txn['id']}/refund", json={}, headers=auth_headers)
+
+        updated = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
+        assert updated["status"] == "in_stock"
+        assert updated["quantity"] == 2
+        assert updated["actual_sell_price"] is None
+
+    def test_invoice_id_in_refund_response(self, client, auth_headers):
+        """Refund transaction carries invoice_id from original transaction."""
+        txn = client.post("/api/v1/transactions", json={
+            "method": "cash",
+            "gross_amount": "75.00",
+        }, headers=auth_headers).json()
+        # original has no invoice_id (manual transaction)
+        assert txn["invoice_id"] is None
+
+        refund = client.post(
+            f"/api/v1/transactions/{txn['id']}/refund", json={}, headers=auth_headers
+        ).json()
+        # Refund carries the same (null) invoice_id
+        assert refund["invoice_id"] is None

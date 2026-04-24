@@ -643,8 +643,14 @@ export async function getLightspeedConnectUrl(): Promise<{ authorization_url: st
 }
 
 export async function triggerLightspeedSync(): Promise<{
-  synced_items: number;
-  synced_transactions: number;
+  status: string;
+  run_id: string;
+  items_imported: number;
+  items_updated: number;
+  items_skipped: number;
+  transactions_imported: number;
+  transactions_updated: number;
+  errors_count: number;
 }> {
   return request("/integrations/lightspeed/sync", { method: "POST" });
 }

@@ -17,6 +17,7 @@ class TransactionCreate(BaseModel):
     method: PAYMENT_METHODS
     gross_amount: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     fee_amount: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2)
+    quantity: int = Field(default=1, ge=1, description="Number of units sold (for inventory-backed items)")
     external_reference_id: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=500)
 
@@ -36,11 +37,13 @@ class TransactionResponse(BaseModel):
     id: UUID
     user_id: UUID
     item_id: Optional[UUID] = None
+    invoice_id: Optional[UUID] = None
     method: str
     status: str
     gross_amount: Decimal
     fee_amount: Decimal
     net_amount: Decimal
+    quantity: int = 1
     external_reference_id: Optional[str] = None
     notes: Optional[str] = None
     is_refund: bool

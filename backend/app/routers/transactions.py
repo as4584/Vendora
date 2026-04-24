@@ -6,6 +6,7 @@ Endpoints:
     GET    /transactions/{id}      — Get transaction
     POST   /transactions/{id}/refund — Refund a transaction
 """
+import logging
 import math
 from decimal import Decimal
 
@@ -24,8 +25,9 @@ from app.schemas.transaction import (
     RefundCreate,
 )
 from app.services.profit import calculate_net_amount
-from app.services.inventory import transition_item
+from app.services.inventory import deduct_stock, restore_stock, get_available_quantity
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
@@ -38,10 +40,11 @@ def create_transaction(
     """Log a manual payment / quick sale.
 
     If item_id is provided:
-    - Updates item's actual_sell_price
-    - Transitions item to 'sold' if currently 'in_stock' or 'listed'
+    - Validates that sufficient stock is available.
+    - Updates item's actual_sell_price.
+    - Deducts stock via the shared stock service (writes ledger entry).
+    - Transitions item to 'sold' if stock reaches zero.
     """
-    # Validate item ownership if provided
     item = None
     if payload.item_id:
         item = db.query(InventoryItem).filter(
@@ -51,8 +54,22 @@ def create_transaction(
         ).first()
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
+        # Validate stock before creating the transaction record
+        check_qty = payload.quantity if payload.quantity else 1
+        available = get_available_quantity(item)
+        if available < check_qty:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "insufficient_stock",
+                    "message": f"Only {available} unit(s) available.",
+                    "available": available,
+                    "requested": check_qty,
+                },
+            )
 
     net = calculate_net_amount(payload.gross_amount, payload.fee_amount)
+    qty = payload.quantity if payload.quantity else 1
 
     txn = Transaction(
         user_id=current_user.id,
@@ -62,19 +79,37 @@ def create_transaction(
         gross_amount=payload.gross_amount,
         fee_amount=payload.fee_amount,
         net_amount=net,
+        quantity=qty,
         external_reference_id=payload.external_reference_id,
         notes=payload.notes,
         is_refund=False,
     )
     db.add(txn)
+    db.flush()  # get txn.id before writing ledger
 
-    # Update item if linked
     if item:
         item.actual_sell_price = payload.gross_amount
-        # Auto-transition to sold if currently in_stock or listed
-        if item.status in ("in_stock", "listed"):
-            item.status = "sold"
         db.add(item)
+        idem_key = f"txn:{txn.id}:sale"
+        try:
+            deduct_stock(
+                db,
+                item,
+                quantity=qty,
+                event_type="sale",
+                source_type="transaction",
+                source_id=str(txn.id),
+                idempotency_key=idem_key,
+            )
+        except HTTPException:
+            # Backward-compat fallback: transition status directly if deduction fails
+            logger.warning(
+                "deduct_stock failed for item %s on txn %s — status-only transition.",
+                item.id, txn.id,
+            )
+            if item.status in ("in_stock", "listed"):
+                item.status = "sold"
+                db.add(item)
 
     db.commit()
     db.refresh(txn)
@@ -132,9 +167,9 @@ def refund_transaction(
     """Create a refund for an existing transaction.
 
     Per STATE_MACHINES.md: Refund creates negative transaction entry.
-    - Creates a new transaction with is_refund=True and negative net_amount
-    - Marks original transaction as 'refunded'
-    - Reverts item to 'in_stock' if item is still in 'sold' status
+    - Creates a new transaction with is_refund=True and negative net_amount.
+    - Marks original transaction as 'refunded'.
+    - Restores stock via the shared stock service (writes ledger entry).
     """
     original = db.query(Transaction).filter(
         Transaction.id == txn_id,
@@ -155,36 +190,55 @@ def refund_transaction(
             "message": "This transaction has already been refunded.",
         })
 
-    # Create refund transaction (negative amounts)
     refund_txn = Transaction(
         user_id=current_user.id,
         item_id=original.item_id,
+        invoice_id=original.invoice_id,
         method=original.method,
         status="completed",
         gross_amount=original.gross_amount,
-        fee_amount=Decimal("0.00"),  # Fees are not refunded
-        net_amount=-original.net_amount,  # Negative net
+        fee_amount=Decimal("0.00"),
+        net_amount=-original.net_amount,
+        quantity=original.quantity,
         notes=payload.reason or f"Refund of transaction {original.id}",
         is_refund=True,
         original_transaction_id=original.id,
     )
     db.add(refund_txn)
+    db.flush()  # get refund_txn.id before writing ledger
 
-    # Mark original as refunded
     original.status = "refunded"
     db.add(original)
 
-    # Revert item status if applicable
     if original.item_id:
         item = db.query(InventoryItem).filter(
             InventoryItem.id == original.item_id,
             InventoryItem.user_id == current_user.id,
             InventoryItem.deleted_at.is_(None),
         ).first()
-        if item and item.status == "sold":
-            item.status = "in_stock"
-            item.actual_sell_price = None
-            db.add(item)
+        if item:
+            restore_qty = original.quantity if original.quantity else 1
+            idem_key = f"txn:{original.id}:refund:{refund_txn.id}"
+            try:
+                restore_stock(
+                    db,
+                    item,
+                    quantity=restore_qty,
+                    event_type="refund",
+                    source_type="transaction",
+                    source_id=str(refund_txn.id),
+                    idempotency_key=idem_key,
+                )
+            except HTTPException:
+                # Backward-compat fallback
+                logger.warning(
+                    "restore_stock failed for item %s on refund of txn %s — status-only revert.",
+                    item.id, original.id,
+                )
+                if item.status == "sold":
+                    item.status = "in_stock"
+                    item.actual_sell_price = None
+                    db.add(item)
 
     db.commit()
     db.refresh(refund_txn)

@@ -233,3 +233,92 @@ class TestInvoicePaymentProcessing:
         updated = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
         assert updated["status"] == "sold"
         assert updated["actual_sell_price"] == "350.00"
+
+
+class TestInvoiceStockValidation:
+    """Availability validation added to create/update."""
+
+    def test_create_invoice_out_of_stock_rejected(self, client, auth_headers):
+        """Creating an invoice for a sold-out item raises HTTP 409."""
+        # Create item with qty=1, sell it
+        item = client.post("/api/v1/inventory", json={
+            "name": "Sold Out Shoe",
+            "quantity": 1,
+        }, headers=auth_headers).json()
+        client.post("/api/v1/transactions", json={
+            "item_id": item["id"],
+            "method": "cash",
+            "gross_amount": "200.00",
+            "quantity": 1,
+        }, headers=auth_headers)
+
+        # Now try to create an invoice for that item — should be rejected
+        resp = client.post("/api/v1/invoices", json={
+            "customer_name": "Late Buyer",
+            "items": [{
+                "description": "Sold Out Shoe",
+                "quantity": 1,
+                "unit_price": "200.00",
+                "inventory_item_id": item["id"],
+            }],
+        }, headers=auth_headers)
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["error"] == "insufficient_stock"
+
+    def test_create_invoice_within_stock_passes(self, client, auth_headers):
+        """Invoice with quantity within available stock is accepted."""
+        item = client.post("/api/v1/inventory", json={
+            "name": "Plentiful Item",
+            "quantity": 5,
+        }, headers=auth_headers).json()
+
+        resp = client.post("/api/v1/invoices", json={
+            "customer_name": "Good Buyer",
+            "items": [{
+                "description": "Plentiful Item",
+                "quantity": 3,
+                "unit_price": "50.00",
+                "inventory_item_id": item["id"],
+            }],
+        }, headers=auth_headers)
+        assert resp.status_code == 201
+
+    def test_paid_invoice_creates_transaction_with_invoice_id(self, client, auth_headers):
+        """Transactions created by invoice payment carry the invoice_id."""
+        resp = client.post("/api/v1/invoices", json={
+            "customer_name": "Invoice Payer",
+            "items": [{"description": "Widget", "quantity": 1, "unit_price": "99.00"}],
+        }, headers=auth_headers)
+        inv_id = resp.json()["id"]
+
+        client.patch(f"/api/v1/invoices/{inv_id}/status", json={"status": "sent"}, headers=auth_headers)
+        client.patch(f"/api/v1/invoices/{inv_id}/status", json={"status": "paid"}, headers=auth_headers)
+
+        txns = client.get("/api/v1/transactions", headers=auth_headers).json()
+        assert txns["total"] == 1
+        assert txns["items"][0]["invoice_id"] == inv_id
+
+    def test_paid_invoice_deducts_inventory_quantity(self, client, auth_headers):
+        """Invoice payment deducts units from linked inventory item."""
+        item = client.post("/api/v1/inventory", json={
+            "name": "Multi-unit Widget",
+            "quantity": 3,
+        }, headers=auth_headers).json()
+
+        resp = client.post("/api/v1/invoices", json={
+            "customer_name": "Bulk Buyer",
+            "items": [{
+                "description": "Multi-unit Widget",
+                "quantity": 2,
+                "unit_price": "40.00",
+                "inventory_item_id": item["id"],
+            }],
+        }, headers=auth_headers)
+        inv_id = resp.json()["id"]
+
+        client.patch(f"/api/v1/invoices/{inv_id}/status", json={"status": "sent"}, headers=auth_headers)
+        client.patch(f"/api/v1/invoices/{inv_id}/status", json={"status": "paid"}, headers=auth_headers)
+
+        updated = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
+        assert updated["quantity"] == 1
+        assert updated["status"] == "in_stock"  # still in_stock — not fully depleted
