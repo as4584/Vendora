@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.models.inventory import InventoryItem, InventoryImportJob, InventoryImportRow
+from app.models.inventory import (
+    InventoryItem,
+    InventoryImportJob,
+    InventoryImportRow,
+    InventoryStockLedger,
+)
 from app.schemas.inventory import (
     ItemCreate,
     ItemUpdate,
@@ -29,6 +34,7 @@ from app.schemas.inventory import (
     ImportPreviewResponse,
     ImportRowResult,
     ImportCommitResponse,
+    InventoryActivityEntry,
 )
 from app.dependencies.auth import get_current_user
 from app.dependencies.tier_limiter import enforce_item_limit
@@ -47,13 +53,29 @@ IMPORT_HEADER_MAP: dict[str, str] = {
     "condition": "condition",
     "size": "size",
     "color": "color",
+    # Natural-language aliases (for human-authored spreadsheets)
     "buy price": "buy_price", "cost": "buy_price", "unit cost": "buy_price",
     "sell price": "expected_sell_price", "price": "expected_sell_price",
     "expected sell price": "expected_sell_price",
-    "quantity": "quantity", "qty": "quantity", "stock": "quantity",
     "vendor": "vendor_name", "vendor name": "vendor_name",
+    # Snake-case aliases — exact column names written by the CSV exporter.
+    # These make export → edit → re-import round-trips work without column remapping.
+    "buy_price": "buy_price",
+    "expected_sell_price": "expected_sell_price",
+    "actual_sell_price": "actual_sell_price",
+    "vendor_name": "vendor_name",
+    "quantity": "quantity", "qty": "quantity", "stock": "quantity",
     "notes": "notes", "description": "notes",
     "platform": "platform",
+    "photo_front_url": "photo_front_url",
+    "photo_back_url": "photo_back_url",
+    "front photo": "photo_front_url",
+    "back photo": "photo_back_url",
+    "front photo url": "photo_front_url",
+    "back photo url": "photo_back_url",
+    # Round-trip support: exported 'id' column used as a match key on re-import.
+    # id is never written to the item directly; it is used only for lookup.
+    "id": "_import_id",
 }
 
 
@@ -98,7 +120,11 @@ def create_item(
         expected_sell_price=payload.expected_sell_price,
         actual_sell_price=payload.actual_sell_price,
         platform=payload.platform,
+        photo_front_url=payload.photo_front_url,
+        photo_back_url=payload.photo_back_url,
         quantity=payload.quantity,
+        vendor_name=payload.vendor_name,
+        notes=payload.notes,
     )
     db.add(item)
     db.commit()
@@ -295,6 +321,24 @@ def get_item(
     return _get_active_item(item_id, current_user.id, db)
 
 
+@router.get("/{item_id}/activity", response_model=list[InventoryActivityEntry])
+def get_item_activity(
+    item_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return immutable stock/activity history for an item, newest first."""
+    item = _get_active_item(item_id, current_user.id, db)
+    return (
+        db.query(InventoryStockLedger)
+        .filter(InventoryStockLedger.inventory_item_id == item.id)
+        .order_by(InventoryStockLedger.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
 @router.put("/{item_id}", response_model=ItemResponse)
 def update_item(
     item_id: str,
@@ -387,7 +431,7 @@ def _detect_mapping(headers: list[str]) -> dict[str, str]:
     return mapping
 
 
-DECIMAL_FIELDS = {"buy_price", "expected_sell_price"}
+DECIMAL_FIELDS = {"buy_price", "expected_sell_price", "actual_sell_price"}
 INT_FIELDS = {"quantity"}
 
 
@@ -455,16 +499,19 @@ async def preview_import(
     preview_rows: list[ImportRowResult] = []
     counts = {"create": 0, "update": 0, "skip": 0, "error": 0}
 
-    # Build a lookup of existing items by SKU for the current user
+    # Build lookups of existing items by SKU and by id for the current user.
+    # SKU match is preferred; id match (from re-imported export) is the fallback
+    # so items without a SKU are updated rather than duplicated on round-trip.
     existing_by_sku: dict[str, InventoryItem] = {}
+    existing_by_id: dict[str, InventoryItem] = {}
     all_items = db.query(InventoryItem).filter(
         InventoryItem.user_id == current_user.id,
         InventoryItem.deleted_at.is_(None),
-        InventoryItem.sku.isnot(None),
     ).all()
     for it in all_items:
         if it.sku:
             existing_by_sku[it.sku.lower()] = it
+        existing_by_id[str(it.id)] = it
 
     for row_num, raw in enumerate(raw_rows, start=1):
         mapped, error = _coerce_row(raw, detected_mapping)
@@ -478,7 +525,12 @@ async def preview_import(
             )
         else:
             sku = (mapped.get("sku") or "").lower()
+            import_id = (mapped.pop("_import_id", None) or "").strip()
             existing = existing_by_sku.get(sku) if sku else None
+            match_key, match_value = "sku", mapped.get("sku")
+            if not existing and import_id:
+                existing = existing_by_id.get(import_id)
+                match_key, match_value = "id", import_id
             if existing:
                 action = "update"
                 counts["update"] += 1
@@ -486,7 +538,7 @@ async def preview_import(
                     row_number=row_num, action=action,
                     inventory_item_id=existing.id,
                     mapped_data=mapped,
-                    match_key="sku", match_value=mapped.get("sku"),
+                    match_key=match_key, match_value=match_value,
                 )
             else:
                 action = "create"
@@ -580,10 +632,13 @@ def commit_import(
                 condition=mapped.get("condition"),
                 buy_price=mapped.get("buy_price"),
                 expected_sell_price=mapped.get("expected_sell_price"),
+                actual_sell_price=mapped.get("actual_sell_price"),
                 quantity=int(mapped.get("quantity") or 1),
                 vendor_name=mapped.get("vendor_name"),
                 notes=mapped.get("notes"),
                 platform=mapped.get("platform"),
+                photo_front_url=mapped.get("photo_front_url"),
+                photo_back_url=mapped.get("photo_back_url"),
                 source="spreadsheet",
                 status="in_stock",
             )
@@ -604,7 +659,6 @@ def commit_import(
             new_qty = int(mapped.get("quantity") or item.quantity)
             delta = new_qty - item.quantity
             if delta != 0:
-                from app.models.inventory import InventoryStockLedger
                 ledger = InventoryStockLedger(
                     inventory_item_id=item.id,
                     user_id=current_user.id,
@@ -617,9 +671,11 @@ def commit_import(
                 )
                 db.add(ledger)
 
-            # Apply all mapped fields
+            # Apply all mapped fields (skip internal import-only keys)
+            _SKIP_ON_UPDATE = {"_import_id"}
             for field, value in mapped.items():
-                setattr(item, field, value)
+                if field not in _SKIP_ON_UPDATE and hasattr(item, field):
+                    setattr(item, field, value)
             db.add(item)
             counts["update"] += 1
         else:

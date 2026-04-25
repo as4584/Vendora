@@ -7,7 +7,6 @@
  *  â€¢ Auto-SKU generator
  */
 import { useState } from "react";
-import * as FileSystem from "expo-file-system/legacy";
 import {
     View,
     Text,
@@ -101,13 +100,18 @@ export default function AddItemScreen() {
         }
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
+            allowsEditing: Platform.OS !== "web",
             aspect: [1, 1],
             quality: 0.8,
+            base64: true,
         });
         if (!result.canceled && result.assets[0]) {
-            if (side === "front") setFrontPhoto(result.assets[0].uri);
-            else setBackPhoto(result.assets[0].uri);
+            const asset = result.assets[0];
+            const dataUrl = asset.base64
+                ? `data:image/jpeg;base64,${asset.base64}`
+                : asset.uri;
+            if (side === "front") setFrontPhoto(dataUrl);
+            else setBackPhoto(dataUrl);
         }
     };
 
@@ -121,14 +125,24 @@ export default function AddItemScreen() {
             allowsEditing: true,
             aspect: [1, 1],
             quality: 0.8,
+            base64: true,
         });
         if (!result.canceled && result.assets[0]) {
-            if (side === "front") setFrontPhoto(result.assets[0].uri);
-            else setBackPhoto(result.assets[0].uri);
+            const asset = result.assets[0];
+            const dataUrl = asset.base64
+                ? `data:image/jpeg;base64,${asset.base64}`
+                : asset.uri;
+            if (side === "front") setFrontPhoto(dataUrl);
+            else setBackPhoto(dataUrl);
         }
     };
 
     const showPhotoOptions = (side: PhotoSide) => {
+        // On web, Alert action sheets don't render multiple buttons — go straight to library picker.
+        if (Platform.OS === "web") {
+            pickPhoto(side);
+            return;
+        }
         Alert.alert(
             `${side === "front" ? "Front" : "Back"} Photo`,
             "Choose a source",
@@ -224,25 +238,10 @@ export default function AddItemScreen() {
 
             const created = await api.createItem(payload);
 
-            // Save photos after item is created (stored in custom_attributes)
+            // Save photos after item is created using the dedicated photo endpoint.
             if (frontPhoto || backPhoto) {
                 try {
-                    const readB64 = async (uri: string): Promise<string> => {
-                        const b64 = await FileSystem.readAsStringAsync(uri, {
-                            encoding: FileSystem.EncodingType.Base64,
-                        });
-                        return `data:image/jpeg;base64,${b64}`;
-                    };
-                    const frontB64 = frontPhoto ? await readB64(frontPhoto) : null;
-                    const backB64 = backPhoto ? await readB64(backPhoto) : null;
-                    const existing = created.custom_attributes ?? {};
-                    await api.updateItem(created.id, {
-                        custom_attributes: {
-                            ...existing,
-                            photo_front: frontB64,
-                            photo_back: backB64,
-                        },
-                    });
+                    await api.uploadItemPhotos(created.id, frontPhoto, backPhoto);
                 } catch {
                     console.warn("Photo save failed — item still created.");
                 }

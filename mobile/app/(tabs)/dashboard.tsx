@@ -1,291 +1,274 @@
-/**
- * Dashboard Screen — Sprint 2
- *
- * Shows revenue today/week/month, net profit, inventory value, and key counts.
- */
 import { useCallback, useEffect, useState } from "react";
 import {
-    View,
-    Text,
-    ScrollView,
-    StyleSheet,
-    ActivityIndicator,
-    RefreshControl,
-    Alert,
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
+  Alert,
 } from "react-native";
+import { useRouter } from "expo-router";
 import * as api from "../../services/api";
-
-function MetricCard({
-    label,
-    value,
-    prefix = "$",
-    color = "#FFFFFF",
-}: {
-    label: string;
-    value: string | number;
-    prefix?: string;
-    color?: string;
-}) {
-    const display = typeof value === "number" ? value.toString() : value;
-    const isNegative = display.startsWith("-");
-
-    return (
-        <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>{label}</Text>
-            <Text style={[styles.metricValue, { color: isNegative ? "#E17055" : color }]}>
-                {prefix}
-                {display}
-            </Text>
-        </View>
-    );
-}
-
-/** Margin % card — colour-coded by threshold. */
-function MarginCard({
-    label,
-    pct,
-    subtitle,
-}: {
-    label: string;
-    pct: number | null;
-    subtitle?: string;
-}) {
-    const color =
-        pct === null ? "#888"
-        : pct >= 30 ? "#00B894"
-        : pct >= 15 ? "#FDCB6E"
-        : "#E17055";
-
-    return (
-        <View style={[styles.metricCard, { borderColor: color + "55" }]}>
-            <Text style={styles.metricLabel}>{label}</Text>
-            <Text style={[styles.metricValue, { color }]}>
-                {pct !== null ? `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%` : "—"}
-            </Text>
-            {subtitle && <Text style={styles.metricSubtitle}>{subtitle}</Text>}
-        </View>
-    );
-}
-
-function CountCard({
-    label,
-    value,
-    emoji,
-}: {
-    label: string;
-    value: number;
-    emoji: string;
-}) {
-    return (
-        <View style={styles.countCard}>
-            <Text style={styles.countEmoji}>{emoji}</Text>
-            <Text style={styles.countValue}>{value}</Text>
-            <Text style={styles.countLabel}>{label}</Text>
-        </View>
-    );
-}
+import { ActionButton, ActionTile, Card, HeaderTitle, MetricCard, Pill, SectionLabel } from "../../components/ui";
+import { COLORS, SPACING } from "../../theme/tokens";
+import { downloadTextFile } from "../../utils/fileActions";
 
 export default function DashboardScreen() {
-    const [data, setData] = useState<api.Dashboard | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
+  const [view, setView] = useState({
+    data: null as api.Dashboard | null,
+    health: [] as api.ProviderHealthEntry[],
+    inventory: [] as api.InventoryItem[],
+    loading: true,
+    refreshing: false,
+    loadError: false,
+  });
 
-    const fetchDashboard = useCallback(async () => {
-        try {
-            const d = await api.getDashboard();
-            setData(d);
-        } catch (err: any) {
-            Alert.alert("Error", err.message || "Failed to load dashboard.");
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchDashboard();
-    }, []);
-
-    const onRefresh = () => {
-        setRefreshing(true);
-        fetchDashboard();
-    };
-
-    if (loading || !data) {
-        return (
-            <View style={styles.center}>
-                <ActivityIndicator size="large" color="#6C5CE7" />
-            </View>
-        );
+  const fetchAll = useCallback(async (mode: "load" | "refresh" = "load") => {
+    if (mode === "refresh") {
+      setView((current) => ({ ...current, refreshing: true }));
     }
+    try {
+      const [dashboard, providerHealth, inventoryPage] = await Promise.all([
+        api.getDashboard(),
+        api.getProviderHealth(),
+        api.listItems({ perPage: 100, availableOnly: true }),
+      ]);
+      setView({
+        data: dashboard,
+        health: providerHealth.providers,
+        inventory: inventoryPage.items,
+        loading: false,
+        refreshing: false,
+        loadError: false,
+      });
+    } catch {
+      setView((current) => ({
+        ...current,
+        loading: false,
+        refreshing: false,
+        loadError: true,
+      }));
+    }
+  }, []);
 
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  const onRefresh = () => {
+    fetchAll("refresh");
+  };
+
+  const handleExport = async () => {
+    try {
+      const csv = await api.exportInventoryCSV();
+      await downloadTextFile(csv, "vendora-inventory.csv");
+    } catch (err: any) {
+      Alert.alert("Export failed", err?.message || "Could not export inventory.");
+    }
+  };
+
+  const handleSync = async () => {
+    try {
+      const [lightspeed, square, clover] = await Promise.all([
+        api.getLightspeedStatus(),
+        api.getSquareStatus(),
+        api.getCloverStatus(),
+      ]);
+
+      const jobs: Array<Promise<any>> = [];
+      if (lightspeed.connected) jobs.push(api.triggerLightspeedSync());
+      if (square.connected) jobs.push(api.triggerSquareSync());
+      if (clover.connected) jobs.push(api.triggerCloverSync());
+
+      if (jobs.length === 0) {
+        router.push("/settings/sync-center" as any);
+        return;
+      }
+
+      const results = await Promise.allSettled(jobs);
+      const completed = results.filter((result) => result.status === "fulfilled").length;
+      const failed = results.length - completed;
+      router.push("/settings/sync-center" as any);
+      fetchAll();
+    } catch (err: any) {
+      Alert.alert("Sync failed", err?.message || "Could not start provider sync.");
+    }
+  };
+
+  if (view.loading) {
     return (
-        <ScrollView
-            style={styles.container}
-            contentContainerStyle={styles.content}
-            refreshControl={
-                <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                    tintColor="#6C5CE7"
-                    colors={["#6C5CE7"]}
-                />
-            }
-        >
-            {/* Revenue Section */}
-            <Text style={styles.sectionTitle}>💰 Revenue</Text>
-            <View style={styles.row}>
-                <MetricCard label="Today" value={data.revenue_today} color="#00B894" />
-                <MetricCard label="This Week" value={data.revenue_week} color="#00B894" />
-            </View>
-            <View style={styles.row}>
-                <MetricCard label="This Month" value={data.revenue_month} color="#00B894" />
-            </View>
-
-            {/* Profit Section */}
-            <Text style={styles.sectionTitle}>📊 Net Profit</Text>
-            <View style={styles.row}>
-                <MetricCard label="Today" value={data.net_profit_today} color="#6C5CE7" />
-                <MetricCard label="This Week" value={data.net_profit_week} color="#6C5CE7" />
-            </View>
-            <View style={styles.row}>
-                <MetricCard label="This Month" value={data.net_profit_month} color="#6C5CE7" />
-                <MetricCard label="All Time" value={data.net_profit_all_time} color="#6C5CE7" />
-            </View>
-
-            {/* Inventory Value */}
-            <Text style={styles.sectionTitle}>📦 Inventory</Text>
-            <View style={styles.row}>
-                <MetricCard label="Total Cost" value={data.total_inventory_value} color="#0984E3" />
-                <MetricCard label="Expected Value" value={data.total_expected_value} color="#0984E3" />
-            </View>
-            <View style={styles.row}>
-                <MetricCard label="Potential Profit" value={data.potential_profit} color="#00B894" />
-            </View>
-
-            {/* Margin % — computed client-side from existing response fields */}
-            {(() => {
-                const cost = parseFloat(data.total_inventory_value as any);
-                const expected = parseFloat(data.total_expected_value as any);
-                const profit = parseFloat(data.potential_profit as any);
-                // Gross margin %: profit / expected * 100
-                const grossMargin = expected > 0 ? (profit / expected) * 100 : null;
-                // Markup %: profit / cost * 100
-                const markup = cost > 0 ? (profit / cost) * 100 : null;
-                return (
-                    <View style={styles.row}>
-                        <MarginCard
-                            label="Gross Margin %"
-                            pct={grossMargin !== null ? Math.round(grossMargin * 10) / 10 : null}
-                            subtitle="Profit ÷ Expected"
-                        />
-                        <MarginCard
-                            label="Markup %"
-                            pct={markup !== null ? Math.round(markup * 10) / 10 : null}
-                            subtitle="Profit ÷ Cost"
-                        />
-                    </View>
-                );
-            })()}
-
-            {/* Counts */}
-            <Text style={styles.sectionTitle}>📈 Overview</Text>
-            <View style={styles.countsRow}>
-                <CountCard label="Total" value={data.total_items} emoji="📦" />
-                <CountCard label="In Stock" value={data.items_in_stock} emoji="🏠" />
-                <CountCard label="Listed" value={data.items_listed} emoji="🏷️" />
-                <CountCard label="Sold" value={data.items_sold} emoji="✅" />
-            </View>
-
-            {/* Transaction counts */}
-            <View style={styles.row}>
-                <MetricCard label="Transactions" value={data.total_transactions} prefix="" color="#FDCB6E" />
-                <MetricCard label="Refunds" value={data.total_refunds} prefix="" color="#E17055" />
-            </View>
-        </ScrollView>
+      <View testID="dashboard-loading" style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
     );
+  }
+
+  if (view.loadError || !view.data) {
+    return (
+      <View testID="dashboard-error" style={styles.center}>
+        <Text style={styles.errorTitle}>Could not load dashboard.</Text>
+        <ActionButton label="Retry" onPress={fetchAll} />
+      </View>
+    );
+  }
+
+  const { data, health, inventory } = view;
+  const lowStock = inventory.filter((item) => (item.quantity ?? 0) > 0 && (item.quantity ?? 0) <= 3).length;
+  const healthyProviders = health.filter(
+    (provider) => provider.failed_runs_24h === 0 && provider.open_issues_count === 0
+  ).length;
+
+  return (
+    <ScrollView
+      testID="dashboard-content"
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={view.refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
+      }
+    >
+      <HeaderTitle
+        title="Dashboard"
+        subtitle="Inventory import, sync, and stock health in one place."
+        right={<Pill label={`${healthyProviders}/${Math.max(health.length, 1)} healthy`} tone="primary" />}
+      />
+
+      <SectionLabel>Quick Actions</SectionLabel>
+      <View style={styles.actionGrid}>
+        <ActionTile glyph="IM" label="Import" helper="Preview spreadsheet changes" onPress={() => router.push("/inventory/import" as any)} />
+        <ActionTile glyph="EX" label="Export" helper="Generate review CSV" onPress={handleExport} />
+        <ActionTile glyph="SY" label="Sync" helper="Pull latest provider stock" onPress={handleSync} />
+        <ActionTile glyph="IV" label="Invoice" helper="Create from inventory" onPress={() => router.push("/inventory/invoices" as any)} />
+      </View>
+
+      <SectionLabel>Health At A Glance</SectionLabel>
+      <Card style={styles.stackGap}>
+        <View style={styles.metricsRow}>
+          <MetricCard label="Total Items" value={String(data.total_items)} accent={COLORS.text} />
+          <MetricCard label="In Stock" value={String(data.items_in_stock)} accent={COLORS.success} />
+          <MetricCard label="Low Stock" value={String(lowStock)} accent={lowStock > 0 ? COLORS.warning : COLORS.text} />
+          <MetricCard label="Refunds" value={String(data.total_refunds)} accent={COLORS.info} />
+        </View>
+        <View style={styles.providerRow}>
+          {health.length === 0 ? (
+            <Text style={styles.helperText}>Provider health will appear once sync history exists.</Text>
+          ) : (
+            health.map((provider) => (
+              <View key={provider.provider} style={styles.providerStatusRow}>
+                <Text style={styles.providerName}>
+                  {provider.provider.charAt(0).toUpperCase() + provider.provider.slice(1)}
+                </Text>
+                <Pill
+                  label={
+                    provider.failed_runs_24h > 0 || provider.open_issues_count > 0
+                      ? `${provider.failed_runs_24h} failed • ${provider.open_issues_count} issues`
+                      : "Healthy"
+                  }
+                  tone={
+                    provider.failed_runs_24h > 0
+                      ? "danger"
+                      : provider.open_issues_count > 0
+                        ? "warning"
+                        : "success"
+                  }
+                />
+              </View>
+            ))
+          )}
+        </View>
+      </Card>
+
+      <SectionLabel>Revenue</SectionLabel>
+      <View style={styles.metricsRow}>
+        <MetricCard label="Today" value={`$${data.revenue_today}`} accent={COLORS.success} />
+        <MetricCard label="This Week" value={`$${data.revenue_week}`} accent={COLORS.success} />
+        <MetricCard label="This Month" value={`$${data.revenue_month}`} accent={COLORS.success} />
+      </View>
+
+      <SectionLabel>Profit + Inventory Value</SectionLabel>
+      <View style={styles.metricsRow}>
+        <MetricCard label="Net Profit Today" value={`$${data.net_profit_today}`} accent={COLORS.primary} />
+        <MetricCard label="Net Profit All Time" value={`$${data.net_profit_all_time}`} accent={COLORS.primary} />
+      </View>
+      <View style={styles.metricsRow}>
+        <MetricCard label="Cost Basis" value={`$${data.total_inventory_value}`} accent={COLORS.info} />
+        <MetricCard label="Expected Value" value={`$${data.total_expected_value}`} accent={COLORS.info} />
+        <MetricCard label="Potential Profit" value={`$${data.potential_profit}`} accent={COLORS.success} />
+      </View>
+
+      <Card style={styles.footerCard}>
+        <Text style={styles.footerTitle}>Ready for spreadsheet review</Text>
+        <Text style={styles.footerText}>
+          Your seeded account now supports export, import preview, sync health, and size-aware inventory validation from one workflow.
+        </Text>
+        <ActionButton label="Open Inventory" onPress={() => router.push("/inventory" as any)} tone="secondary" />
+      </Card>
+    </ScrollView>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#0A0A1A",
-    },
-    content: {
-        padding: 16,
-        paddingBottom: 40,
-    },
-    center: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "#0A0A1A",
-    },
-    sectionTitle: {
-        fontSize: 16,
-        fontWeight: "800",
-        color: "#FFFFFF",
-        marginTop: 20,
-        marginBottom: 12,
-    },
-    row: {
-        flexDirection: "row",
-        gap: 12,
-        marginBottom: 12,
-    },
-    metricCard: {
-        flex: 1,
-        backgroundColor: "#1A1A2E",
-        borderRadius: 14,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: "#2A2A4A",
-    },
-    metricLabel: {
-        color: "#888",
-        fontSize: 12,
-        fontWeight: "600",
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        marginBottom: 6,
-    },
-    metricValue: {
-        fontSize: 24,
-        fontWeight: "800",
-    },
-    metricSubtitle: {
-        color: "#666",
-        fontSize: 10,
-        marginTop: 4,
-    },
-    countsRow: {
-        flexDirection: "row",
-        gap: 10,
-        marginBottom: 16,
-    },
-    countCard: {
-        flex: 1,
-        backgroundColor: "#1A1A2E",
-        borderRadius: 12,
-        padding: 12,
-        alignItems: "center",
-        borderWidth: 1,
-        borderColor: "#2A2A4A",
-    },
-    countEmoji: {
-        fontSize: 20,
-        marginBottom: 4,
-    },
-    countValue: {
-        fontSize: 22,
-        fontWeight: "800",
-        color: "#FFFFFF",
-    },
-    countLabel: {
-        fontSize: 10,
-        fontWeight: "600",
-        color: "#888",
-        textTransform: "uppercase",
-        marginTop: 2,
-    },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: SPACING.lg, paddingBottom: 48, gap: SPACING.md },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.bg,
+    padding: SPACING.lg,
+    gap: SPACING.md,
+  },
+  errorTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  actionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+  metricsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+  stackGap: {
+    gap: SPACING.md,
+  },
+  providerRow: {
+    gap: SPACING.sm,
+  },
+  providerStatusRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+  providerName: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  helperText: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+  },
+  footerCard: {
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  footerTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  footerText: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
+  },
 });

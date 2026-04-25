@@ -19,9 +19,54 @@ INVENTORY_EXPORT_COLUMNS = [
     "id", "name", "category", "sku", "upc", "size", "color", "condition",
     "quantity", "buy_price", "expected_sell_price", "actual_sell_price",
     "status", "platform", "vendor_name", "notes",
+    "photo_front_url", "photo_back_url", "front_image_formula", "back_image_formula",
+    "size_breakdown",
     "source", "external_id",
     "created_at", "updated_at",
 ]
+
+
+def _resolved_photo(item: InventoryItem, key: str) -> str:
+    """Prefer dedicated photo columns, fallback to legacy custom_attributes storage."""
+    direct_value = getattr(item, f"{key}_url", None)
+    if direct_value:
+        return direct_value
+
+    attrs = item.custom_attributes or {}
+    legacy_value = attrs.get(key)
+    return legacy_value or ""
+
+
+def _image_formula(url: str) -> str:
+    if not url:
+        return ""
+    escaped = url.replace('"', '""')
+    return f'=IMAGE("{escaped}")'
+
+
+def _size_breakdown(item: InventoryItem) -> str:
+    attrs = item.custom_attributes or {}
+    variants = attrs.get("variants")
+    if isinstance(variants, list) and variants:
+        parts: list[str] = []
+        for variant in variants:
+            if not isinstance(variant, dict):
+                continue
+            size = str(variant.get("size") or "").strip()
+            quantity = variant.get("quantity")
+            if not size:
+                continue
+            try:
+                qty_int = int(quantity)
+            except (TypeError, ValueError):
+                qty_int = 0
+            parts.append(f"{size} ({qty_int})")
+        if parts:
+            return "; ".join(parts)
+
+    if item.size:
+        return f"{item.size} ({item.quantity})"
+    return ""
 
 
 def export_inventory_csv(db: Session, user_id) -> str:
@@ -46,6 +91,8 @@ def export_inventory_csv(db: Session, user_id) -> str:
     writer.writerow(INVENTORY_EXPORT_COLUMNS)
 
     for item in items:
+        photo_front_url = _resolved_photo(item, "photo_front")
+        photo_back_url = _resolved_photo(item, "photo_back")
         writer.writerow([
             str(item.id),
             item.name,
@@ -63,6 +110,11 @@ def export_inventory_csv(db: Session, user_id) -> str:
             item.platform or "",
             item.vendor_name or "",
             item.notes or "",
+            photo_front_url,
+            photo_back_url,
+            _image_formula(photo_front_url),
+            _image_formula(photo_back_url),
+            _size_breakdown(item),
             item.source or "",
             item.external_id or "",
             item.created_at.isoformat() if item.created_at else "",

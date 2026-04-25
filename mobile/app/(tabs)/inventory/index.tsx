@@ -1,526 +1,302 @@
-/**
- * Inventory Grid Screen
- *
- * Instagram-style 3-column photo grid. Each cell shows a photo
- * thumbnail (or placeholder icon), item name, status colour dot,
- * and a quantity badge. Tapping any card opens ItemQuickSheet
- * instead of navigating away (prevents the black-screen crash).
- */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    View,
-    Text,
-    FlatList,
-    TouchableOpacity,
-    StyleSheet,
-    ActivityIndicator,
-    RefreshControl,
-    Dimensions,
-    Image,
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
+  TextInput,
+  Alert,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import * as api from "../../../services/api";
-import ItemQuickSheet from "./components/ItemQuickSheet";
+import { ActionButton, Card, ChipRow, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
+import { COLORS, SPACING } from "../../../theme/tokens";
+import { formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
+import { downloadTextFile } from "../../../utils/fileActions";
 
-const { width: SCREEN_W } = Dimensions.get("window");
-const GAP = 3;
-const COLS = 3;
-const CELL_SIZE = (SCREEN_W - GAP * (COLS + 1)) / COLS;
-const IS_SMALL_SCREEN = SCREEN_W < 390;
-
-const STATUS_COLORS: Record<string, string> = {
-    in_stock: "#00B894",
-    listed: "#0984E3",
-    sold: "#E17055",
-    shipped: "#FDCB6E",
-    paid: "#6C5CE7",
-    archived: "#636E72",
+const STATUS_TONES: Record<string, "success" | "warning" | "danger" | "info" | "neutral" | "primary"> = {
+  in_stock: "success",
+  listed: "info",
+  sold: "danger",
+  shipped: "warning",
+  paid: "primary",
+  archived: "neutral",
 };
 
-/** Returns total qty: sum of variants if available, else item.quantity */
-function resolveQty(item: api.InventoryItem): number {
-    const v = item.custom_attributes?.variants;
-    if (Array.isArray(v) && v.length > 0) {
-        return v.reduce((acc: number, x: any) => acc + (x.quantity ?? 0), 0);
-    }
-    return item.quantity ?? 1;
-}
-
-function GridCell({
-    item,
-    onPress,
+function InventoryCard({
+  item,
+  onPress,
 }: {
-    item: api.InventoryItem;
-    onPress: () => void;
+  item: api.InventoryItem;
+  onPress: () => void;
 }) {
-    const dotColor = STATUS_COLORS[item.status] ?? "#636E72";
-    const photoUri = (item.custom_attributes?.photo_front as string | undefined) ?? item.photo_front_url;
-    const qty = resolveQty(item);
+  const qty = resolveQty(item);
+  const lowStock = qty > 0 && qty <= 3;
+  const sourceLabel = item.source ? SOURCE_LABELS[item.source] || item.source : "Manual";
+  const frontPhoto = resolvedPhoto(item, "front");
+  const backPhoto = resolvedPhoto(item, "back");
 
-    return (
-        <TouchableOpacity
-            style={[styles.cell, { width: CELL_SIZE }]}
-            onPress={onPress}
-            activeOpacity={0.82}
-        >
-            {photoUri ? (
-                <Image
-                    source={{ uri: photoUri }}
-                    style={styles.cellImage}
-                    resizeMode="cover"
-                />
+  return (
+    <TouchableOpacity activeOpacity={0.84} onPress={onPress}>
+      <Card style={styles.itemCard}>
+        <View style={styles.itemCardRow}>
+          <View style={styles.photoColumn}>
+            {frontPhoto ? (
+              <Image source={{ uri: frontPhoto }} style={styles.mainPhoto} resizeMode="cover" />
             ) : (
-                <View style={styles.cellPlaceholder}>
-                    <Text style={styles.placeholderIcon}>📦</Text>
-                </View>
+              <View style={[styles.mainPhoto, styles.photoFallback]}><Text style={styles.photoFallbackText}>Front</Text></View>
             )}
+            <View style={styles.backPhotoWrap}>
+              {backPhoto ? (
+                <Image source={{ uri: backPhoto }} style={styles.backPhoto} resizeMode="cover" />
+              ) : (
+                <View style={[styles.backPhoto, styles.photoFallback]}><Text style={styles.photoFallbackText}>Back</Text></View>
+              )}
+            </View>
+          </View>
 
-            <View style={styles.cellOverlay}>
-                <View style={[styles.dot, { backgroundColor: dotColor }]} />
-                <Text style={styles.cellName} numberOfLines={2}>
-                    {item.name}
+          <View style={styles.itemBody}>
+            <View style={styles.itemTopRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemName}>{item.name}</Text>
+                <Text style={styles.itemMeta}>
+                  {[item.category, item.sku ? `SKU ${item.sku}` : null].filter(Boolean).join(" • ")}
                 </Text>
-                {item.expected_sell_price && (
-                    <Text style={styles.cellPrice}>
-                        ${parseFloat(item.expected_sell_price).toFixed(0)}
-                    </Text>
-                )}
+              </View>
+              <Text style={styles.itemPrice}>{formatCurrency(item.expected_sell_price)}</Text>
             </View>
 
-            {/* Quantity badge — top-left */}
-            <View style={styles.qtyBadge}>
-                <Text style={styles.qtyBadgeText}>{qty}</Text>
+            <View style={styles.pillRow}>
+              <Pill label={STATUS_LABELS[item.status] || item.status} tone={STATUS_TONES[item.status] || "neutral"} />
+              <Pill label={lowStock ? `Low stock ${qty}` : `Stock ${qty}`} tone={qty === 0 ? "danger" : lowStock ? "warning" : "success"} />
+              <Pill label={sourceLabel} tone="info" />
             </View>
 
-            {item.status === "in_stock" && (
-                <View style={styles.restockBadge}>
-                    <Text style={styles.restockText}>IN</Text>
-                </View>
-            )}
-        </TouchableOpacity>
-    );
-}
-
-function getBrand(item: api.InventoryItem): string {
-    const raw = item.custom_attributes?.brand;
-    if (typeof raw === "string" && raw.trim()) return raw.trim();
-    return "Unbranded";
-}
-
-type GridEntry =
-    | { type: "header"; key: string; brand: string; count: number }
-    | { type: "row"; key: string; brand: string; items: (api.InventoryItem | null)[] };
-
-export default function InventoryGridScreen() {
-    const router = useRouter();
-    const [items, setItems] = useState<api.InventoryItem[]>([]);
-    const [total, setTotal] = useState(0);
-    const [page, setPage] = useState(1);
-    const [pages, setPages] = useState(0);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [selectedBrandFilter, setSelectedBrandFilter] = useState<string | null>(null);
-
-    // Quick Sheet state
-    const [selectedItem, setSelectedItem] = useState<api.InventoryItem | null>(null);
-    const [sheetOpen, setSheetOpen] = useState(false);
-
-    const openSheet = (item: api.InventoryItem) => {
-        setSelectedItem(item);
-        setSheetOpen(true);
-    };
-
-    const closeSheet = () => setSheetOpen(false);
-
-    // When a save happens in the sheet, update the item in-place
-    const handleItemUpdated = (updated: api.InventoryItem) => {
-        setItems((prev) =>
-            prev.map((i) => (i.id === updated.id ? updated : i))
-        );
-        setSelectedItem(updated);
-    };
-
-    // When deleted in the sheet, remove from grid
-    const handleItemDeleted = (id: string) => {
-        setItems((prev) => prev.filter((i) => i.id !== id));
-        setTotal((t) => Math.max(0, t - 1));
-    };
-
-    const fetchItems = useCallback(async (pageNum: number, refresh = false) => {
-        try {
-            const data = await api.listItems(pageNum, 30);
-            if (refresh || pageNum === 1) {
-                setItems(data.items);
-            } else {
-                setItems((prev) => [...prev, ...data.items]);
-            }
-            setTotal(data.total);
-            setPages(data.pages);
-            setPage(pageNum);
-        } catch {
-            // silent on pagination errors
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    }, []);
-
-    useEffect(() => { fetchItems(1); }, []);
-
-    // Refresh when screen regains focus (e.g. returning from edit)
-    useFocusEffect(
-        useCallback(() => {
-            fetchItems(1, true);
-        }, [])
-    );
-
-    const onRefresh = () => { setRefreshing(true); fetchItems(1, true); };
-    const onLoadMore = () => { if (page < pages && !loading) fetchItems(page + 1); };
-
-    const existingBrands = useMemo<string[]>(() => {
-        const set = new Set<string>();
-        for (const item of items) {
-            const brand = getBrand(item);
-            if (brand !== "Unbranded") set.add(brand);
-        }
-        return Array.from(set).sort((a, b) => a.localeCompare(b));
-    }, [items]);
-
-    const groupedEntries = useMemo<GridEntry[]>(() => {
-        const sourceItems = selectedBrandFilter
-            ? items.filter((item) => getBrand(item) === selectedBrandFilter)
-            : items;
-
-        const groups = new Map<string, api.InventoryItem[]>();
-        for (const item of sourceItems) {
-            const brand = getBrand(item);
-            const existing = groups.get(brand);
-            if (existing) {
-                existing.push(item);
-            } else {
-                groups.set(brand, [item]);
-            }
-        }
-
-        const brands = Array.from(groups.keys()).sort((a, b) => {
-            if (a === "Unbranded") return 1;
-            if (b === "Unbranded") return -1;
-            return a.localeCompare(b);
-        });
-
-        const out: GridEntry[] = [];
-        for (const brand of brands) {
-            const brandItems = groups.get(brand) ?? [];
-            out.push({
-                type: "header",
-                key: `header-${brand}`,
-                brand,
-                count: brandItems.length,
-            });
-
-            for (let i = 0; i < brandItems.length; i += COLS) {
-                const chunk = brandItems.slice(i, i + COLS);
-                while (chunk.length < COLS) chunk.push(null);
-                out.push({
-                    type: "row",
-                    key: `row-${brand}-${i}`,
-                    brand,
-                    items: chunk,
-                });
-            }
-        }
-
-        return out;
-    }, [items, selectedBrandFilter]);
-
-    if (loading && items.length === 0) {
-        return (
-            <View style={styles.center}>
-                <ActivityIndicator size="large" color="#6C5CE7" />
-            </View>
-        );
-    }
-
-    return (
-        <View style={styles.container}>
-            {/* ── Header ── */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.headerTitle}>Warehouse Inventory</Text>
-                    <Text style={styles.headerSub}>{total} item{total !== 1 ? "s" : ""}</Text>
-                </View>
-                <TouchableOpacity
-                    style={styles.addButton}
-                    onPress={() => router.push("/(tabs)/inventory/add")}
-                >
-                    <Text style={styles.addButtonText}>+ Add Stock</Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* ── Status legend ── */}
-            <View style={styles.legend}>
-                {Object.entries(STATUS_COLORS).map(([s, c]) => (
-                    <View key={s} style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: c }]} />
-                        <Text style={styles.legendLabel}>{s.replace("_", " ")}</Text>
-                    </View>
-                ))}
-            </View>
-
-            {selectedBrandFilter && (
-                <View style={styles.filterBar}>
-                    <Text style={styles.filterLabel}>Filtered: {selectedBrandFilter}</Text>
-                    <TouchableOpacity
-                        style={styles.clearFilterBtn}
-                        onPress={() => setSelectedBrandFilter(null)}
-                        activeOpacity={0.8}
-                    >
-                        <Text style={styles.clearFilterText}>Clear</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            {/* ── Grid ── */}
-            <FlatList
-                data={groupedEntries}
-                keyExtractor={(entry) => entry.key}
-                renderItem={({ item: entry }) => (
-                    entry.type === "header" ? (
-                        <TouchableOpacity
-                            style={[
-                                styles.brandHeader,
-                                selectedBrandFilter === entry.brand && styles.brandHeaderActive,
-                            ]}
-                            onPress={() =>
-                                setSelectedBrandFilter((prev) =>
-                                    prev === entry.brand ? null : entry.brand
-                                )
-                            }
-                            activeOpacity={0.8}
-                        >
-                            <Text
-                                style={[
-                                    styles.brandTitle,
-                                    selectedBrandFilter === entry.brand && styles.brandTitleActive,
-                                ]}
-                            >
-                                {entry.brand}
-                            </Text>
-                            <Text
-                                style={[
-                                    styles.brandCount,
-                                    selectedBrandFilter === entry.brand && styles.brandCountActive,
-                                ]}
-                            >
-                                {entry.count}
-                            </Text>
-                        </TouchableOpacity>
-                    ) : (
-                        <View style={styles.row}>
-                            {entry.items.map((it, idx) =>
-                                it ? (
-                                    <GridCell key={it.id} item={it} onPress={() => openSheet(it)} />
-                                ) : (
-                                    <View key={`${entry.key}-spacer-${idx}`} style={[styles.cellSpacer, { width: CELL_SIZE }]} />
-                                )
-                            )}
-                        </View>
-                    )
-                )}
-                contentContainerStyle={styles.grid}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        tintColor="#6C5CE7"
-                        colors={["#6C5CE7"]}
-                    />
-                }
-                onEndReached={onLoadMore}
-                onEndReachedThreshold={0.4}
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyIcon}>📭</Text>
-                        <Text style={styles.emptyTitle}>No items yet</Text>
-                        <Text style={styles.emptySubtitle}>
-                            Tap "+ Add Stock" to create your first inventory item
-                        </Text>
-                    </View>
-                }
-            />
-
-            {/* ── Item Quick Sheet ── */}
-            <ItemQuickSheet
-                item={selectedItem}
-                visible={sheetOpen}
-                existingBrands={existingBrands}
-                onClose={closeSheet}
-                onItemUpdated={handleItemUpdated}
-                onItemDeleted={handleItemDeleted}
-            />
+            <Text style={styles.sizeLine}>{sizeBreakdown(item)}</Text>
+            <Text style={styles.secondaryLine}>
+              Cost {formatCurrency(item.buy_price)} • Vendor {item.vendor_name || "Unassigned"}
+            </Text>
+          </View>
         </View>
+      </Card>
+    </TouchableOpacity>
+  );
+}
+
+export default function InventoryListScreen() {
+  const router = useRouter();
+  const [items, setItems] = useState<api.InventoryItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchItems = useCallback(
+    async (options: { page?: number; refresh?: boolean; query?: string; status?: string | null; source?: string | null } = {}) => {
+      const nextPage = options.page ?? 1;
+      const nextQuery = options.query ?? searchQuery;
+      const nextStatus = options.status !== undefined ? options.status : statusFilter;
+      const nextSource = options.source !== undefined ? options.source : sourceFilter;
+
+      try {
+        const result = await api.listItems({
+          page: nextPage,
+          perPage: 24,
+          q: nextQuery || undefined,
+          status: nextStatus ?? undefined,
+          source: nextSource ?? undefined,
+        });
+        setItems((previous) => (options.refresh === false ? [...previous, ...result.items] : result.items));
+        setTotal(result.total);
+        setPage(result.page);
+        setPages(result.pages);
+      } catch (err: any) {
+        if (loading && items.length === 0) {
+          Alert.alert("Inventory unavailable", err?.message || "Could not load inventory.");
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+      }
+    },
+    [items.length, loading, searchQuery, sourceFilter, statusFilter]
+  );
+
+  useEffect(() => {
+    fetchItems();
+  }, [fetchItems]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchItems({ refresh: true });
+    }, [fetchItems])
+  );
+
+  const onSearchChange = (text: string) => {
+    setSearchQuery(text);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setLoading(true);
+      fetchItems({ page: 1, refresh: true, query: text });
+    }, 250);
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchItems({ page: 1, refresh: true });
+  };
+
+  const onLoadMore = () => {
+    if (!loadingMore && page < pages) {
+      setLoadingMore(true);
+      fetchItems({ page: page + 1, refresh: false });
+    }
+  };
+
+  const onExport = async () => {
+    try {
+      const csv = await api.exportInventoryCSV();
+      await downloadTextFile(csv, "vendora-inventory.csv");
+    } catch (err: any) {
+      Alert.alert("Export failed", err?.message || "Could not export the inventory CSV.");
+    }
+  };
+
+  const availableSources = useMemo(() => {
+    const seen = new Set<string>();
+    items.forEach((item) => {
+      if (item.source) seen.add(item.source);
+    });
+    return Array.from(seen);
+  }, [items]);
+
+  if (loading) {
+    return (
+      <View testID="inventory-loading" style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
     );
+  }
+
+  return (
+    <View style={styles.container}>
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <InventoryCard item={item} onPress={() => router.push(`/inventory/${item.id}` as any)} />
+        )}
+        contentContainerStyle={styles.content}
+        ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
+        onEndReached={onLoadMore}
+        onEndReachedThreshold={0.35}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+        ListHeaderComponent={
+          <View style={{ gap: SPACING.md, marginBottom: SPACING.md }}>
+            <HeaderTitle title="Inventory" subtitle={`${total} items ready for stock, sync, and spreadsheet review.`} />
+
+            <View style={styles.actionRow}>
+              <ActionButton label="Import" onPress={() => router.push("/inventory/import" as any)} tone="secondary" compact />
+              <ActionButton label="Export" onPress={onExport} tone="secondary" compact />
+              <ActionButton label="Add Stock" onPress={() => router.push("/inventory/add" as any)} compact />
+            </View>
+
+            <Card>
+              <SectionLabel>Search + Filter</SectionLabel>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search items, sku, upc"
+                placeholderTextColor={COLORS.textSoft}
+                value={searchQuery}
+                onChangeText={onSearchChange}
+              />
+              <ChipRow>
+                {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                  <TouchableOpacity key={key} onPress={() => {
+                    const next = statusFilter === key ? null : key;
+                    setStatusFilter(next);
+                    setLoading(true);
+                    fetchItems({ page: 1, refresh: true, status: next });
+                  }}>
+                    <Pill label={label} tone={statusFilter === key ? STATUS_TONES[key] || "primary" : "neutral"} />
+                  </TouchableOpacity>
+                ))}
+                {availableSources.map((source) => (
+                  <TouchableOpacity key={source} onPress={() => {
+                    const next = sourceFilter === source ? null : source;
+                    setSourceFilter(next);
+                    setLoading(true);
+                    fetchItems({ page: 1, refresh: true, source: next });
+                  }}>
+                    <Pill label={SOURCE_LABELS[source] || source} tone={sourceFilter === source ? "info" : "neutral"} />
+                  </TouchableOpacity>
+                ))}
+              </ChipRow>
+            </Card>
+          </View>
+        }
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          <Card>
+            <Text style={styles.emptyTitle}>No inventory matches this view.</Text>
+            <Text style={styles.emptyText}>Change the filters or add a new stock item to continue.</Text>
+          </Card>
+        }
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#0A0A1A" },
-    center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0A0A1A" },
-
-    header: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        paddingHorizontal: 14,
-        paddingTop: 14,
-        paddingBottom: 10,
-    },
-    headerTitle: { color: "#FFFFFF", fontSize: IS_SMALL_SCREEN ? 17 : 18, fontWeight: "800" },
-    headerSub: { color: "#888", fontSize: IS_SMALL_SCREEN ? 11 : 12, marginTop: 2 },
-    addButton: {
-        backgroundColor: "#00B894",
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 10,
-    },
-    addButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
-
-    legend: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        paddingHorizontal: 14,
-        paddingBottom: 8,
-        gap: 8,
-    },
-    legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-    legendDot: { width: 6, height: 6, borderRadius: 3 },
-    legendLabel: { color: "#666", fontSize: IS_SMALL_SCREEN ? 9 : 10 },
-    filterBar: {
-        marginHorizontal: 14,
-        marginBottom: 6,
-        paddingHorizontal: 10,
-        paddingVertical: IS_SMALL_SCREEN ? 7 : 8,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: "#2A2A4A",
-        backgroundColor: "#12122A",
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-    },
-    filterLabel: {
-        color: "#B7B7C7",
-        fontSize: IS_SMALL_SCREEN ? 10 : 11,
-        fontWeight: "700",
-        flexShrink: 1,
-        paddingRight: 8,
-    },
-    clearFilterBtn: {
-        borderWidth: 1,
-        borderColor: "#6C5CE7",
-        borderRadius: 999,
-        paddingHorizontal: IS_SMALL_SCREEN ? 8 : 10,
-        paddingVertical: IS_SMALL_SCREEN ? 3 : 4,
-        backgroundColor: "#1E1B3A",
-    },
-    clearFilterText: {
-        color: "#A69BFF",
-        fontSize: IS_SMALL_SCREEN ? 10 : 11,
-        fontWeight: "700",
-    },
-
-    grid: { paddingHorizontal: GAP, paddingBottom: 30 },
-    row: { gap: GAP, marginBottom: GAP },
-    brandHeader: {
-        marginTop: 10,
-        marginBottom: 6,
-        paddingHorizontal: 2,
-        paddingVertical: 4,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-    },
-    brandHeaderActive: {
-        backgroundColor: "#1E1B3A",
-        borderRadius: 8,
-        paddingHorizontal: 8,
-    },
-    brandTitle: {
-        color: "#B7B7C7",
-        fontSize: IS_SMALL_SCREEN ? 11 : 12,
-        fontWeight: "800",
-        letterSpacing: 0.4,
-        textTransform: "uppercase",
-    },
-    brandTitleActive: {
-        color: "#6C5CE7",
-    },
-    brandCount: {
-        color: "#777",
-        fontSize: IS_SMALL_SCREEN ? 10 : 11,
-        fontWeight: "700",
-    },
-    brandCountActive: {
-        color: "#A69BFF",
-    },
-
-    cell: {
-        height: CELL_SIZE,
-        backgroundColor: "#1A1A2E",
-        borderRadius: 6,
-        overflow: "hidden",
-    },
-    cellSpacer: {
-        height: CELL_SIZE,
-    },
-    cellImage: { width: "100%", height: "100%" },
-    cellPlaceholder: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "#16213E",
-    },
-    placeholderIcon: { fontSize: 28 },
-
-    cellOverlay: {
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: "rgba(0,0,0,0.62)",
-        padding: 5,
-    },
-    dot: { width: 6, height: 6, borderRadius: 3, marginBottom: 3 },
-    cellName: { color: "#FFF", fontSize: 10, fontWeight: "600", lineHeight: 13 },
-    cellPrice: { color: "#00B894", fontSize: 10, fontWeight: "700", marginTop: 1 },
-
-    // Quantity badge — top-left corner
-    qtyBadge: {
-        position: "absolute",
-        top: 4,
-        left: 4,
-        backgroundColor: "rgba(0,0,0,0.70)",
-        borderRadius: 8,
-        paddingHorizontal: 5,
-        paddingVertical: 2,
-        minWidth: 18,
-        alignItems: "center",
-    },
-    qtyBadgeText: { color: "#FFF", fontSize: 9, fontWeight: "800" },
-
-    restockBadge: {
-        position: "absolute",
-        top: 4,
-        right: 4,
-        backgroundColor: "#00B894",
-        paddingHorizontal: 5,
-        paddingVertical: 2,
-        borderRadius: 4,
-    },
-    restockText: { color: "#FFF", fontSize: 8, fontWeight: "800" },
-
-    emptyContainer: { alignItems: "center", marginTop: 80 },
-    emptyIcon: { fontSize: 64, marginBottom: 16 },
-    emptyTitle: { fontSize: 20, fontWeight: "700", color: "#FFFFFF", marginBottom: 8 },
-    emptySubtitle: { fontSize: 14, color: "#888", textAlign: "center", paddingHorizontal: 40 },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
+  content: { padding: SPACING.lg, paddingBottom: 48 },
+  actionRow: { flexDirection: "row", gap: SPACING.sm },
+  searchInput: {
+    backgroundColor: COLORS.bgElevated,
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: 14,
+    color: COLORS.text,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: SPACING.sm,
+  },
+  itemCard: { padding: 0 },
+  itemCardRow: { flexDirection: "row", gap: SPACING.md },
+  photoColumn: { width: 88, gap: SPACING.xs },
+  mainPhoto: { width: 88, height: 88, borderRadius: 14, backgroundColor: COLORS.cardAlt },
+  backPhotoWrap: { alignItems: "flex-end" },
+  backPhoto: { width: 44, height: 44, borderRadius: 10, backgroundColor: COLORS.cardAlt, borderWidth: 1, borderColor: COLORS.border },
+  photoFallback: { alignItems: "center", justifyContent: "center" },
+  photoFallbackText: { color: COLORS.textSoft, fontSize: 11, fontWeight: "700" },
+  itemBody: { flex: 1, gap: SPACING.sm },
+  itemTopRow: { flexDirection: "row", gap: SPACING.sm },
+  itemName: { color: COLORS.text, fontSize: 16, fontWeight: "800" },
+  itemMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
+  itemPrice: { color: COLORS.success, fontSize: 16, fontWeight: "800" },
+  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs },
+  sizeLine: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
+  secondaryLine: { color: COLORS.textMuted, fontSize: 12 },
+  emptyTitle: { color: COLORS.text, fontSize: 16, fontWeight: "800", marginBottom: 6 },
+  emptyText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 18 },
+  footerLoader: { paddingVertical: SPACING.md },
 });

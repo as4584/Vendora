@@ -118,6 +118,33 @@ class TestListTransactions:
         assert a_resp.json()["total"] == 1
         assert b_resp.json()["total"] == 1
 
+    def test_filter_by_item_id(self, client, auth_headers):
+        item_a = client.post("/api/v1/inventory", json={
+            "name": "Filtered Item A",
+            "quantity": 2,
+        }, headers=auth_headers).json()
+        item_b = client.post("/api/v1/inventory", json={
+            "name": "Filtered Item B",
+            "quantity": 2,
+        }, headers=auth_headers).json()
+
+        client.post("/api/v1/transactions", json={
+            "item_id": item_a["id"],
+            "method": "cash",
+            "gross_amount": "50.00",
+        }, headers=auth_headers)
+        client.post("/api/v1/transactions", json={
+            "item_id": item_b["id"],
+            "method": "cash",
+            "gross_amount": "75.00",
+        }, headers=auth_headers)
+
+        resp = client.get(f"/api/v1/transactions?item_id={item_a['id']}", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["item_id"] == item_a["id"]
+
 
 class TestRefund:
     def test_refund_creates_negative_entry(self, client, auth_headers):

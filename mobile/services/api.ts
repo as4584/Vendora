@@ -6,11 +6,19 @@
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const API_BASE_URL = __DEV__
-  ? "https://vendora.lexmakesit.com/api/v1" // prod backend — works from any network in Expo Go
-  : "https://vendora.lexmakesit.com/api/v1";
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001/api/v1";
 
 const TOKEN_KEY = "vendora_access_token";
+
+// ─── Global 401 handler ─────────────────────────────
+// Set by AuthProvider so any expired-token API call auto-signs out.
+type UnauthorizedHandler = () => void;
+let _unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export function onUnauthorized(handler: UnauthorizedHandler): void {
+  _unauthorizedHandler = handler;
+}
 
 // ─── Token Management ────────────────────────────────
 
@@ -33,10 +41,14 @@ async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = await getToken();
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
+  if (!isFormData && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -65,8 +77,8 @@ async function request<T>(
     if (!response.ok) {
       throw new ApiError(text || `Request failed (${response.status})`, response.status);
     }
-    // If OK but not JSON (e.g. 204), return empty
-    return {} as T;
+    // If OK but not JSON (e.g. text/csv, 204 empty), return text content
+    return text as unknown as T;
   }
 
   if (!response.ok) {
@@ -74,6 +86,11 @@ async function request<T>(
       typeof data.detail === "string"
         ? data.detail
         : data?.detail?.message || `Request failed (${response.status})`;
+    if (response.status === 401) {
+      // Token expired or invalid — clear storage and notify auth context.
+      clearToken().catch(() => {});
+      _unauthorizedHandler?.();
+    }
     throw new ApiError(message, response.status, data?.detail);
   }
 
@@ -192,8 +209,21 @@ export interface InventoryItem {
   quantity: number;
   vendor_name: string | null;
   notes: string | null;
+  source: string | null;
+  external_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface InventoryActivityEntry {
+  id: string;
+  inventory_item_id: string;
+  delta_quantity: number;
+  quantity_after: number;
+  event_type: string;
+  source_type: string | null;
+  source_id: string | null;
+  created_at: string;
 }
 
 export interface PaginatedItems {
@@ -223,17 +253,51 @@ export interface CreateItemPayload {
   notes?: string;
 }
 
+export interface ListItemsParams {
+  page?: number;
+  perPage?: number;
+  q?: string;
+  status?: string;
+  source?: string;
+  availableOnly?: boolean;
+}
+
 export async function listItems(
-  page = 1,
+  pageOrParams: number | ListItemsParams = 1,
   perPage = 20
 ): Promise<PaginatedItems> {
-  return request<PaginatedItems>(
-    `/inventory?page=${page}&per_page=${perPage}`
-  );
+  let page: number;
+  let params: ListItemsParams;
+
+  if (typeof pageOrParams === "number") {
+    page = pageOrParams;
+    params = { page, perPage };
+  } else {
+    params = pageOrParams;
+    page = params.page ?? 1;
+    perPage = params.perPage ?? 20;
+  }
+
+  const qs = new URLSearchParams();
+  qs.set("page", String(page));
+  qs.set("per_page", String(perPage));
+  if (params.q) qs.set("q", params.q);
+  if (params.status) qs.set("status", params.status);
+  if (params.source) qs.set("source", params.source);
+  if (params.availableOnly) qs.set("available_only", "true");
+
+  return request<PaginatedItems>(`/inventory?${qs.toString()}`);
 }
 
 export async function getItem(id: string): Promise<InventoryItem> {
   return request<InventoryItem>(`/inventory/${id}`);
+}
+
+export async function getItemActivity(
+  id: string,
+  limit = 25
+): Promise<InventoryActivityEntry[]> {
+  return request<InventoryActivityEntry[]>(`/inventory/${id}/activity?limit=${limit}`);
 }
 
 export async function createItem(
@@ -302,17 +366,68 @@ export async function updateItemVariants(
   });
 }
 
+export interface ImportPreviewRow {
+  row_number: number;
+  action: string | null;
+  inventory_item_id: string | null;
+  mapped_data: Record<string, any> | null;
+  match_key: string | null;
+  match_value: string | null;
+  error_message: string | null;
+}
+
+export interface InventoryImportPreview {
+  job_id: string;
+  status: string;
+  filename: string | null;
+  detected_mapping: Record<string, string>;
+  rows: ImportPreviewRow[];
+  total_rows: number;
+  rows_to_create: number;
+  rows_to_update: number;
+  rows_to_skip: number;
+  rows_errored: number;
+}
+
+export interface InventoryImportCommit {
+  job_id: string;
+  status: string;
+  rows_created: number;
+  rows_updated: number;
+  rows_skipped: number;
+  rows_errored: number;
+}
+
+export async function previewInventoryImport(
+  formData: FormData
+): Promise<InventoryImportPreview> {
+  return request<InventoryImportPreview>("/inventory/imports/preview", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function commitInventoryImport(
+  jobId: string
+): Promise<InventoryImportCommit> {
+  return request<InventoryImportCommit>(`/inventory/imports/${jobId}/commit`, {
+    method: "POST",
+  });
+}
+
 // ─── Transaction Endpoints ───────────────────────────
 
 export interface Transaction {
   id: string;
   user_id: string;
   item_id: string | null;
+  invoice_id: string | null;
   method: string;
   status: string;
   gross_amount: string;
   fee_amount: string;
   net_amount: string;
+  quantity: number;
   external_reference_id: string | null;
   notes: string | null;
   is_refund: boolean;
@@ -334,6 +449,7 @@ export interface CreateTransactionPayload {
   method: string;
   gross_amount: string;
   fee_amount?: string;
+  quantity?: number;
   external_reference_id?: string;
   notes?: string;
 }
@@ -348,12 +464,24 @@ export async function createTransaction(
 }
 
 export async function listTransactions(
-  page = 1,
+  pageOrParams: number | { page?: number; perPage?: number; itemId?: string } = 1,
   perPage = 20
 ): Promise<PaginatedTransactions> {
-  return request<PaginatedTransactions>(
-    `/transactions?page=${page}&per_page=${perPage}`
-  );
+  let page = 1;
+  let itemId: string | undefined;
+  if (typeof pageOrParams === "number") {
+    page = pageOrParams;
+  } else {
+    page = pageOrParams.page ?? 1;
+    perPage = pageOrParams.perPage ?? 20;
+    itemId = pageOrParams.itemId;
+  }
+
+  const qs = new URLSearchParams();
+  qs.set("page", String(page));
+  qs.set("per_page", String(perPage));
+  if (itemId) qs.set("item_id", itemId);
+  return request<PaginatedTransactions>(`/transactions?${qs.toString()}`);
 }
 
 export async function getTransaction(id: string): Promise<Transaction> {
@@ -473,12 +601,29 @@ export async function createInvoice(
 }
 
 export async function listInvoices(
-  page = 1,
+  pageOrParams:
+    | number
+    | { page?: number; perPage?: number; status?: string; inventoryItemId?: string } = 1,
   perPage = 20
 ): Promise<PaginatedInvoices> {
-  return request<PaginatedInvoices>(
-    `/invoices?page=${page}&per_page=${perPage}`
-  );
+  let page = 1;
+  let status: string | undefined;
+  let inventoryItemId: string | undefined;
+  if (typeof pageOrParams === "number") {
+    page = pageOrParams;
+  } else {
+    page = pageOrParams.page ?? 1;
+    perPage = pageOrParams.perPage ?? 20;
+    status = pageOrParams.status;
+    inventoryItemId = pageOrParams.inventoryItemId;
+  }
+
+  const qs = new URLSearchParams();
+  qs.set("page", String(page));
+  qs.set("per_page", String(perPage));
+  if (status) qs.set("status", status);
+  if (inventoryItemId) qs.set("inventory_item_id", inventoryItemId);
+  return request<PaginatedInvoices>(`/invoices?${qs.toString()}`);
 }
 
 export async function getInvoice(id: string): Promise<InvoiceData> {
@@ -655,7 +800,166 @@ export async function triggerLightspeedSync(): Promise<{
   return request("/integrations/lightspeed/sync", { method: "POST" });
 }
 
-// ─── Health ──────────────────────────────────────────
+// ─── Square Integration ───────────────────────────────
+
+export interface SquareStatus {
+  connected: boolean;
+  merchant_id: string | null;
+  location_id: string | null;
+  last_synced_at: string | null;
+}
+
+export async function getSquareStatus(): Promise<SquareStatus> {
+  return request<SquareStatus>("/integrations/square/status");
+}
+
+export async function connectSquare(body: {
+  access_token: string;
+  merchant_id?: string;
+  location_id?: string;
+}): Promise<{ message: string; merchant_id: string | null; location_id: string | null }> {
+  return request("/integrations/square/connect", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function triggerSquareSync(): Promise<{
+  status: string;
+  run_id: string;
+  items_imported: number;
+  items_updated: number;
+  items_skipped: number;
+  transactions_imported: number;
+  transactions_updated: number;
+  errors_count: number;
+}> {
+  return request("/integrations/square/sync", { method: "POST" });
+}
+
+// ─── Clover Integration ───────────────────────────────
+
+export interface CloverStatus {
+  connected: boolean;
+  merchant_id: string | null;
+  last_synced_at: string | null;
+}
+
+export async function getCloverStatus(): Promise<CloverStatus> {
+  return request<CloverStatus>("/integrations/clover/status");
+}
+
+export async function connectClover(body: {
+  merchant_id: string;
+  access_token: string;
+}): Promise<{ message: string; merchant_id: string }> {
+  return request("/integrations/clover/connect", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function triggerCloverSync(): Promise<{
+  status: string;
+  run_id: string;
+  items_imported: number;
+  items_updated: number;
+  items_skipped: number;
+  transactions_imported: number;
+  transactions_updated: number;
+  errors_count: number;
+}> {
+  return request("/integrations/clover/sync", { method: "POST" });
+}
+
+// ─── Provider Health ──────────────────────────────────
+
+export interface ProviderHealthEntry {
+  provider: string;
+  last_run_at: string | null;
+  last_run_status: string | null;
+  failed_runs_24h: number;
+  open_issues_count: number;
+}
+
+export async function getProviderHealth(): Promise<{ providers: ProviderHealthEntry[] }> {
+  return request<{ providers: ProviderHealthEntry[] }>("/integrations/health");
+}
+
+export interface ProviderSyncRun {
+  id: string;
+  provider: string;
+  user_id: string;
+  account_id: string | null;
+  started_at: string;
+  completed_at: string | null;
+  status: string;
+  trigger_type: string;
+  items_imported: number;
+  items_updated: number;
+  items_skipped: number;
+  transactions_imported: number;
+  transactions_updated: number;
+  errors_count: number;
+  error_message: string | null;
+}
+
+export interface ReconciliationIssue {
+  id: string;
+  provider: string;
+  user_id: string;
+  inventory_item_id: string | null;
+  sync_run_id: string | null;
+  external_id: string | null;
+  issue_type: string;
+  severity: string;
+  status: string;
+  details: Record<string, any> | null;
+  detected_at: string;
+  resolved_at: string | null;
+  resolution_note: string | null;
+}
+
+export async function listSyncRuns(params?: {
+  provider?: string;
+  limit?: number;
+}): Promise<ProviderSyncRun[]> {
+  const qs = new URLSearchParams();
+  if (params?.provider) qs.set("provider", params.provider);
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request<ProviderSyncRun[]>(`/integrations/sync-runs${suffix}`);
+}
+
+export async function retrySyncRun(runId: string): Promise<{
+  message: string;
+  new_run_id: string;
+  status: string;
+  items_imported: number;
+  items_updated: number;
+  errors_count: number;
+}> {
+  return request(`/integrations/sync-runs/${runId}/retry`, { method: "POST" });
+}
+
+export async function listReconciliationIssues(params?: {
+  provider?: string;
+  status?: string;
+  limit?: number;
+}): Promise<ReconciliationIssue[]> {
+  const qs = new URLSearchParams();
+  if (params?.provider) qs.set("provider", params.provider);
+  if (params?.status) qs.set("status", params.status);
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request<ReconciliationIssue[]>(`/integrations/reconciliation-issues${suffix}`);
+}
+
+export async function updateReconciliationIssue(
+  issueId: string,
+  body: { status: "resolved" | "dismissed"; resolution_note?: string }
+): Promise<ReconciliationIssue> {
+  return request<ReconciliationIssue>(`/integrations/reconciliation-issues/${issueId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+// ─── App Health ──────────────────────────────────────────
 
 export async function healthCheck(): Promise<{ status: string; version: string }> {
   return request("/health");
