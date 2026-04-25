@@ -120,6 +120,7 @@ def create_transaction(
 def list_transactions(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    item_id: str | None = Query(None, description="Filter by inventory item id"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -127,6 +128,8 @@ def list_transactions(
     query = db.query(Transaction).filter(
         Transaction.user_id == current_user.id,
     ).order_by(Transaction.created_at.desc())
+    if item_id:
+        query = query.filter(Transaction.item_id == item_id)
 
     total = query.count()
     pages = math.ceil(total / per_page) if total > 0 else 0

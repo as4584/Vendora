@@ -48,7 +48,8 @@
         {
           "photosPermission": "Vendora needs photo access to attach images to inventory items."
         }
-      ]
+      ],
+      "expo-document-picker"
     ],
     "extra": {
       "router": {},

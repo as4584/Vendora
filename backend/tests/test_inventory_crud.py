@@ -76,6 +76,32 @@ class TestGetItem:
         resp = client.get("/api/v1/inventory/00000000-0000-0000-0000-000000000000", headers=auth_headers)
         assert resp.status_code == 404
 
+    def test_detail_contains_mobile_required_fields(self, client, auth_headers, db, test_user):
+        """Item detail response includes source, external_id, and quantity fields used by mobile."""
+        from app.models.inventory import InventoryItem as _Item
+        item = _Item(
+            user_id=test_user.id,
+            name="Sourced Item",
+            source="lightspeed",
+            external_id="LS-9999",
+            quantity=3,
+            status="in_stock",
+        )
+        db.add(item)
+        db.flush()
+
+        resp = client.get(f"/api/v1/inventory/{item.id}", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["source"] == "lightspeed"
+        assert data["external_id"] == "LS-9999"
+        assert data["quantity"] == 3
+        # Null-safe fields must be present (not absent) even when None.
+        assert "photo_front_url" in data
+        assert "photo_back_url" in data
+        assert "vendor_name" in data
+        assert "notes" in data
+
 
 class TestUpdateItem:
     def test_update_item(self, client, auth_headers):

@@ -1,659 +1,390 @@
-/**
- * Item Detail Screen — /inventory/[id]
- *
- * Displays item details with:
- *  • Front / back photo carousel
- *  • Market price panel (UPCItemDB + internal history)
- *  • Smart pricing suggestion banner with one-tap Apply
- *  • Status transitions and soft-delete
- */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-    View,
-    Text,
-    ScrollView,
-    TouchableOpacity,
-    StyleSheet,
-    ActivityIndicator,
-    Alert,
-    Image,
-    Dimensions,
-    Platform,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system/legacy";
 import * as api from "../../../services/api";
-
-const STATUS_COLORS: Record<string, string> = {
-    in_stock: "#00B894",
-    listed: "#0984E3",
-    sold: "#E17055",
-    shipped: "#FDCB6E",
-    paid: "#6C5CE7",
-    archived: "#636E72",
-};
+import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
+import { COLORS, SPACING } from "../../../theme/tokens";
+import { formatCompactDate, formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-    in_stock: ["listed", "sold"],
-    listed: ["sold", "in_stock"],
-    sold: ["shipped", "paid"],
-    shipped: ["paid"],
-    paid: ["archived"],
-    archived: [],
+  in_stock: ["listed", "sold"],
+  listed: ["sold", "in_stock"],
+  sold: ["shipped", "paid"],
+  shipped: ["paid"],
+  paid: ["archived"],
+  archived: [],
 };
 
-function DetailRow({ label, value }: { label: string; value: string | null | undefined }) {
-    if (!value) return null;
+export default function ItemDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const [item, setItem] = useState<api.InventoryItem | null>(null);
+  const [activity, setActivity] = useState<api.InventoryActivityEntry[]>([]);
+  const [transactions, setTransactions] = useState<api.Transaction[]>([]);
+  const [invoices, setInvoices] = useState<api.InvoiceData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activePhoto, setActivePhoto] = useState<"front" | "back">("front");
+  const [photoUploading, setPhotoUploading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const nextItem = await api.getItem(id!);
+        if (cancelled) return;
+        setItem(nextItem);
+
+        const [nextActivity, nextTransactions, nextInvoices] = await Promise.allSettled([
+          api.getItemActivity(nextItem.id),
+          api.listTransactions({ itemId: nextItem.id, perPage: 10 }),
+          api.listInvoices({ inventoryItemId: nextItem.id, perPage: 10 }),
+        ]);
+        if (cancelled) return;
+        if (nextActivity.status === "fulfilled") setActivity(nextActivity.value);
+        if (nextTransactions.status === "fulfilled") setTransactions(nextTransactions.value.items);
+        if (nextInvoices.status === "fulfilled") setInvoices(nextInvoices.value.items);
+      } catch (err: any) {
+        Alert.alert("Error", err?.message || "Item not found.", [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const uploadPhoto = async (side: "front" | "back", uri: string) => {
+    if (!item) return;
+    setPhotoUploading(true);
+    try {
+      const updated = await api.uploadItemPhotos(
+        item.id,
+        side === "front" ? uri : undefined,
+        side === "back" ? uri : undefined
+      );
+      setItem(updated);
+    } catch (err: any) {
+      Alert.alert("Upload failed", err?.message || "Could not update the item photo.");
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const pickPhotoForSide = async (side: "front" | "back") => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== "granted") {
+      Alert.alert("Permission required", "Allow photo library access to update item photos.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: Platform.OS !== "web",
+      aspect: [1, 1],
+      quality: 0.8,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      const dataUrl = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+      uploadPhoto(side, dataUrl);
+    }
+  };
+
+  const handleTransition = async (status: string) => {
+    if (!item) return;
+    try {
+      const updated = await api.updateItemStatus(item.id, status);
+      setItem(updated);
+    } catch (err: any) {
+      Alert.alert("Status update failed", err?.message || "Could not update item status.");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!item) return;
+    Alert.alert("Delete item", "This will soft-delete the item from active inventory.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          await api.deleteItem(item.id);
+          router.replace("/(tabs)/inventory");
+        },
+      },
+    ]);
+  };
+
+  const variants = useMemo(() => {
+    const raw = item?.custom_attributes?.variants;
+    return Array.isArray(raw) ? raw : [];
+  }, [item]);
+
+  if (loading || !item) {
     return (
-        <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{label}</Text>
-            <Text style={styles.detailValue}>{value}</Text>
-        </View>
+      <View testID="item-detail-loading" style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
     );
+  }
+
+  const qty = resolveQty(item);
+  const frontPhoto = resolvedPhoto(item, "front");
+  const backPhoto = resolvedPhoto(item, "back");
+  const currentPhoto = activePhoto === "front" ? frontPhoto : backPhoto;
+  const availableTransitions = VALID_TRANSITIONS[item.status] || [];
+  const sourceLabel = item.source ? SOURCE_LABELS[item.source] || item.source : "Manual";
+
+  return (
+    <ScrollView testID="item-detail-content" style={styles.container} contentContainerStyle={styles.content}>
+      <HeaderTitle
+        title={item.name}
+        subtitle={`${item.category || "Inventory item"} • ${item.sku || "No SKU yet"}`}
+        right={<ActionButton label="Edit" onPress={() => router.push({ pathname: "/(tabs)/inventory/edit", params: { id: item.id } } as any)} tone="secondary" compact />}
+      />
+
+      <Card>
+        <View style={styles.photoHeader}>
+          <SectionLabel>Photos</SectionLabel>
+          <View style={styles.photoSwitchRow}>
+            <TouchableOpacity onPress={() => setActivePhoto("front")}><Pill label="Front" tone={activePhoto === "front" ? "primary" : "neutral"} /></TouchableOpacity>
+            <TouchableOpacity onPress={() => setActivePhoto("back")}><Pill label="Back" tone={activePhoto === "back" ? "primary" : "neutral"} /></TouchableOpacity>
+          </View>
+        </View>
+
+        <TouchableOpacity activeOpacity={0.88} onPress={() => pickPhotoForSide(activePhoto)}>
+          {currentPhoto ? (
+            <Image source={{ uri: currentPhoto }} style={styles.heroPhoto} resizeMode="cover" />
+          ) : (
+            <View style={[styles.heroPhoto, styles.photoFallback]}>
+              <Text style={styles.photoFallbackText}>Tap to add {activePhoto} photo</Text>
+            </View>
+          )}
+          {photoUploading ? (
+            <View style={styles.photoOverlay}><ActivityIndicator color={COLORS.text} /></View>
+          ) : null}
+        </TouchableOpacity>
+
+        <View style={styles.photoThumbRow}>
+          {[{ key: "front", uri: frontPhoto }, { key: "back", uri: backPhoto }].map((photo) => (
+            <TouchableOpacity key={photo.key} onPress={() => setActivePhoto(photo.key as "front" | "back")}>
+              {photo.uri ? (
+                <Image source={{ uri: photo.uri }} style={[styles.thumbPhoto, activePhoto === photo.key && styles.thumbPhotoActive]} />
+              ) : (
+                <View style={[styles.thumbPhoto, styles.photoFallback, activePhoto === photo.key && styles.thumbPhotoActive]}>
+                  <Text style={styles.photoFallbackText}>{photo.key}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Card>
+
+      <Card>
+        <SectionLabel>Stock Summary</SectionLabel>
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryBlock}>
+            <Text style={styles.summaryLabel}>Status</Text>
+            <Text style={styles.summaryValue}>{STATUS_LABELS[item.status] || item.status.toUpperCase()}</Text>
+          </View>
+          <View style={styles.summaryBlock}>
+            <Text style={styles.summaryLabel}>Available</Text>
+            <Text style={styles.summaryValue}>{qty}</Text>
+          </View>
+          <View style={styles.summaryBlock}>
+            <Text style={styles.summaryLabel}>Ask</Text>
+            <Text style={styles.summaryValue}>{formatCurrency(item.expected_sell_price)}</Text>
+          </View>
+          <View style={styles.summaryBlock}>
+            <Text style={styles.summaryLabel}>Source</Text>
+            <Text style={styles.summaryValue}>{sourceLabel}</Text>
+          </View>
+        </View>
+
+        <View style={styles.pillRow}>
+          <Pill label={STATUS_LABELS[item.status] || item.status} tone={qty === 0 ? "danger" : "success"} />
+          <Pill label={qty === 0 ? "Out of stock" : `Stock ${qty}`} tone={qty === 0 ? "danger" : qty <= 3 ? "warning" : "success"} />
+          <Pill label={sourceLabel} tone="info" />
+        </View>
+
+        <Text style={styles.detailLine}>Sizes: {sizeBreakdown(item)}</Text>
+        <Text style={styles.detailLine}>Buy {formatCurrency(item.buy_price)} • Last updated {formatCompactDate(item.updated_at)}</Text>
+      </Card>
+
+      {variants.length > 0 ? (
+        <Card>
+          <SectionLabel>Sizes</SectionLabel>
+          <View style={styles.variantGrid}>
+            {variants.map((variant: any) => (
+              <View key={`${variant.size}-${variant.quantity}`} style={styles.variantCard}>
+                <Text style={styles.variantSize}>{variant.size}</Text>
+                <Text style={styles.variantQty}>{variant.quantity}</Text>
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
+
+      <Card>
+        <SectionLabel>Details</SectionLabel>
+        <DetailRow label="Vendor" value={item.vendor_name || "Unassigned"} />
+        <DetailRow label="Condition" value={item.condition || "Unknown"} />
+        <DetailRow label="Color" value={item.color || "Not set"} />
+        <DetailRow label="UPC" value={item.upc || "Not set"} />
+        <DetailRow label="Notes" value={item.notes || "No notes"} />
+      </Card>
+
+      <Card>
+        <SectionLabel>Sales History</SectionLabel>
+        {transactions.length === 0 ? (
+          <Text style={styles.emptyText}>No completed sales are linked to this item yet.</Text>
+        ) : (
+          transactions.slice(0, 5).map((transaction) => (
+            <View key={transaction.id} style={styles.timelineRow}>
+              <Text style={styles.timelineTitle}>{transaction.method.toUpperCase()}</Text>
+              <Text style={styles.timelineMeta}>
+                {formatCurrency(transaction.gross_amount)} • Qty {transaction.quantity} • {formatCompactDate(transaction.created_at)}
+              </Text>
+            </View>
+          ))
+        )}
+      </Card>
+
+      <Card>
+        <SectionLabel>Linked Invoices</SectionLabel>
+        {invoices.length === 0 ? (
+          <Text style={styles.emptyText}>No invoice line items are linked to this inventory item yet.</Text>
+        ) : (
+          invoices.slice(0, 5).map((invoice) => (
+            <View key={invoice.id} style={styles.timelineRow}>
+              <Text style={styles.timelineTitle}>{invoice.customer_name}</Text>
+              <Text style={styles.timelineMeta}>
+                {invoice.status.toUpperCase()} • {formatCurrency(invoice.total)} • {formatCompactDate(invoice.created_at)}
+              </Text>
+            </View>
+          ))
+        )}
+      </Card>
+
+      <Card>
+        <SectionLabel>Activity Log</SectionLabel>
+        {activity.length === 0 ? (
+          <Text style={styles.emptyText}>No stock activity recorded yet.</Text>
+        ) : (
+          activity.slice(0, 8).map((entry) => (
+            <View key={entry.id} style={styles.timelineRow}>
+              <Text style={styles.timelineTitle}>
+                {entry.event_type.replace(/_/g, " ")} • {entry.delta_quantity > 0 ? `+${entry.delta_quantity}` : entry.delta_quantity}
+              </Text>
+              <Text style={styles.timelineMeta}>
+                After {entry.quantity_after} • {entry.source_type || "system"} • {formatCompactDate(entry.created_at)}
+              </Text>
+            </View>
+          ))
+        )}
+      </Card>
+
+      <Card>
+        <SectionLabel>Actions</SectionLabel>
+        <View style={styles.actionRow}>
+          {availableTransitions.map((status) => (
+            <ActionButton key={status} label={`Mark ${STATUS_LABELS[status] || status}`} onPress={() => handleTransition(status)} tone="secondary" compact />
+          ))}
+        </View>
+        <View style={{ marginTop: SPACING.sm }}>
+          <ActionButton label="Delete Item" onPress={handleDelete} tone="ghost" />
+        </View>
+      </Card>
+    </ScrollView>
+  );
 }
 
-export default function ItemDetailScreen() {
-    const { id } = useLocalSearchParams<{ id: string }>();
-    const router = useRouter();
-    const [item, setItem] = useState<api.InventoryItem | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [activePhoto, setActivePhoto] = useState<"front" | "back">("front");
-    const [photoUploading, setPhotoUploading] = useState(false);
-
-    // Market price
-    const [marketPrice, setMarketPrice] = useState<api.MarketPriceResult | null>(null);
-    const [marketLoading, setMarketLoading] = useState(false);
-
-    // Pricing suggestion
-    const [suggestion, setSuggestion] = useState<api.PricingSuggestion | null>(null);
-    const [suggestLoading, setSuggestLoading] = useState(false);
-    const [applyingPrice, setApplyingPrice] = useState(false);
-
-    const fetchItem = async () => {
-        try {
-            const data = await api.getItem(id!);
-            setItem(data);
-        } catch (err: any) {
-            Alert.alert("Error", err.message || "Item not found.", [
-                { text: "OK", onPress: () => router.back() },
-            ]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchItem();
-    }, [id]);
-
-    // Load market price + suggestion after item loads
-    useEffect(() => {
-        if (!item) return;
-        // Market price
-        setMarketLoading(true);
-        api.getMarketPrice(item.name, item.upc ?? undefined)
-            .then(setMarketPrice)
-            .catch(() => {})
-            .finally(() => setMarketLoading(false));
-        // Pricing suggestion
-        setSuggestLoading(true);
-        api.getPricingSuggestion(item.id)
-            .then(setSuggestion)
-            .catch(() => {})
-            .finally(() => setSuggestLoading(false));
-    }, [item?.id]);
-
-    const handleTransition = async (newStatus: string) => {
-        try {
-            const updated = await api.updateItemStatus(item!.id, newStatus);
-            setItem(updated);
-        } catch (err: any) {
-            Alert.alert("Transition Failed", err.message || "Cannot change status.");
-        }
-    };
-
-    const handleDelete = () => {
-        Alert.alert(
-            "Delete Item",
-            "This item will be recoverable for 30 days. Continue?",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            await api.deleteItem(item!.id);
-                            Alert.alert("Deleted", "Item has been removed.", [
-                                { text: "OK", onPress: () => router.replace("/(tabs)/inventory") },
-                            ]);
-                        } catch (err: any) {
-                            Alert.alert("Error", err.message);
-                        }
-                    },
-                },
-            ]
-        );
-    };
-
-    // ── Photo editing ──
-    const changePhoto = async (side: "front" | "back", uri: string) => {
-        setPhotoUploading(true);
-        try {
-            const b64 = await FileSystem.readAsStringAsync(uri, {
-                encoding: FileSystem.EncodingType.Base64,
-            });
-            const dataUrl = `data:image/jpeg;base64,${b64}`;
-            const updated = await api.uploadItemPhotos(
-                item!.id,
-                side === "front" ? dataUrl : undefined,
-                side === "back" ? dataUrl : undefined,
-            );
-            setItem(updated);
-        } catch (err: any) {
-            Alert.alert("Upload Failed", err.message || "Could not save photo.");
-        } finally {
-            setPhotoUploading(false);
-        }
-    };
-
-    const pickPhotoForSide = async (side: "front" | "back") => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-            Alert.alert("Permission Required", "Allow photo access to change item photos.");
-            return;
-        }
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-        });
-        if (!result.canceled && result.assets[0]) {
-            await changePhoto(side, result.assets[0].uri);
-        }
-    };
-
-    const takePhotoForSide = async (side: "front" | "back") => {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== "granted") {
-            Alert.alert("Permission Required", "Allow camera access to take a photo.");
-            return;
-        }
-        const result = await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-        });
-        if (!result.canceled && result.assets[0]) {
-            await changePhoto(side, result.assets[0].uri);
-        }
-    };
-
-    const showPhotoOptions = (side: "front" | "back") => {
-        Alert.alert(
-            `Change ${side === "front" ? "Front" : "Back"} Photo`,
-            "Choose a source",
-            [
-                { text: "Take Photo", onPress: () => takePhotoForSide(side) },
-                { text: "Choose from Library", onPress: () => pickPhotoForSide(side) },
-                { text: "Cancel", style: "cancel" },
-            ]
-        );
-    };
-
-    const handleApplyPrice = async () => {
-        if (!suggestion || !item) return;
-        setApplyingPrice(true);
-        try {
-            const updated = await api.updateItem(item.id, {
-                expected_sell_price: suggestion.suggested_price.toFixed(2),
-            });
-            setItem(updated);
-            setSuggestion(null);
-            Alert.alert("✅ Applied", `Expected price set to $${suggestion.suggested_price.toFixed(2)}`);
-        } catch (err: any) {
-            Alert.alert("Error", err.message);
-        } finally {
-            setApplyingPrice(false);
-        }
-    };
-
-    if (loading || !item) {
-        return (
-            <View style={styles.center}>
-                <ActivityIndicator size="large" color="#6C5CE7" />
-            </View>
-        );
-    }
-
-    const transitions = VALID_TRANSITIONS[item.status] || [];
-    const frontUri = (item as any).photo_front_url as string | null;
-    const backUri = (item as any).photo_back_url as string | null;
-    const activeUri = activePhoto === "front" ? frontUri : backUri;
-
-    return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-            {/* ── Photo Carousel ── */}
-            <View style={styles.photoSection}>
-                <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() =>
-                        Platform.OS === "web"
-                            ? pickPhotoForSide(activePhoto)
-                            : showPhotoOptions(activePhoto)
-                    }
-                    disabled={photoUploading}
-                >
-                    {activeUri ? (
-                        <Image
-                            source={{ uri: activeUri }}
-                            style={styles.photoMain}
-                            resizeMode="cover"
-                        />
-                    ) : (
-                        <View style={[styles.photoMain, styles.photoPlaceholder]}>
-                            <Text style={styles.photoPlaceholderIcon}>📷</Text>
-                            <Text style={styles.photoPlaceholderText}>Tap to add photo</Text>
-                        </View>
-                    )}
-                    {photoUploading ? (
-                        <View style={styles.photoUploadOverlay}>
-                            <ActivityIndicator size="large" color="#FFF" />
-                        </View>
-                    ) : (
-                        <View style={styles.photoEditOverlay}>
-                            <Text style={styles.photoEditOverlayText}>📷  Change</Text>
-                        </View>
-                    )}
-                </TouchableOpacity>
-                <View style={styles.photoTabs}>
-                    {(["front", "back"] as const).map((side) => (
-                        <TouchableOpacity
-                            key={side}
-                            style={[styles.photoTab, activePhoto === side && styles.photoTabActive]}
-                            onPress={() => setActivePhoto(side)}
-                        >
-                            <Text style={[styles.photoTabText, activePhoto === side && styles.photoTabTextActive]}>
-                                {side.toUpperCase()}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-            </View>
-
-            {/* ── Header ── */}
-            <Text style={styles.itemName}>{item.name}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] }]}>
-                <Text style={styles.statusText}>{item.status.replace("_", " ").toUpperCase()}</Text>
-            </View>
-
-            {/* ── Smart Pricing Suggestion ── */}
-            {suggestLoading && (
-                <View style={styles.suggestBox}>
-                    <ActivityIndicator size="small" color="#6C5CE7" />
-                    <Text style={styles.suggestLoading}>Analysing market data…</Text>
-                </View>
-            )}
-            {suggestion && (
-                <View style={styles.suggestBox}>
-                    <View style={styles.suggestHeader}>
-                        <Text style={styles.suggestTitle}>💡 Smart Pricing</Text>
-                        <View style={[
-                            styles.confidenceBadge,
-                            { backgroundColor: suggestion.confidence === "high" ? "#00B894" : suggestion.confidence === "medium" ? "#FDCB6E" : "#E17055" }
-                        ]}>
-                            <Text style={styles.confidenceText}>{suggestion.confidence.toUpperCase()}</Text>
-                        </View>
-                    </View>
-                    <Text style={styles.suggestPrice}>${suggestion.suggested_price.toFixed(2)}</Text>
-                    <Text style={styles.suggestReason}>{suggestion.reason}</Text>
-                    <Text style={styles.suggestBasis}>{suggestion.basis}</Text>
-                    <TouchableOpacity
-                        style={[styles.applyButton, applyingPrice && styles.applyButtonDisabled]}
-                        onPress={handleApplyPrice}
-                        disabled={applyingPrice}
-                    >
-                        {applyingPrice
-                            ? <ActivityIndicator size="small" color="#FFF" />
-                            : <Text style={styles.applyButtonText}>Apply Price</Text>
-                        }
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            {/* ── Details ── */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Details</Text>
-                <DetailRow label="Category" value={item.category} />
-                <DetailRow label="SKU" value={item.sku} />
-                <DetailRow label="UPC" value={item.upc} />
-                <DetailRow label="Size" value={item.size} />
-                <DetailRow label="Color" value={item.color} />
-                <DetailRow label="Condition" value={item.condition} />
-                <DetailRow label="Serial Number" value={item.serial_number} />
-                <DetailRow label="Platform" value={item.platform} />
-                <DetailRow label="Vendor" value={(item as any).vendor_name} />
-                {(item as any).notes ? (
-                    <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Notes</Text>
-                        <Text style={[styles.detailValue, { flex: 1 }]}>{(item as any).notes}</Text>
-                    </View>
-                ) : null}
-            </View>
-
-            {/* ── Pricing ── */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Pricing</Text>
-                <DetailRow label="Buy Price" value={item.buy_price ? `$${item.buy_price}` : null} />
-                <DetailRow label="Expected Sell" value={item.expected_sell_price ? `$${item.expected_sell_price}` : null} />
-                <DetailRow label="Actual Sell" value={item.actual_sell_price ? `$${item.actual_sell_price}` : null} />
-                {item.buy_price && item.expected_sell_price && (
-                    <DetailRow
-                        label="Expected Profit"
-                        value={`$${(parseFloat(item.expected_sell_price) - parseFloat(item.buy_price)).toFixed(2)}`}
-                    />
-                )}
-            </View>
-
-            {/* ── Market Price Panel ── */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Market Price</Text>
-                {marketLoading && <ActivityIndicator size="small" color="#6C5CE7" style={{ marginVertical: 8 }} />}
-                {!marketLoading && marketPrice && (
-                    <>
-                        {marketPrice.product_info && (
-                            <View style={styles.marketProduct}>
-                                {marketPrice.product_info.image_url && (
-                                    <Image
-                                        source={{ uri: marketPrice.product_info.image_url }}
-                                        style={styles.marketProductImage}
-                                        resizeMode="contain"
-                                    />
-                                )}
-                                <View style={styles.marketProductInfo}>
-                                    <Text style={styles.marketProductTitle} numberOfLines={2}>
-                                        {marketPrice.product_info.title}
-                                    </Text>
-                                    {marketPrice.product_info.brand && (
-                                        <Text style={styles.marketProductBrand}>{marketPrice.product_info.brand}</Text>
-                                    )}
-                                    {marketPrice.product_info.lowest_price != null && (
-                                        <Text style={styles.marketPriceRange}>
-                                            ${marketPrice.product_info.lowest_price.toFixed(2)}
-                                            {marketPrice.product_info.highest_price != null
-                                                ? ` – $${marketPrice.product_info.highest_price.toFixed(2)}`
-                                                : ""}
-                                        </Text>
-                                    )}
-                                </View>
-                            </View>
-                        )}
-                        {marketPrice.internal_history.avg_sold_price != null && (
-                            <View style={styles.historyRow}>
-                                <Text style={styles.historyLabel}>
-                                    Your avg sold price ({marketPrice.internal_history.sample_count} sales)
-                                </Text>
-                                <Text style={styles.historyValue}>
-                                    ${marketPrice.internal_history.avg_sold_price.toFixed(2)}
-                                </Text>
-                            </View>
-                        )}
-                        {marketPrice.sources.map((src) =>
-                            src.price != null ? (
-                                <View key={src.source} style={styles.sourceRow}>
-                                    <Text style={styles.sourceLabel}>{src.label}</Text>
-                                    <Text style={styles.sourceValue}>${src.price.toFixed(2)}</Text>
-                                </View>
-                            ) : null
-                        )}
-                        {!marketPrice.product_info && marketPrice.internal_history.avg_sold_price == null && (
-                            <Text style={styles.noMarket}>No market data found for this item.</Text>
-                        )}
-                    </>
-                )}
-                {!marketLoading && !marketPrice && (
-                    <Text style={styles.noMarket}>Market data unavailable.</Text>
-                )}
-            </View>
-
-            {/* ── Status Transitions ── */}
-            {transitions.length > 0 && (
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Actions</Text>
-                    <View style={styles.actionsRow}>
-                        {transitions.map((status) => (
-                            <TouchableOpacity
-                                key={status}
-                                style={[styles.transitionButton, { borderColor: STATUS_COLORS[status] }]}
-                                onPress={() => handleTransition(status)}
-                            >
-                                <Text style={[styles.transitionText, { color: STATUS_COLORS[status] }]}>
-                                    → {status.replace("_", " ").toUpperCase()}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-            )}
-
-            {/* ── Timestamps ── */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Timestamps</Text>
-                <DetailRow label="Created" value={new Date(item.created_at).toLocaleDateString()} />
-                <DetailRow label="Updated" value={new Date(item.updated_at).toLocaleDateString()} />
-            </View>
-
-            {/* ── Delete ── */}
-            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-                <Text style={styles.deleteText}>🗑 Delete Item</Text>
-            </TouchableOpacity>
-        </ScrollView>
-    );
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value}</Text>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#0A0A1A",
-    },
-    content: {
-        padding: 20,
-        paddingBottom: 40,
-    },
-    center: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "#0A0A1A",
-    },
-    itemName: {
-        fontSize: 24,
-        fontWeight: "800",
-        color: "#FFFFFF",
-        marginBottom: 12,
-    },
-    statusBadge: {
-        alignSelf: "flex-start",
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 8,
-        marginBottom: 24,
-    },
-    statusText: {
-        color: "#FFFFFF",
-        fontSize: 12,
-        fontWeight: "800",
-        letterSpacing: 0.5,
-    },
-    section: {
-        marginBottom: 24,
-    },
-    sectionTitle: {
-        fontSize: 14,
-        fontWeight: "800",
-        color: "#6C5CE7",
-        marginBottom: 12,
-        textTransform: "uppercase",
-        letterSpacing: 1,
-    },
-    detailRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: "#1A1A2E",
-    },
-    detailLabel: {
-        color: "#888",
-        fontSize: 14,
-        fontWeight: "500",
-    },
-    detailValue: {
-        color: "#FFFFFF",
-        fontSize: 14,
-        fontWeight: "600",
-        maxWidth: "60%",
-        textAlign: "right",
-    },
-    actionsRow: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: 10,
-    },
-    transitionButton: {
-        borderWidth: 1.5,
-        borderRadius: 10,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-    },
-    transitionText: {
-        fontSize: 13,
-        fontWeight: "700",
-    },
-    deleteButton: {
-        backgroundColor: "#2D1F1F",
-        borderWidth: 1,
-        borderColor: "#E17055",
-        borderRadius: 12,
-        paddingVertical: 14,
-        alignItems: "center",
-        marginTop: 8,
-    },
-    deleteText: {
-        color: "#E17055",
-        fontSize: 15,
-        fontWeight: "700",
-    },
-
-    // Photos
-    photoSection: { marginBottom: 20 },
-    photoMain: {
-        width: "100%",
-        height: Dimensions.get("window").width * 0.7,
-        borderRadius: 14,
-        backgroundColor: "#16213E",
-    },
-    photoPlaceholder: {
-        justifyContent: "center",
-        alignItems: "center",
-        borderWidth: 2,
-        borderColor: "#2A2A4A",
-        borderStyle: "dashed",
-    },
-    photoPlaceholderIcon: { fontSize: 36, marginBottom: 8 },
-    photoPlaceholderText: { color: "#555", fontSize: 14, fontWeight: "600" },
-    photoUploadOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: "rgba(0,0,0,0.55)",
-        borderRadius: 14,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    photoEditOverlay: {
-        position: "absolute",
-        bottom: 10,
-        right: 10,
-        backgroundColor: "rgba(0,0,0,0.55)",
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-    },
-    photoEditOverlayText: {
-        color: "#FFF",
-        fontSize: 12,
-        fontWeight: "700",
-    },
-    photoTabs: { flexDirection: "row", gap: 8, marginTop: 10 },
-    photoTab: {
-        flex: 1,
-        paddingVertical: 8,
-        alignItems: "center",
-        borderRadius: 8,
-        backgroundColor: "#1A1A2E",
-        borderWidth: 1,
-        borderColor: "#2A2A4A",
-    },
-    photoTabActive: { backgroundColor: "#6C5CE7", borderColor: "#6C5CE7" },
-    photoTabText: { color: "#888", fontSize: 12, fontWeight: "700" },
-    photoTabTextActive: { color: "#FFF" },
-
-    // Smart pricing
-    suggestBox: {
-        backgroundColor: "#1A1A3E",
-        borderRadius: 14,
-        padding: 16,
-        marginBottom: 20,
-        borderWidth: 1,
-        borderColor: "#6C5CE7",
-    },
-    suggestLoading: { color: "#888", marginLeft: 10 },
-    suggestHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-    suggestTitle: { color: "#B8A9E8", fontSize: 14, fontWeight: "800" },
-    confidenceBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-    confidenceText: { color: "#FFF", fontSize: 10, fontWeight: "800" },
-    suggestPrice: { color: "#FFFFFF", fontSize: 28, fontWeight: "900", marginBottom: 4 },
-    suggestReason: { color: "#CCC", fontSize: 13, marginBottom: 2 },
-    suggestBasis: { color: "#888", fontSize: 11, marginBottom: 12 },
-    applyButton: {
-        backgroundColor: "#6C5CE7",
-        borderRadius: 10,
-        paddingVertical: 12,
-        alignItems: "center",
-    },
-    applyButtonDisabled: { opacity: 0.6 },
-    applyButtonText: { color: "#FFF", fontSize: 14, fontWeight: "700" },
-
-    // Market price
-    marketProduct: { flexDirection: "row", gap: 12, marginBottom: 12 },
-    marketProductImage: {
-        width: 70,
-        height: 70,
-        borderRadius: 8,
-        backgroundColor: "#16213E",
-    },
-    marketProductInfo: { flex: 1 },
-    marketProductTitle: { color: "#FFF", fontSize: 13, fontWeight: "600", marginBottom: 4 },
-    marketProductBrand: { color: "#888", fontSize: 11, marginBottom: 4 },
-    marketPriceRange: { color: "#00B894", fontSize: 15, fontWeight: "700" },
-    historyRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: "#1A1A2E",
-    },
-    historyLabel: { color: "#888", fontSize: 13 },
-    historyValue: { color: "#6C5CE7", fontSize: 14, fontWeight: "700" },
-    sourceRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: "#1A1A2E",
-    },
-    sourceLabel: { color: "#999", fontSize: 13 },
-    sourceValue: { color: "#FFF", fontSize: 13, fontWeight: "600" },
-    noMarket: { color: "#555", fontSize: 13, fontStyle: "italic" },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: SPACING.lg, paddingBottom: 48, gap: SPACING.md },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
+  photoHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: SPACING.sm },
+  photoSwitchRow: { flexDirection: "row", gap: SPACING.xs },
+  heroPhoto: { width: "100%", height: 260, borderRadius: 18, backgroundColor: COLORS.cardAlt },
+  photoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(7,11,22,0.35)",
+    borderRadius: 18,
+  },
+  photoFallback: { alignItems: "center", justifyContent: "center" },
+  photoFallbackText: { color: COLORS.textMuted, fontWeight: "700", textTransform: "capitalize" },
+  photoThumbRow: { flexDirection: "row", gap: SPACING.sm, marginTop: SPACING.sm },
+  thumbPhoto: { width: 64, height: 64, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardAlt },
+  thumbPhotoActive: { borderColor: COLORS.primary, borderWidth: 2 },
+  summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm, marginBottom: SPACING.sm },
+  summaryBlock: {
+    flex: 1,
+    minWidth: 130,
+    backgroundColor: COLORS.bgElevated,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+  },
+  summaryLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: "600" },
+  summaryValue: { color: COLORS.text, fontSize: 18, fontWeight: "800", marginTop: 6 },
+  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, marginBottom: SPACING.sm },
+  detailLine: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
+  variantGrid: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm },
+  variantCard: {
+    minWidth: 82,
+    backgroundColor: COLORS.bgElevated,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    alignItems: "center",
+    gap: 4,
+  },
+  variantSize: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
+  variantQty: { color: COLORS.success, fontSize: 18, fontWeight: "800" },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: SPACING.md,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  detailLabel: { color: COLORS.textSoft, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
+  detailValue: { color: COLORS.text, fontSize: 13, fontWeight: "600", flex: 1, textAlign: "right" },
+  emptyText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
+  timelineRow: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  timelineTitle: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
+  timelineMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm },
 });

@@ -5,7 +5,6 @@
  * from the current item data and saves changes via updateItem.
  */
 import { useEffect, useState } from "react";
-import * as FileSystem from "expo-file-system/legacy";
 import {
     View,
     Text,
@@ -103,12 +102,8 @@ export default function EditItemScreen() {
                 if (Array.isArray(v)) setVariants(v as api.SizeVariant[]);
 
                 // Photos: prefer custom_attributes photos, fallback to url fields
-                const photoF =
-                    (item.custom_attributes?.photo_front as string | undefined) ??
-                    item.photo_front_url;
-                const photoB =
-                    (item.custom_attributes?.photo_back as string | undefined) ??
-                    item.photo_back_url;
+                const photoF = item.photo_front_url;
+                const photoB = item.photo_back_url;
                 if (photoF) setFrontPhoto(photoF);
                 if (photoB) setBackPhoto(photoB);
             } catch (err: any) {
@@ -129,13 +124,18 @@ export default function EditItemScreen() {
         }
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
+            allowsEditing: Platform.OS !== "web",
             aspect: [1, 1],
             quality: 0.8,
+            base64: true,
         });
         if (!result.canceled && result.assets[0]) {
-            if (side === "front") { setFrontPhoto(result.assets[0].uri); setFrontChanged(true); }
-            else { setBackPhoto(result.assets[0].uri); setBackChanged(true); }
+            const asset = result.assets[0];
+            const dataUrl = asset.base64
+                ? `data:image/jpeg;base64,${asset.base64}`
+                : asset.uri;
+            if (side === "front") { setFrontPhoto(dataUrl); setFrontChanged(true); }
+            else { setBackPhoto(dataUrl); setBackChanged(true); }
         }
     };
 
@@ -149,14 +149,24 @@ export default function EditItemScreen() {
             allowsEditing: true,
             aspect: [1, 1],
             quality: 0.8,
+            base64: true,
         });
         if (!result.canceled && result.assets[0]) {
-            if (side === "front") { setFrontPhoto(result.assets[0].uri); setFrontChanged(true); }
-            else { setBackPhoto(result.assets[0].uri); setBackChanged(true); }
+            const asset = result.assets[0];
+            const dataUrl = asset.base64
+                ? `data:image/jpeg;base64,${asset.base64}`
+                : asset.uri;
+            if (side === "front") { setFrontPhoto(dataUrl); setFrontChanged(true); }
+            else { setBackPhoto(dataUrl); setBackChanged(true); }
         }
     };
 
     const showPhotoOptions = (side: PhotoSide) => {
+        // On web, Alert action sheets don't render multiple buttons — go straight to library picker.
+        if (Platform.OS === "web") {
+            pickPhoto(side);
+            return;
+        }
         Alert.alert(
             `${side === "front" ? "Front" : "Back"} Photo`,
             "Choose a source",
@@ -238,26 +248,6 @@ export default function EditItemScreen() {
                 existingAttrs.variants = variants;
             }
 
-            // Handle photo changes
-            const readB64 = async (uri: string): Promise<string> => {
-                const b64 = await FileSystem.readAsStringAsync(uri, {
-                    encoding: FileSystem.EncodingType.Base64,
-                });
-                return `data:image/jpeg;base64,${b64}`;
-            };
-
-            if (frontChanged && frontPhoto && !frontPhoto.startsWith("data:")) {
-                existingAttrs.photo_front = await readB64(frontPhoto);
-            } else if (frontPhoto?.startsWith("data:")) {
-                existingAttrs.photo_front = frontPhoto;
-            }
-
-            if (backChanged && backPhoto && !backPhoto.startsWith("data:")) {
-                existingAttrs.photo_back = await readB64(backPhoto);
-            } else if (backPhoto?.startsWith("data:")) {
-                existingAttrs.photo_back = backPhoto;
-            }
-
             const payload: Partial<api.CreateItemPayload> = {
                 name: name.trim(),
                 category: category.trim() || undefined,
@@ -274,7 +264,14 @@ export default function EditItemScreen() {
                 custom_attributes: existingAttrs,
             };
 
-            await api.updateItem(id, payload);
+            const updated = await api.updateItem(id, payload);
+            if (frontChanged || backChanged) {
+                await api.uploadItemPhotos(
+                    updated.id,
+                    frontChanged ? frontPhoto : undefined,
+                    backChanged ? backPhoto : undefined,
+                );
+            }
 
             Alert.alert("✅ Updated", "Item changes saved!", [
                 { text: "OK", onPress: () => router.back() },

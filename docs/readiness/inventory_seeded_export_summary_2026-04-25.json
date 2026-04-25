@@ -1,0 +1,36 @@
+{
+  "rows": 83,
+  "columns": [
+    "id",
+    "name",
+    "category",
+    "sku",
+    "upc",
+    "size",
+    "color",
+    "condition",
+    "quantity",
+    "buy_price",
+    "expected_sell_price",
+    "actual_sell_price",
+    "status",
+    "platform",
+    "vendor_name",
+    "notes",
+    "photo_front_url",
+    "photo_back_url",
+    "front_image_formula",
+    "back_image_formula",
+    "size_breakdown",
+    "source",
+    "external_id",
+    "created_at",
+    "updated_at"
+  ],
+  "preview": {
+    "rows_to_create": 0,
+    "rows_to_update": 83,
+    "rows_to_skip": 0,
+    "rows_errored": 0
+  }
+}

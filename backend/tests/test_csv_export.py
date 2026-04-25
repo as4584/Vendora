@@ -58,6 +58,34 @@ class TestCSVExportContent:
         assert "vendor_name" in rows[0]
         assert len(rows) == 3  # header + 2 items
 
+    def test_inventory_csv_includes_photo_and_size_helpers(self, client, pro_headers):
+        """Export includes raw photo urls plus spreadsheet helper columns."""
+        client.post("/api/v1/inventory", json={
+            "name": "Jordan 1 Showcase",
+            "sku": "SHOW-001",
+            "quantity": 3,
+            "photo_front_url": "https://cdn.example/front.jpg",
+            "photo_back_url": "https://cdn.example/back.jpg",
+            "custom_attributes": {
+                "variants": [
+                    {"size": "US 8", "quantity": 1},
+                    {"size": "US 9", "quantity": 2},
+                ]
+            },
+        }, headers=pro_headers)
+
+        resp = client.get("/api/v1/export/inventory", headers=pro_headers)
+        assert resp.status_code == 200
+
+        rows = list(csv.DictReader(io.StringIO(resp.text)))
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["photo_front_url"] == "https://cdn.example/front.jpg"
+        assert row["photo_back_url"] == "https://cdn.example/back.jpg"
+        assert row["front_image_formula"] == '=IMAGE("https://cdn.example/front.jpg")'
+        assert row["back_image_formula"] == '=IMAGE("https://cdn.example/back.jpg")'
+        assert row["size_breakdown"] == "US 8 (1); US 9 (2)"
+
     def test_transactions_csv(self, client, pro_headers):
         """Pro users can download transactions CSV."""
         # Create a transaction

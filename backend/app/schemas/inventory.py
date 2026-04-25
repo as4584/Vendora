@@ -36,6 +36,8 @@ class ItemCreate(BaseModel):
     expected_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     actual_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     platform: str | None = Field(None, max_length=100)
+    photo_front_url: str | None = None
+    photo_back_url: str | None = None
     quantity: int = Field(1, ge=1)
     vendor_name: str | None = Field(None, max_length=255)
     notes: str | None = None
@@ -55,6 +57,8 @@ class ItemUpdate(BaseModel):
     expected_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     actual_sell_price: Decimal | None = Field(None, ge=0, decimal_places=2)
     platform: str | None = Field(None, max_length=100)
+    photo_front_url: str | None = None
+    photo_back_url: str | None = None
     quantity: int | None = Field(None, ge=0)
     vendor_name: str | None = Field(None, max_length=255)
     notes: str | None = None
@@ -100,6 +104,21 @@ class PaginatedItems(BaseModel):
     page: int
     per_page: int
     pages: int
+
+
+class InventoryActivityEntry(BaseModel):
+    """One stock/activity event for an inventory item."""
+
+    id: UUID
+    inventory_item_id: UUID
+    delta_quantity: int
+    quantity_after: int
+    event_type: str
+    source_type: str | None = None
+    source_id: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # ─── Import schemas ────────────────────────────────────────────────────

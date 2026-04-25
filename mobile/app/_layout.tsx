@@ -6,6 +6,7 @@ import { Slot, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "../context/auth";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 function RootLayoutNav() {
     const { isAuthenticated, isLoading } = useAuth();
@@ -37,10 +38,12 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
     return (
-        <AuthProvider>
-            <StatusBar style="light" />
-            <RootLayoutNav />
-        </AuthProvider>
+        <SafeAreaProvider>
+            <AuthProvider>
+                <StatusBar style="light" />
+                <RootLayoutNav />
+            </AuthProvider>
+        </SafeAreaProvider>
     );
 }
 

@@ -1,365 +1,285 @@
-﻿/**
- * Settings Screen — user profile, tier info, Lightspeed integration, sign out.
- */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-    View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  ScrollView,
+  Image,
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
 import { useAuth } from "../../context/auth";
 import * as api from "../../services/api";
 import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/backgroundSync";
+import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../components/ui";
+import { COLORS, SPACING } from "../../theme/tokens";
+import { formatCompactDate } from "../../utils/inventory";
+
+function ProviderCard({
+  name,
+  connected,
+  lastSynced,
+  helper,
+  loading,
+  syncing,
+  onConnect,
+  onSync,
+}: {
+  name: string;
+  connected: boolean;
+  lastSynced?: string | null;
+  helper: string;
+  loading: boolean;
+  syncing: boolean;
+  onConnect: () => void;
+  onSync: () => void;
+}) {
+  return (
+    <Card style={{ gap: SPACING.sm }}>
+      <View style={styles.providerHeader}>
+        <Text style={styles.providerName}>{name}</Text>
+        {loading ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : (
+          <Pill label={connected ? "Connected" : "Not connected"} tone={connected ? "success" : "neutral"} />
+        )}
+      </View>
+      <Text style={styles.helperText}>{helper}</Text>
+      <Text style={styles.helperText}>Last sync: {formatCompactDate(lastSynced)}</Text>
+      <View style={styles.providerActions}>
+        <ActionButton label={connected ? (syncing ? "Syncing..." : "Sync Now") : `Connect ${name}`} onPress={connected ? onSync : onConnect} tone={connected ? "primary" : "secondary"} compact />
+      </View>
+    </Card>
+  );
+}
 
 export default function SettingsScreen() {
-    const { user, signOut, refreshUser } = useAuth();
+  const router = useRouter();
+  const { user, signOut, refreshUser } = useAuth();
+  const [health, setHealth] = useState<api.ProviderHealthEntry[]>([]);
+  const [lsStatus, setLsStatus] = useState<api.LightspeedStatus | null>(null);
+  const [sqStatus, setSqStatus] = useState<api.SquareStatus | null>(null);
+  const [cvStatus, setCvStatus] = useState<api.CloverStatus | null>(null);
+  const [lsLoading, setLsLoading] = useState(true);
+  const [sqLoading, setSqLoading] = useState(true);
+  const [cvLoading, setCvLoading] = useState(true);
+  const [lsSyncing, setLsSyncing] = useState(false);
+  const [sqSyncing, setSqSyncing] = useState(false);
+  const [cvSyncing, setCvSyncing] = useState(false);
+  const [photoSaving, setPhotoSaving] = useState(false);
 
-    // Lightspeed state
-    const [lsStatus, setLsStatus] = useState<api.LightspeedStatus | null>(null);
-    const [lsLoading, setLsLoading] = useState(true);
-    const [lsSyncing, setLsSyncing] = useState(false);
-    const [photoSaving, setPhotoSaving] = useState(false);
+  const fetchAll = async () => {
+    setLsLoading(true);
+    setSqLoading(true);
+    setCvLoading(true);
+    const [ls, sq, cv, providerHealth] = await Promise.allSettled([
+      api.getLightspeedStatus(),
+      api.getSquareStatus(),
+      api.getCloverStatus(),
+      api.getProviderHealth(),
+    ]);
+    if (ls.status === "fulfilled") setLsStatus(ls.value); else setLsStatus(null);
+    if (sq.status === "fulfilled") setSqStatus(sq.value); else setSqStatus(null);
+    if (cv.status === "fulfilled") setCvStatus(cv.value); else setCvStatus(null);
+    if (providerHealth.status === "fulfilled") setHealth(providerHealth.value.providers); else setHealth([]);
+    setLsLoading(false);
+    setSqLoading(false);
+    setCvLoading(false);
+  };
 
-    const handleChangePhoto = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-            Alert.alert("Permission needed", "Grant photo access to set your profile picture.");
-            return;
-        }
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ["images"],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.5,
-            base64: true,
-        });
-        if (!result.canceled && result.assets[0].base64) {
-            setPhotoSaving(true);
-            try {
-                const b64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
-                await api.updateProfile(user?.business_name, b64);
-                await refreshUser();
-                Alert.alert("✅", "Profile picture updated! It will appear on your PDF invoices.");
-            } catch (err: any) {
-                Alert.alert("Error", err.message || "Failed to save profile picture.");
-            } finally {
-                setPhotoSaving(false);
-            }
-        }
-    };
+  useEffect(() => {
+    fetchAll();
+  }, []);
 
-    const fetchLsStatus = async () => {
-        try {
-            const status = await api.getLightspeedStatus();
-            setLsStatus(status);
-            // Register background sync if connected
-            if (status.connected) {
-                await registerBackgroundSync().catch(() => {});
-            }
-        } catch {
-            setLsStatus(null);
-        } finally {
-            setLsLoading(false);
-        }
-    };
+  const issuesCount = useMemo(
+    () => health.reduce((sum, entry) => sum + entry.open_issues_count, 0),
+    [health]
+  );
 
-    useEffect(() => { fetchLsStatus(); }, []);
+  const handleChangePhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== "granted") {
+      Alert.alert("Permission required", "Allow photo library access to update your profile photo.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.6,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]?.base64) {
+      setPhotoSaving(true);
+      try {
+        await api.updateProfile(user?.business_name, `data:image/jpeg;base64,${result.assets[0].base64}`);
+        await refreshUser();
+      } finally {
+        setPhotoSaving(false);
+      }
+    }
+  };
 
-    const handleConnectLightspeed = async () => {
-        try {
-            const { authorization_url } = await api.getLightspeedConnectUrl();
-            await WebBrowser.openBrowserAsync(authorization_url);
-            // Refresh status after OAuth redirect
-            setLsLoading(true);
-            await fetchLsStatus();
-        } catch (err: any) {
-            const msg: string = err.message ?? "";
-            if (msg.toLowerCase().includes("not configured") || err.status === 503) {
-                Alert.alert(
-                    "Coming Soon",
-                    "Lightspeed POS integration requires a developer key that hasn't been set up on this server yet. This feature will be available soon."
-                );
-            } else {
-                Alert.alert("Error", msg || "Could not open Lightspeed auth.");
-            }
-        }
-    };
+  const handleConnectLightspeed = async () => {
+    try {
+      const { authorization_url } = await api.getLightspeedConnectUrl();
+      await WebBrowser.openBrowserAsync(authorization_url);
+      await registerBackgroundSync().catch(() => {});
+      fetchAll();
+    } catch (err: any) {
+      Alert.alert("Lightspeed unavailable", err?.message || "Could not open the Lightspeed connect flow.");
+    }
+  };
 
-    const handleDisconnectLightspeed = async () => {
-        Alert.alert("Disconnect Lightspeed", "Stop syncing from Lightspeed?", [
-            { text: "Cancel", style: "cancel" },
-            {
-                text: "Disconnect",
-                style: "destructive",
-                onPress: async () => {
-                    await unregisterBackgroundSync().catch(() => {});
-                    setLsStatus(null);
-                },
-            },
-        ]);
-    };
+  const handleSyncLightspeed = async () => {
+    setLsSyncing(true);
+    try {
+      await api.triggerLightspeedSync();
+      fetchAll();
+      router.push("/settings/sync-center" as any);
+    } catch (err: any) {
+      Alert.alert("Lightspeed sync failed", err?.message || "Could not complete the Lightspeed sync.");
+    } finally {
+      setLsSyncing(false);
+    }
+  };
 
-    const handleSyncNow = async () => {
-        setLsSyncing(true);
-        try {
-            const result = await api.triggerLightspeedSync();
-            Alert.alert(
-                "Sync Complete",
-                `Synced ${result.synced_items} items and ${result.synced_transactions} transactions.`
-            );
-            await fetchLsStatus();
-        } catch (err: any) {
-            Alert.alert("Sync Failed", err.message || "Could not sync.");
-        } finally {
-            setLsSyncing(false);
-        }
-    };
+  const handleSyncSquare = async () => {
+    setSqSyncing(true);
+    try {
+      await api.triggerSquareSync();
+      fetchAll();
+      router.push("/settings/sync-center" as any);
+    } catch (err: any) {
+      Alert.alert("Square sync failed", err?.message || "Could not complete the Square sync.");
+    } finally {
+      setSqSyncing(false);
+    }
+  };
 
-    const handleSignOut = () => {
-        Alert.alert("Sign Out", "Are you sure?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Sign Out", style: "destructive", onPress: signOut },
-        ]);
-    };
+  const handleSyncClover = async () => {
+    setCvSyncing(true);
+    try {
+      await api.triggerCloverSync();
+      fetchAll();
+      router.push("/settings/sync-center" as any);
+    } catch (err: any) {
+      Alert.alert("Clover sync failed", err?.message || "Could not complete the Clover sync.");
+    } finally {
+      setCvSyncing(false);
+    }
+  };
 
-    return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-            {/* Profile Card */}
-            <View style={styles.card}>
-                <TouchableOpacity style={styles.avatarContainer} onPress={handleChangePhoto} disabled={photoSaving}>
-                    {user?.profile_picture ? (
-                        <Image source={{ uri: user.profile_picture }} style={styles.avatarImage} />
-                    ) : (
-                        <View style={styles.avatarPlaceholder}>
-                            <Text style={styles.avatarEmoji}>👤</Text>
-                        </View>
-                    )}
-                    <View style={styles.cameraBtn}>
-                        {photoSaving ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                            <Text style={{ fontSize: 12 }}>📷</Text>
-                        )}
-                    </View>
-                </TouchableOpacity>
-                <Text style={styles.email}>{user?.email}</Text>
-                {user?.business_name && (
-                    <Text style={styles.businessName}>{user.business_name}</Text>
-                )}
-                <Text style={styles.photoHint}>Tap photo to change — appears on PDF invoices</Text>
+  const handleConnectSquare = async () => {
+    Alert.alert("Square connection", "Use the seeded/test environment token when you are ready to connect Square.");
+  };
+
+  const handleConnectClover = async () => {
+    Alert.alert("Clover connection", "Use the seeded/test environment token when you are ready to connect Clover.");
+  };
+
+  return (
+    <ScrollView testID="settings-content" style={styles.container} contentContainerStyle={styles.content}>
+      <HeaderTitle title="Settings" subtitle="Account profile, provider sync, and readiness signals for the seeded inventory workflow." />
+
+      <Card style={{ gap: SPACING.md }}>
+        <SectionLabel>Account</SectionLabel>
+        <TouchableOpacity onPress={handleChangePhoto} activeOpacity={0.82} style={styles.profileRow}>
+          {user?.profile_picture ? (
+            <Image source={{ uri: user.profile_picture }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.avatarFallback]}>
+              {photoSaving ? <ActivityIndicator color={COLORS.text} /> : <Text style={styles.avatarLetter}>{user?.email?.[0]?.toUpperCase() || "V"}</Text>}
             </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.emailText}>{user?.email}</Text>
+            <Text style={styles.helperText}>{user?.business_name || "Ninja Resale"}</Text>
+            <Text style={styles.helperText}>Tap profile photo to update the invoice identity.</Text>
+          </View>
+          <Pill label={user?.subscription_tier?.toUpperCase() || "FREE"} tone="primary" />
+        </TouchableOpacity>
+      </Card>
 
-            {/* Tier Info */}
-            <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Subscription</Text>
-                <View style={styles.tierRow}>
-                    <Text style={styles.tierLabel}>Plan</Text>
-                    <View style={styles.tierBadge}>
-                        <Text style={styles.tierBadgeText}>
-                            {user?.subscription_tier?.toUpperCase() || "FREE"}
-                        </Text>
-                    </View>
-                </View>
-                {user?.is_partner && (
-                    <View style={styles.tierRow}>
-                        <Text style={styles.tierLabel}>Partner</Text>
-                        <Text style={styles.partnerBadge}>✅ Active</Text>
-                    </View>
-                )}
-                {user?.subscription_tier === "free" && (
-                    <View style={styles.upgradeBox}>
-                        <Text style={styles.upgradeText}>
-                            🚀 Upgrade to Pro ($20/mo) for unlimited inventory, Stripe integration, and barcode scanning.
-                        </Text>
-                    </View>
-                )}
-            </View>
+      <Card style={{ gap: SPACING.sm }}>
+        <SectionLabel>Sync Overview</SectionLabel>
+        <View style={styles.syncOverviewRow}>
+          <View>
+            <Text style={styles.syncStatValue}>{health.filter((entry) => entry.last_run_status === "completed" || entry.last_run_status === "partial").length}</Text>
+            <Text style={styles.syncStatLabel}>Healthy providers</Text>
+          </View>
+          <View>
+            <Text style={styles.syncStatValue}>{issuesCount}</Text>
+            <Text style={styles.syncStatLabel}>Open issues</Text>
+          </View>
+          <View>
+            <Text style={styles.syncStatValue}>{health.length}</Text>
+            <Text style={styles.syncStatLabel}>Tracked providers</Text>
+          </View>
+        </View>
+        <ActionButton label="Open Sync Center" onPress={() => router.push("/settings/sync-center" as any)} tone="secondary" />
+      </Card>
 
-            {/* Lightspeed Integration */}
-            <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Lightspeed POS</Text>
-                {lsLoading ? (
-                    <ActivityIndicator color="#6C5CE7" />
-                ) : lsStatus?.connected ? (
-                    <>
-                        <View style={styles.tierRow}>
-                            <Text style={styles.tierLabel}>Status</Text>
-                            <Text style={styles.connectedBadge}>✅ Connected</Text>
-                        </View>
-                        {lsStatus.account_id && (
-                            <View style={styles.tierRow}>
-                                <Text style={styles.tierLabel}>Account</Text>
-                                <Text style={styles.tierValue}>{lsStatus.account_id}</Text>
-                            </View>
-                        )}
-                        {lsStatus.last_synced_at && (
-                            <View style={styles.tierRow}>
-                                <Text style={styles.tierLabel}>Last Synced</Text>
-                                <Text style={styles.tierValue}>
-                                    {new Date(lsStatus.last_synced_at).toLocaleString()}
-                                </Text>
-                            </View>
-                        )}
-                        <TouchableOpacity
-                            style={[styles.syncButton, lsSyncing && styles.syncButtonDisabled]}
-                            onPress={handleSyncNow}
-                            disabled={lsSyncing}
-                        >
-                            {lsSyncing
-                                ? <ActivityIndicator size="small" color="#FFF" />
-                                : <Text style={styles.syncButtonText}>🔄 Sync Now</Text>
-                            }
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.disconnectButton} onPress={handleDisconnectLightspeed}>
-                            <Text style={styles.disconnectText}>Disconnect</Text>
-                        </TouchableOpacity>
-                    </>
-                ) : (
-                    <>
-                        <Text style={styles.lsDescription}>
-                            Connect your Lightspeed POS to automatically sync inventory and sales. Background sync runs every 15 minutes.
-                        </Text>
-                        <TouchableOpacity style={styles.connectButton} onPress={handleConnectLightspeed}>
-                            <Text style={styles.connectButtonText}>🔗 Connect Lightspeed</Text>
-                        </TouchableOpacity>
-                    </>
-                )}
-            </View>
+      <SectionLabel>Integrations</SectionLabel>
+      <ProviderCard
+        name="Lightspeed"
+        connected={lsStatus?.connected ?? false}
+        lastSynced={lsStatus?.last_synced_at}
+        helper="POS inventory source with recurring sync support."
+        loading={lsLoading}
+        syncing={lsSyncing}
+        onConnect={handleConnectLightspeed}
+        onSync={handleSyncLightspeed}
+      />
+      <ProviderCard
+        name="Square"
+        connected={sqStatus?.connected ?? false}
+        lastSynced={sqStatus?.last_synced_at}
+        helper="Connect Square to compare local inventory against your provider catalog."
+        loading={sqLoading}
+        syncing={sqSyncing}
+        onConnect={handleConnectSquare}
+        onSync={handleSyncSquare}
+      />
+      <ProviderCard
+        name="Clover"
+        connected={cvStatus?.connected ?? false}
+        lastSynced={cvStatus?.last_synced_at}
+        helper="Pull Clover inventory updates into the same stock dashboard."
+        loading={cvLoading}
+        syncing={cvSyncing}
+        onConnect={handleConnectClover}
+        onSync={handleSyncClover}
+      />
 
-            {/* Account Info */}
-            <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Account</Text>
-                <View style={styles.tierRow}>
-                    <Text style={styles.tierLabel}>Member Since</Text>
-                    <Text style={styles.tierValue}>
-                        {user?.created_at ? new Date(user.created_at).toLocaleDateString() : "—"}
-                    </Text>
-                </View>
-            </View>
-
-            {/* Sign Out */}
-            <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-                <Text style={styles.signOutText}>Sign Out</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.version}>Vendora v1.0.0</Text>
-        </ScrollView>
-    );
+      <ActionButton label="Sign Out" onPress={() => { unregisterBackgroundSync().catch(() => {}); signOut(); }} tone="ghost" />
+    </ScrollView>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#0A0A1A" },
-    content: { padding: 20, paddingBottom: 40 },
-    card: {
-        backgroundColor: "#1A1A2E",
-        borderRadius: 14,
-        padding: 20,
-        marginBottom: 16,
-        borderWidth: 1,
-        borderColor: "#2A2A4A",
-    },
-    avatar: { fontSize: 48, textAlign: "center", marginBottom: 12 },
-    email: { color: "#FFFFFF", fontSize: 16, fontWeight: "700", textAlign: "center" },
-    businessName: { color: "#888", fontSize: 14, textAlign: "center", marginTop: 4 },
-    avatarContainer: {
-        alignSelf: "center",
-        marginBottom: 12,
-        position: "relative",
-    },
-    avatarImage: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        borderWidth: 3,
-        borderColor: "#6C5CE7",
-    },
-    avatarPlaceholder: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: "#2A2A4A",
-        alignItems: "center",
-        justifyContent: "center",
-        borderWidth: 2,
-        borderColor: "#6C5CE7",
-    },
-    avatarEmoji: { fontSize: 36 },
-    cameraBtn: {
-        position: "absolute",
-        bottom: 0,
-        right: 0,
-        backgroundColor: "#6C5CE7",
-        width: 26,
-        height: 26,
-        borderRadius: 13,
-        alignItems: "center",
-        justifyContent: "center",
-        borderWidth: 2,
-        borderColor: "#0A0A1A",
-    },
-    photoHint: { color: "#555", fontSize: 11, textAlign: "center", marginTop: 6 },
-    sectionTitle: {
-        fontSize: 13,
-        fontWeight: "800",
-        color: "#6C5CE7",
-        marginBottom: 14,
-        textTransform: "uppercase",
-        letterSpacing: 1,
-    },
-    tierRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 10,
-    },
-    tierLabel: { color: "#888", fontSize: 14 },
-    tierValue: { color: "#FFFFFF", fontSize: 13, fontWeight: "600", maxWidth: "55%", textAlign: "right" },
-    tierBadge: { backgroundColor: "#6C5CE7", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-    tierBadgeText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
-    partnerBadge: { color: "#00B894", fontSize: 14, fontWeight: "600" },
-    connectedBadge: { color: "#00B894", fontSize: 14, fontWeight: "700" },
-    upgradeBox: { backgroundColor: "#2A1B4E", borderRadius: 10, padding: 14, marginTop: 8 },
-    upgradeText: { color: "#B8A9E8", fontSize: 13, lineHeight: 18 },
-
-    // Lightspeed
-    lsDescription: { color: "#888", fontSize: 13, lineHeight: 18, marginBottom: 14 },
-    connectButton: {
-        backgroundColor: "#E87D0D",
-        borderRadius: 12,
-        paddingVertical: 14,
-        alignItems: "center",
-    },
-    connectButtonText: { color: "#FFF", fontSize: 15, fontWeight: "700" },
-    syncButton: {
-        backgroundColor: "#0984E3",
-        borderRadius: 12,
-        paddingVertical: 12,
-        alignItems: "center",
-        marginTop: 10,
-    },
-    syncButtonDisabled: { opacity: 0.6 },
-    syncButtonText: { color: "#FFF", fontSize: 14, fontWeight: "700" },
-    disconnectButton: {
-        borderWidth: 1,
-        borderColor: "#636E72",
-        borderRadius: 12,
-        paddingVertical: 10,
-        alignItems: "center",
-        marginTop: 8,
-    },
-    disconnectText: { color: "#636E72", fontSize: 13, fontWeight: "600" },
-
-    // Sign out / footer
-    signOutButton: {
-        backgroundColor: "#2D1F1F",
-        borderWidth: 1,
-        borderColor: "#E17055",
-        borderRadius: 12,
-        paddingVertical: 14,
-        alignItems: "center",
-        marginTop: 8,
-    },
-    signOutText: { color: "#E17055", fontSize: 15, fontWeight: "700" },
-    version: { color: "#555", fontSize: 12, textAlign: "center", marginTop: 24 },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: SPACING.lg, paddingBottom: 48, gap: SPACING.md },
+  profileRow: { flexDirection: "row", gap: SPACING.md, alignItems: "center" },
+  avatar: { width: 72, height: 72, borderRadius: 24 },
+  avatarFallback: {
+    backgroundColor: COLORS.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  avatarLetter: { color: COLORS.text, fontSize: 28, fontWeight: "800" },
+  emailText: { color: COLORS.text, fontSize: 15, fontWeight: "800" },
+  helperText: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
+  syncOverviewRow: { flexDirection: "row", justifyContent: "space-between", gap: SPACING.md },
+  syncStatValue: { color: COLORS.text, fontSize: 22, fontWeight: "800" },
+  syncStatLabel: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
+  providerHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: SPACING.sm },
+  providerName: { color: COLORS.text, fontSize: 15, fontWeight: "800" },
+  providerActions: { flexDirection: "row", justifyContent: "flex-start" },
 });
-

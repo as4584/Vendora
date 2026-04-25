@@ -112,6 +112,42 @@ class TestListInvoices:
         assert client.get("/api/v1/invoices", headers=auth_headers).json()["total"] == 1
         assert client.get("/api/v1/invoices", headers=second_auth_headers).json()["total"] == 1
 
+    def test_filter_by_inventory_item_id(self, client, auth_headers):
+        item_a = client.post("/api/v1/inventory", json=SAMPLE_ITEM, headers=auth_headers).json()
+        item_b = client.post("/api/v1/inventory", json={
+            **SAMPLE_ITEM,
+            "name": "Jordan 4 Alternate",
+            "sku": "ALT-001",
+        }, headers=auth_headers).json()
+
+        client.post("/api/v1/invoices", json={
+            "customer_name": "Buyer A",
+            "items": [{
+                "description": SAMPLE_ITEM["name"],
+                "quantity": 1,
+                "unit_price": "350.00",
+                "inventory_item_id": item_a["id"],
+            }],
+        }, headers=auth_headers)
+        client.post("/api/v1/invoices", json={
+            "customer_name": "Buyer B",
+            "items": [{
+                "description": "Jordan 4 Alternate",
+                "quantity": 1,
+                "unit_price": "360.00",
+                "inventory_item_id": item_b["id"],
+            }],
+        }, headers=auth_headers)
+
+        resp = client.get(
+            f"/api/v1/invoices?inventory_item_id={item_a['id']}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["items"][0]["inventory_item_id"] == item_a["id"]
+
 
 class TestInvoiceStateMachine:
     def _create_invoice(self, client, auth_headers):

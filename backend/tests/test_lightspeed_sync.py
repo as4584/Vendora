@@ -298,3 +298,114 @@ class TestLightspeedSoftDeletedItem:
         )
         assert result_item is None
         assert created is False
+
+
+# ─── Lightspeed status API endpoint ──────────────────────────────────────────
+
+class TestLightspeedStatusEndpoint:
+    """Regression tests for GET /api/v1/integrations/lightspeed/status."""
+
+    def test_status_not_connected(self, client, auth_headers):
+        """Unauthenticated/no-token user sees connected=False with null fields."""
+        resp = client.get("/api/v1/integrations/lightspeed/status", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["connected"] is False
+        assert data["account_id"] is None
+        assert data["expires_at"] is None
+        assert data["last_synced_at"] is None
+
+    def test_status_requires_auth(self, client):
+        """Unauthenticated request is rejected."""
+        resp = client.get("/api/v1/integrations/lightspeed/status")
+        assert resp.status_code == 403
+
+    def test_status_connected(self, client, auth_headers, db, test_user):
+        """When a token row exists, status returns connected=True with account/expiry info."""
+        from datetime import datetime, timezone
+        from app.models.integration import LightspeedToken
+        tok = LightspeedToken(
+            user_id=test_user.id,
+            account_id="ACC-42",
+            access_token="fake-access",
+            refresh_token="fake-refresh",
+            expires_at=datetime(2030, 1, 1, tzinfo=timezone.utc),
+        )
+        db.add(tok)
+        db.flush()
+
+        resp = client.get("/api/v1/integrations/lightspeed/status", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["connected"] is True
+        assert data["account_id"] == "ACC-42"
+        assert "2030" in data["expires_at"]
+        # last_synced_at is None because no InventoryExternalLink rows exist yet.
+        assert data["last_synced_at"] is None
+
+
+# ─── Lightspeed sync endpoint ─────────────────────────────────────────────────
+
+class TestLightspeedSyncEndpoint:
+    """Regression tests for POST /api/v1/integrations/lightspeed/sync."""
+
+    def test_sync_requires_auth(self, client):
+        """Unauthenticated request is rejected."""
+        resp = client.post("/api/v1/integrations/lightspeed/sync")
+        assert resp.status_code == 403
+
+    def test_sync_not_connected_returns_404(self, client, auth_headers):
+        """Sync endpoint returns 404 when no Lightspeed token is configured."""
+        resp = client.post("/api/v1/integrations/lightspeed/sync", headers=auth_headers)
+        assert resp.status_code == 404
+        assert "Connect Lightspeed" in resp.json()["detail"]
+
+    def test_sync_response_shape(self, client, auth_headers, db, test_user, monkeypatch):
+        """Sync response includes all required keys when sync succeeds."""
+        from unittest.mock import AsyncMock
+        from app.services.lightspeed import lightspeed_service
+        from app.services.providers.base import SyncResult
+        import uuid
+
+        fake_run_id = uuid.uuid4()
+        fake_result = SyncResult(
+            run_id=fake_run_id,
+            items_imported=3,
+            items_updated=1,
+            items_skipped=0,
+            transactions_imported=5,
+            transactions_updated=0,
+            errors_count=0,
+        )
+        monkeypatch.setattr(lightspeed_service, "sync", AsyncMock(return_value=fake_result))
+
+        resp = client.post("/api/v1/integrations/lightspeed/sync", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "completed"
+        assert data["run_id"] == str(fake_run_id)
+        assert data["items_imported"] == 3
+        assert data["items_updated"] == 1
+        assert data["errors_count"] == 0
+
+    def test_sync_partial_status_when_errors(self, client, auth_headers, monkeypatch):
+        """Response status is 'partial' when errors_count > 0."""
+        from unittest.mock import AsyncMock
+        from app.services.lightspeed import lightspeed_service
+        from app.services.providers.base import SyncResult
+        import uuid
+
+        fake_result = SyncResult(
+            run_id=uuid.uuid4(),
+            items_imported=2,
+            items_updated=0,
+            items_skipped=1,
+            transactions_imported=0,
+            transactions_updated=0,
+            errors_count=1,
+        )
+        monkeypatch.setattr(lightspeed_service, "sync", AsyncMock(return_value=fake_result))
+
+        resp = client.post("/api/v1/integrations/lightspeed/sync", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "partial"

@@ -48,12 +48,21 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:19006",
+    "http://127.0.0.1:19006",
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
 _allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGIN", "").split(",") if o.strip()]
 
 # CORS — allow mobile app to connect
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins or ["*"],
+    allow_origins=_allowed_origins or DEFAULT_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

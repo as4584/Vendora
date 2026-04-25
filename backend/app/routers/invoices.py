@@ -134,6 +134,7 @@ def list_invoices(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     status_filter: str = Query(None, alias="status"),
+    inventory_item_id: str | None = Query(None, description="Filter invoices linked to an inventory item"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -141,6 +142,8 @@ def list_invoices(
     query = db.query(Invoice).filter(Invoice.user_id == current_user.id)
     if status_filter:
         query = query.filter(Invoice.status == status_filter)
+    if inventory_item_id:
+        query = query.join(InvoiceItem).filter(InvoiceItem.inventory_item_id == inventory_item_id).distinct()
 
     total = query.count()
     invoices = (

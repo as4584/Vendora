@@ -30,6 +30,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Load token on mount
     useEffect(() => {
+        // Register a global 401 handler so any expired-token API call auto-signs out.
+        api.onUnauthorized(() => {
+            setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
+        });
         (async () => {
             try {
                 const token = await api.getToken();

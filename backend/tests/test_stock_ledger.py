@@ -130,6 +130,28 @@ class TestInventoryFilters:
         assert "In Stock" in names
         assert "Sold Out" not in names
 
+    def test_filter_by_source(self, client, auth_headers, db, test_user):
+        """source= param only returns items with that source value."""
+        from app.models.inventory import InventoryItem as _Item
+        # Create one manual and one lightspeed-sourced item directly in DB.
+        ls_item = _Item(
+            user_id=test_user.id, name="LS Shoe", source="lightspeed",
+            status="in_stock", quantity=1,
+        )
+        manual_item = _Item(
+            user_id=test_user.id, name="Manual Shoe", source=None,
+            status="in_stock", quantity=1,
+        )
+        db.add_all([ls_item, manual_item])
+        db.flush()
+
+        resp = client.get("/api/v1/inventory?source=lightspeed", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["name"] == "LS Shoe"
+        assert data["items"][0]["source"] == "lightspeed"
+
 
 class TestCSVImport:
     def _make_csv(self, rows: list[dict]) -> bytes:
@@ -273,3 +295,233 @@ class TestCSVImport:
 
         resp = client.get(f"/api/v1/inventory/imports/{job_id}", headers=second_auth_headers)
         assert resp.status_code == 404
+
+    def test_preview_detects_id_match_for_sku_less_item(self, client, auth_headers):
+        """Re-importing an exported CSV matches items without SKU by their id column."""
+        # Create an item with no SKU so it can only be matched by id.
+        create_resp = client.post(
+            "/api/v1/inventory",
+            json={"name": "No SKU Bag", "quantity": 1, "buy_price": "50.00"},
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+        item_id = create_resp.json()["id"]
+
+        # Build a CSV that looks like an export (includes 'id' column, no sku).
+        csv_bytes = self._make_csv([
+            {"id": item_id, "name": "No SKU Bag", "quantity": "3", "buy price": "50.00"},
+        ])
+        resp = client.post(
+            "/api/v1/inventory/imports/preview",
+            files={"file": ("round_trip.csv", csv_bytes, "text/csv")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["rows_to_update"] == 1, "Should match by id, not create a duplicate"
+        assert data["rows_to_create"] == 0
+        row = data["rows"][0]
+        assert row["action"] == "update"
+        assert row["match_key"] == "id"
+        assert row["inventory_item_id"] == item_id
+
+
+class TestCSVRoundTrip:
+    """Regression tests for export → re-import column alignment.
+
+    The canonical export writes snake_case column headers (buy_price,
+    expected_sell_price, vendor_name, actual_sell_price).  The import must
+    recognise those exact names so a round-trip works without remapping.
+    """
+
+    def _make_csv(self, rows: list[dict]) -> bytes:
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+        return buf.getvalue().encode()
+
+    def _make_pro_headers(self, client, auth_headers, db, test_user):
+        """Upgrade test user to Pro in-place and return same headers."""
+        test_user.subscription_tier = "pro"
+        db.add(test_user)
+        db.commit()
+        return auth_headers
+
+    def test_snake_case_buy_price_is_mapped(self, client, auth_headers):
+        """Export column 'buy_price' (snake_case) is recognised on re-import."""
+        csv_bytes = self._make_csv([
+            {"name": "Round Trip Shoe", "sku": "RT-001", "buy_price": "99.99", "quantity": "2"},
+        ])
+        resp = client.post(
+            "/api/v1/inventory/imports/preview",
+            files={"file": ("export.csv", csv_bytes, "text/csv")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["rows_errored"] == 0
+        row = data["rows"][0]
+        assert row["action"] == "create"
+        # buy_price must appear in mapped_data, not be silently dropped
+        assert "buy_price" in row["mapped_data"]
+        assert abs(float(row["mapped_data"]["buy_price"]) - 99.99) < 0.01
+
+    def test_snake_case_expected_sell_price_is_mapped(self, client, auth_headers):
+        """Export column 'expected_sell_price' is recognised on re-import."""
+        csv_bytes = self._make_csv([
+            {"name": "Round Trip Shirt", "sku": "RT-002",
+             "expected_sell_price": "149.00", "quantity": "1"},
+        ])
+        resp = client.post(
+            "/api/v1/inventory/imports/preview",
+            files={"file": ("export.csv", csv_bytes, "text/csv")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        row = resp.json()["rows"][0]
+        assert "expected_sell_price" in row["mapped_data"]
+        assert abs(float(row["mapped_data"]["expected_sell_price"]) - 149.00) < 0.01
+
+    def test_snake_case_vendor_name_is_mapped(self, client, auth_headers):
+        """Export column 'vendor_name' is recognised on re-import."""
+        csv_bytes = self._make_csv([
+            {"name": "Vendor Test Item", "sku": "RT-003",
+             "vendor_name": "Kick Game Supply", "quantity": "1"},
+        ])
+        resp = client.post(
+            "/api/v1/inventory/imports/preview",
+            files={"file": ("export.csv", csv_bytes, "text/csv")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        row = resp.json()["rows"][0]
+        assert row["mapped_data"]["vendor_name"] == "Kick Game Supply"
+
+    def test_actual_sell_price_is_mapped(self, client, auth_headers):
+        """Export column 'actual_sell_price' is recognised on re-import."""
+        csv_bytes = self._make_csv([
+            {"name": "Sold Item", "sku": "RT-004",
+             "actual_sell_price": "210.00", "quantity": "1"},
+        ])
+        resp = client.post(
+            "/api/v1/inventory/imports/preview",
+            files={"file": ("export.csv", csv_bytes, "text/csv")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        row = resp.json()["rows"][0]
+        assert "actual_sell_price" in row["mapped_data"]
+        assert abs(float(row["mapped_data"]["actual_sell_price"]) - 210.00) < 0.01
+
+    def test_full_export_columns_round_trip(self, client, auth_headers, db, test_user):
+        """A CSV using all canonical export column names previews without errors."""
+        pro_headers = self._make_pro_headers(client, auth_headers, db, test_user)
+
+        # Create an item and export it.
+        client.post("/api/v1/inventory", json={
+            "name": "Export Me", "sku": "EXP-001",
+            "buy_price": "80.00", "expected_sell_price": "140.00",
+            "vendor_name": "Test Vendor", "quantity": 2,
+        }, headers=pro_headers)
+
+        export_resp = client.get("/api/v1/export/inventory", headers=pro_headers)
+        assert export_resp.status_code == 200
+        csv_content = export_resp.text
+
+        # Re-import the exact CSV that was just exported.
+        resp = client.post(
+            "/api/v1/inventory/imports/preview",
+            files={"file": ("vendora_inventory.csv",
+                            csv_content.encode("utf-8"), "text/csv")},
+            headers=pro_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        # Must detect as an update (matched by id) — no duplicate creates.
+        assert data["rows_to_create"] == 0
+        assert data["rows_to_update"] == 1
+        assert data["rows_errored"] == 0
+        row = data["rows"][0]
+        # buy_price, expected_sell_price, vendor_name must all be in mapped_data.
+        assert "buy_price" in row["mapped_data"]
+        assert "expected_sell_price" in row["mapped_data"]
+        assert "vendor_name" in row["mapped_data"]
+
+    def test_photo_url_columns_round_trip_on_create(self, client, auth_headers):
+        """Raw photo url columns are importable and persist on create."""
+        csv_bytes = self._make_csv([
+            {
+                "name": "Photo Item",
+                "sku": "PHOTO-001",
+                "quantity": "1",
+                "photo_front_url": "https://cdn.example/front.jpg",
+                "photo_back_url": "https://cdn.example/back.jpg",
+            },
+        ])
+        preview = client.post(
+            "/api/v1/inventory/imports/preview",
+            files={"file": ("photo.csv", csv_bytes, "text/csv")},
+            headers=auth_headers,
+        )
+        assert preview.status_code == 201
+        row = preview.json()["rows"][0]
+        assert row["mapped_data"]["photo_front_url"] == "https://cdn.example/front.jpg"
+        assert row["mapped_data"]["photo_back_url"] == "https://cdn.example/back.jpg"
+
+        commit = client.post(
+            f"/api/v1/inventory/imports/{preview.json()['job_id']}/commit",
+            headers=auth_headers,
+        )
+        assert commit.status_code == 200
+
+        inventory = client.get("/api/v1/inventory?q=PHOTO-001", headers=auth_headers).json()
+        assert inventory["total"] == 1
+        assert inventory["items"][0]["photo_front_url"] == "https://cdn.example/front.jpg"
+        assert inventory["items"][0]["photo_back_url"] == "https://cdn.example/back.jpg"
+
+    def test_helper_image_formula_columns_are_ignored_on_preview(self, client, auth_headers):
+        """Spreadsheet helper formula columns remain export-only."""
+        csv_bytes = self._make_csv([
+            {
+                "name": "Formula Item",
+                "sku": "FORM-001",
+                "quantity": "1",
+                "photo_front_url": "https://cdn.example/front.jpg",
+                "front_image_formula": '=IMAGE("https://cdn.example/front.jpg")',
+            },
+        ])
+        preview = client.post(
+            "/api/v1/inventory/imports/preview",
+            files={"file": ("formula.csv", csv_bytes, "text/csv")},
+            headers=auth_headers,
+        )
+        assert preview.status_code == 201
+        row = preview.json()["rows"][0]
+        assert "photo_front_url" in row["mapped_data"]
+        assert "front_image_formula" not in row["mapped_data"]
+
+
+class TestInventoryActivityAPI:
+    def test_activity_endpoint_returns_stock_ledger_entries(self, client, auth_headers):
+        item = client.post("/api/v1/inventory", json={
+            "name": "Activity Item",
+            "quantity": 3,
+        }, headers=auth_headers).json()
+
+        sale = client.post("/api/v1/transactions", json={
+            "item_id": item["id"],
+            "method": "cash",
+            "gross_amount": "90.00",
+            "quantity": 1,
+        }, headers=auth_headers)
+        assert sale.status_code == 201
+
+        resp = client.get(f"/api/v1/inventory/{item['id']}/activity", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["inventory_item_id"] == item["id"]
+        assert data[0]["event_type"] == "sale"
+        assert data[0]["delta_quantity"] == -1
+        assert data[0]["quantity_after"] == 2
