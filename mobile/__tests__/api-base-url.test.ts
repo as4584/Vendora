@@ -63,7 +63,7 @@ describe('api base url selection', () => {
     await api.getDashboard();
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      'http://127.0.0.1:8001/api/v1/dashboard',
+      'https://vendora.lexmakesit.com/api/v1/dashboard',
       expect.any(Object),
     );
   });

@@ -7,7 +7,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001/api/v1";
+  process.env.EXPO_PUBLIC_API_BASE_URL || "https://vendora.lexmakesit.com/api/v1";
 
 const TOKEN_KEY = "vendora_access_token";
 
