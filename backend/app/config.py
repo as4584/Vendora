@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     ALLOWED_ORIGIN: str = "http://localhost:3000,http://localhost:8081"
     PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"
+    TESTER_EMAIL_ALLOWLIST: str = "management.donxera@gmail.com"
     # Stripe
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
