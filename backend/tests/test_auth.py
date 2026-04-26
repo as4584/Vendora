@@ -1,8 +1,7 @@
-"""Auth endpoint tests — /api/v1/auth/*
+"""Auth endpoint tests for /api/v1/auth/*."""
 
-Coverage: register, login, /me, duplicate email, wrong password, invalid token.
-"""
-import pytest
+from app.models.user import User
+from app.services.auth import create_access_token, hash_password
 
 
 class TestRegister:
@@ -36,6 +35,17 @@ class TestRegister:
             "password": "abc",
         })
         assert resp.status_code == 422
+
+    def test_register_allowlisted_tester_gets_highest_access(self, client):
+        resp = client.post("/api/v1/auth/register", json={
+            "email": "management.donxera@gmail.com",
+            "password": "SecurePass1",
+            "business_name": "QA Ops",
+        })
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["subscription_tier"] == "pro"
+        assert data["is_partner"] is True
 
 
 class TestLogin:
@@ -71,6 +81,26 @@ class TestLogin:
         })
         assert resp.status_code == 401
 
+    def test_login_upgrades_existing_allowlisted_tester(self, client, db):
+        user = User(
+            email="management.donxera@gmail.com",
+            password_hash=hash_password("SecurePass1"),
+            subscription_tier="free",
+            is_partner=False,
+        )
+        db.add(user)
+        db.commit()
+
+        resp = client.post("/api/v1/auth/login", json={
+            "email": "management.donxera@gmail.com",
+            "password": "SecurePass1",
+        })
+        assert resp.status_code == 200
+
+        db.refresh(user)
+        assert user.subscription_tier == "pro"
+        assert user.is_partner is True
+
 
 class TestMe:
     def test_get_me(self, client, auth_headers, test_user):
@@ -89,3 +119,23 @@ class TestMe:
     def test_get_me_no_token(self, client):
         resp = client.get("/api/v1/auth/me")
         assert resp.status_code == 403  # HTTPBearer returns 403 when missing
+
+    def test_get_me_upgrades_existing_allowlisted_tester(self, client, db):
+        user = User(
+            email="management.donxera@gmail.com",
+            password_hash=hash_password("SecurePass1"),
+            subscription_tier="free",
+            is_partner=False,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        token = create_access_token(data={"sub": str(user.id)})
+        resp = client.get("/api/v1/auth/me", headers={
+            "Authorization": f"Bearer {token}"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["subscription_tier"] == "pro"
+        assert data["is_partner"] is True

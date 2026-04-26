@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.services.auth import decode_access_token
+from app.services.tester_access import persist_tester_entitlements
 
 security = HTTPBearer()
 
@@ -41,4 +42,4 @@ def get_current_user(
             detail="User not found or account deleted.",
         )
 
-    return user
+    return persist_tester_entitlements(db, user)

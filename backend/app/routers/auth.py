@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, UserResponse, TokenResponse, UserProfileUpdate
 from app.services.auth import hash_password, verify_password, create_access_token
+from app.services.tester_access import apply_tester_entitlements, persist_tester_entitlements
 from app.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -31,6 +32,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
         password_hash=hash_password(payload.password),
         business_name=payload.business_name,
     )
+    apply_tester_entitlements(user)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -51,6 +53,7 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password.",
         )
 
+    user = persist_tester_entitlements(db, user)
     token = create_access_token(data={"sub": str(user.id)})
     return TokenResponse(access_token=token)
 
