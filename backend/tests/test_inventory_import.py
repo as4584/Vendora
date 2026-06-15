@@ -6,6 +6,19 @@ Jordan 4 Military Blue,Nike,J4-MB-10,Sneakers,$120.00,$260.00,2,https://example.
 Vintage Denim Jacket,Levis,LV-JKT-M,Clothing,25,80,1,,Used
 """
 
+WAREHOUSE_MATRIX_CSV = """,
+"The Cotton Wreath Hoodie
+Black",,,,"The Cotton Wreath Hoodie
+Navy",,
+,,,,,,
+,,,,,,
+,,,,,,
+,Size,QTY,,,Size,QTY
+,XS,0,,,XS,1
+,S,1,,,S,0
+,M,2,,,M,3
+"""
+
 
 def test_import_inventory_csv_file_creates_items(client, auth_headers):
     resp = client.post(
@@ -33,6 +46,52 @@ def test_import_inventory_csv_file_creates_items(client, auth_headers):
     assert jordan["expected_sell_price"] == "260.00"
     assert jordan["photo_front_url"] == "https://example.com/j4.jpg"
     assert jordan["custom_attributes"]["brand"] == "Nike"
+
+
+def test_import_inventory_warehouse_size_qty_matrix(client, auth_headers):
+    resp = client.post(
+        "/api/v1/inventory/import/file",
+        files={"file": ("warehouse.csv", WAREHOUSE_MATRIX_CSV, "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["rows_seen"] == 2
+    assert data["created"] == 2
+    assert data["skipped"] == 0
+
+    items_resp = client.get("/api/v1/inventory?per_page=10", headers=auth_headers)
+    items = items_resp.json()["items"]
+    black = next(item for item in items if item["color"] == "Black")
+    navy = next(item for item in items if item["color"] == "Navy")
+
+    assert black["name"] == "The Cotton Wreath Hoodie Black"
+    assert black["category"] == "Hoodie"
+    assert black["quantity"] == 3
+    assert black["custom_attributes"]["variants"] == [
+        {"size": "XS", "quantity": 0},
+        {"size": "S", "quantity": 1},
+        {"size": "M", "quantity": 2},
+    ]
+    assert navy["quantity"] == 4
+
+
+def test_import_inventory_extracts_photo_url_from_image_formula(client, auth_headers):
+    csv_content = '''Product Name,Qty,Image URL
+Formula Photo Hoodie,1,"=IMAGE(""https://cdn.example.com/front.jpg"")"
+'''
+
+    resp = client.post(
+        "/api/v1/inventory/import/file",
+        files={"file": ("inventory.csv", csv_content, "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    items_resp = client.get("/api/v1/inventory?per_page=10", headers=auth_headers)
+    item = items_resp.json()["items"][0]
+    assert item["photo_front_url"] == "https://cdn.example.com/front.jpg"
 
 
 def test_import_inventory_csv_file_dry_run_does_not_create_items(client, auth_headers):
