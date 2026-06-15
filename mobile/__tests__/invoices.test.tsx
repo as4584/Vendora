@@ -153,6 +153,31 @@ describe('InvoicesScreen', () => {
     });
   });
 
+  it('searches inventory from the server and labels invoice totals clearly', async () => {
+    const screen = render(<InvoicesScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('From Inventory')).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByPlaceholderText('Search by item name, SKU, or category'), 'jordan');
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+
+    await waitFor(() => {
+      expect(apiMock.listItems).toHaveBeenCalledWith({
+        perPage: 20,
+        availableOnly: true,
+        q: 'jordan',
+      });
+    });
+
+    expect(screen.getByText('Sales tax')).toBeTruthy();
+    expect(screen.getByText('Shipping charged')).toBeTruthy();
+    expect(screen.getByText('Discount or credit')).toBeTruthy();
+  });
+
   it('opens a saved invoice preview from history and can download its PDF', async () => {
     const screen = render(<InvoicesScreen />);
 

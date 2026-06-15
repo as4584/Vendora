@@ -25,6 +25,7 @@ jest.mock('../services/api', () => ({
   getProviderHealth: jest.fn(),
   listItems: jest.fn(),
   exportInventoryCSV: jest.fn(),
+  exportInventoryWarehouseCSV: jest.fn(),
   getLightspeedStatus: jest.fn(),
   getSquareStatus: jest.fn(),
   getCloverStatus: jest.fn(),
@@ -168,14 +169,14 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('Retry')).toBeTruthy();
   });
 
-  it('downloads a CSV when Export is pressed', async () => {
+  it('downloads a warehouse CSV when Export is pressed', async () => {
     const dashboard = deferred<apiMock.Dashboard>();
     const providerHealth = deferred<{ providers: apiMock.ProviderHealthEntry[] }>();
     const inventory = deferred<apiMock.PaginatedItems>();
     (apiMock.getDashboard as jest.Mock).mockReturnValue(dashboard.promise);
     (apiMock.getProviderHealth as jest.Mock).mockReturnValue(providerHealth.promise);
     (apiMock.listItems as jest.Mock).mockReturnValue(inventory.promise);
-    (apiMock.exportInventoryCSV as jest.Mock).mockResolvedValue('id,name\n1,Jordan');
+    (apiMock.exportInventoryWarehouseCSV as jest.Mock).mockResolvedValue('Product Name,,\nJordan,,');
 
     const screen = render(<DashboardScreen />);
 
@@ -191,8 +192,11 @@ describe('DashboardScreen', () => {
       fireEvent.press(screen.getByText('Export'));
     });
 
-    expect(apiMock.exportInventoryCSV).toHaveBeenCalled();
-    expect(fileActionsMock.downloadTextFile).toHaveBeenCalledWith('id,name\n1,Jordan', 'vendora-inventory.csv');
+    expect(apiMock.exportInventoryWarehouseCSV).toHaveBeenCalled();
+    expect(fileActionsMock.downloadTextFile).toHaveBeenCalledWith(
+      'Product Name,,\nJordan,,',
+      'vendora-inventory-warehouse.csv',
+    );
   });
 
   it('routes to Sync Center when no providers are connected', async () => {

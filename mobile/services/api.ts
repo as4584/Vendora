@@ -428,14 +428,28 @@ export async function importInventoryFromLink(
   url: string,
   dryRun = false
 ): Promise<InventoryImportResult> {
-  return request<InventoryImportResult>("/inventory/import", {
+  const payload = {
     method: "POST",
     body: JSON.stringify({
       url,
       dry_run: dryRun,
       source_name: "mobile-link",
     }),
-  });
+  };
+
+  try {
+    return await request<InventoryImportResult>("/inventory/import", payload);
+  } catch (error) {
+    if (
+      !dryRun &&
+      error instanceof ApiError &&
+      [502, 503, 504].includes(error.status)
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+      return request<InventoryImportResult>("/inventory/import", payload);
+    }
+    throw error;
+  }
 }
 
 export async function importInventoryFile(
@@ -732,6 +746,10 @@ export async function getTiers(): Promise<TiersResponse> {
 
 export async function exportInventoryCSV(): Promise<string> {
   return request<string>("/export/inventory");
+}
+
+export async function exportInventoryWarehouseCSV(): Promise<string> {
+  return request<string>("/export/inventory?template=warehouse");
 }
 
 export async function exportTransactionsCSV(): Promise<string> {

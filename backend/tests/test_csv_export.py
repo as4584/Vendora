@@ -86,6 +86,59 @@ class TestCSVExportContent:
         assert row["back_image_formula"] == '=IMAGE("https://cdn.example/back.jpg")'
         assert row["size_breakdown"] == "US 8 (1); US 9 (2)"
 
+    def test_inventory_warehouse_csv_template(self, client, pro_headers):
+        """Mobile export can download the warehouse Size/QTY matrix layout."""
+        client.post("/api/v1/inventory", json={
+            "name": "The Cotton Wreath Hoodie Black",
+            "sku": "COTTON-BLK",
+            "category": "Hoodie",
+            "quantity": 3,
+            "photo_front_url": "https://cdn.example/hoodie.jpg",
+            "custom_attributes": {
+                "variants": [
+                    {"size": "S", "quantity": 1},
+                    {"size": "M", "quantity": 2},
+                ]
+            },
+        }, headers=pro_headers)
+
+        resp = client.get("/api/v1/export/inventory?template=warehouse", headers=pro_headers)
+        assert resp.status_code == 200
+        assert "vendora_inventory_warehouse.csv" in resp.headers["content-disposition"]
+        rows = list(csv.reader(io.StringIO(resp.text)))
+
+        assert rows[0][0] == "The Cotton Wreath Hoodie Black"
+        assert rows[1][0:2] == ["Size", "QTY"]
+        assert rows[2][0:2] == ["S", "1"]
+        assert rows[3][0:2] == ["M", "2"]
+        assert rows[4][0:2] == ["Image URL", "https://cdn.example/hoodie.jpg"]
+
+    def test_inventory_warehouse_csv_round_trips_through_preview(self, client, pro_headers):
+        client.post("/api/v1/inventory", json={
+            "name": "The Cotton Wreath Hoodie Navy",
+            "quantity": 4,
+            "custom_attributes": {
+                "variants": [
+                    {"size": "S", "quantity": 1},
+                    {"size": "M", "quantity": 3},
+                ]
+            },
+        }, headers=pro_headers)
+
+        export_resp = client.get("/api/v1/export/inventory?template=warehouse", headers=pro_headers)
+        assert export_resp.status_code == 200
+
+        preview = client.post(
+            "/api/v1/inventory/import/file?dry_run=true",
+            files={"file": ("warehouse.csv", export_resp.text.encode("utf-8"), "text/csv")},
+            headers=pro_headers,
+        )
+        assert preview.status_code == 200
+        data = preview.json()
+        assert data["rows_importable"] == 1
+        assert data["sample_items"][0]["name"] == "The Cotton Wreath Hoodie Navy"
+        assert data["sample_items"][0]["quantity"] == 4
+
     def test_transactions_csv(self, client, pro_headers):
         """Pro users can download transactions CSV."""
         # Create a transaction

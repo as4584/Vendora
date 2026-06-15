@@ -25,6 +25,9 @@ INVENTORY_EXPORT_COLUMNS = [
     "created_at", "updated_at",
 ]
 
+WAREHOUSE_PRODUCTS_PER_ROW = 2
+WAREHOUSE_PRODUCT_WIDTH = 4
+
 
 def _resolved_photo(item: InventoryItem, key: str) -> str:
     """Prefer dedicated photo columns, fallback to legacy custom_attributes storage."""
@@ -67,6 +70,27 @@ def _size_breakdown(item: InventoryItem) -> str:
     if item.size:
         return f"{item.size} ({item.quantity})"
     return ""
+
+
+def _variant_rows(item: InventoryItem) -> list[tuple[str, int]]:
+    attrs = item.custom_attributes or {}
+    variants = attrs.get("variants")
+    rows: list[tuple[str, int]] = []
+    if isinstance(variants, list):
+        for variant in variants:
+            if not isinstance(variant, dict):
+                continue
+            size = str(variant.get("size") or "").strip()
+            if not size:
+                continue
+            try:
+                quantity = int(variant.get("quantity") or 0)
+            except (TypeError, ValueError):
+                quantity = 0
+            rows.append((size, max(0, quantity)))
+    if rows:
+        return rows
+    return [(item.size or "OS", max(0, int(item.quantity or 0)))]
 
 
 def export_inventory_csv(db: Session, user_id) -> str:
@@ -120,6 +144,75 @@ def export_inventory_csv(db: Session, user_id) -> str:
             item.created_at.isoformat() if item.created_at else "",
             item.updated_at.isoformat() if item.updated_at else "",
         ])
+
+    return output.getvalue()
+
+
+def export_inventory_warehouse_csv(db: Session, user_id) -> str:
+    """Export inventory in the warehouse Size/QTY matrix layout.
+
+    This mirrors the reseller worksheet shape the importer understands: product
+    name above a compact Size/QTY grid, with products arranged side-by-side.
+    """
+    items = (
+        db.query(InventoryItem)
+        .filter(
+            InventoryItem.user_id == user_id,
+            InventoryItem.deleted_at.is_(None),
+        )
+        .order_by(InventoryItem.created_at.desc())
+        .all()
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    if not items:
+        writer.writerow(["Product Name", "", "", "", "Product Name", "", ""])
+        writer.writerow(["Size", "QTY", "", "", "Size", "QTY", ""])
+        return output.getvalue()
+
+    for group_start in range(0, len(items), WAREHOUSE_PRODUCTS_PER_ROW):
+        group = items[group_start:group_start + WAREHOUSE_PRODUCTS_PER_ROW]
+        max_variants = max(len(_variant_rows(item)) for item in group)
+        row_width = WAREHOUSE_PRODUCTS_PER_ROW * WAREHOUSE_PRODUCT_WIDTH - 1
+
+        title_row = [""] * row_width
+        header_row = [""] * row_width
+
+        for idx, item in enumerate(group):
+            col = idx * WAREHOUSE_PRODUCT_WIDTH
+            title_row[col] = item.name
+            header_row[col] = "Size"
+            header_row[col + 1] = "QTY"
+
+        writer.writerow(title_row)
+        writer.writerow(header_row)
+
+        variant_cache = [_variant_rows(item) for item in group]
+        for row_idx in range(max_variants):
+            row = [""] * row_width
+            for idx, variants in enumerate(variant_cache):
+                if row_idx >= len(variants):
+                    continue
+                col = idx * WAREHOUSE_PRODUCT_WIDTH
+                size, quantity = variants[row_idx]
+                row[col] = size
+                row[col + 1] = quantity
+            writer.writerow(row)
+
+        image_row = [""] * row_width
+        for idx, item in enumerate(group):
+            photo_front_url = _resolved_photo(item, "photo_front")
+            if not photo_front_url:
+                continue
+            col = idx * WAREHOUSE_PRODUCT_WIDTH
+            image_row[col] = "Image URL"
+            image_row[col + 1] = photo_front_url
+        if any(image_row):
+            writer.writerow(image_row)
+
+        writer.writerow([])
 
     return output.getvalue()
 

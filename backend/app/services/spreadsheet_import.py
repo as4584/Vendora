@@ -710,6 +710,8 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
         dialect = csv.Sniffer().sniff(sample) if sample.strip() else csv.excel
     except csv.Error:
         dialect = csv.excel
+    if getattr(dialect, "delimiter", ",") in {"\r", "\n"}:
+        dialect = csv.excel
     return _table_rows_to_dicts([list(row) for row in csv.reader(io.StringIO(text), dialect=dialect)])
 
 

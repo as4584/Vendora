@@ -147,4 +147,48 @@ describe('api.ts — request()', () => {
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
   });
+
+  it('retries spreadsheet link import once after a gateway error', async () => {
+    jest.useFakeTimers();
+    try {
+      fetchSpy
+        .mockResolvedValueOnce(
+          makeFetchResponse({
+            status: 502,
+            contentType: 'application/json',
+            body: JSON.stringify({ detail: 'Bad Gateway' }),
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeFetchResponse({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              dry_run: false,
+              rows_seen: 40,
+              rows_importable: 40,
+              created: 40,
+              updated: 0,
+              skipped: 0,
+              errors: [],
+              warnings: [],
+              sample_items: [],
+            }),
+          }),
+        );
+
+      const resultPromise = api.importInventoryFromLink(
+        'https://docs.google.com/spreadsheets/d/example/edit?gid=0',
+        false,
+      );
+
+      await jest.advanceTimersByTimeAsync(1800);
+      const result = await resultPromise;
+
+      expect(result.created).toBe(40);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

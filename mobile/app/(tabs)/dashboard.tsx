@@ -63,8 +63,9 @@ export default function DashboardScreen() {
 
   const handleExport = async () => {
     try {
-      const csv = await api.exportInventoryCSV();
-      await downloadTextFile(csv, "vendora-inventory.csv");
+      const csv = await api.exportInventoryWarehouseCSV();
+      await downloadTextFile(csv, "vendora-inventory-warehouse.csv");
+      Alert.alert("Export ready", "Your inventory was exported in the warehouse Size/QTY spreadsheet format.");
     } catch (err: any) {
       Alert.alert("Export failed", err?.message || "Could not export inventory.");
     }
@@ -139,7 +140,7 @@ export default function DashboardScreen() {
       <SectionLabel>Quick Actions</SectionLabel>
       <View style={styles.actionGrid}>
         <ActionTile glyph="IM" label="Import" helper="Preview spreadsheet changes" onPress={() => router.push("/inventory/import" as any)} />
-        <ActionTile glyph="EX" label="Export" helper="Generate review CSV" onPress={handleExport} />
+        <ActionTile glyph="EX" label="Export" helper="Warehouse Size/QTY sheet" onPress={handleExport} />
         <ActionTile glyph="SY" label="Sync" helper="Pull latest provider stock" onPress={handleSync} />
         <ActionTile glyph="IV" label="Invoice" helper="Create from inventory" onPress={() => router.push("/inventory/invoices" as any)} />
       </View>

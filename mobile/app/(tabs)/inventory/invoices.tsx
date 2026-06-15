@@ -43,6 +43,7 @@ export default function InvoicesScreen() {
   const [discount, setDiscount] = useState("0.00");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
   const [openingInvoiceId, setOpeningInvoiceId] = useState<string | null>(null);
   const [recentlyAddedName, setRecentlyAddedName] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<api.InvoiceData | null>(null);
@@ -65,6 +66,21 @@ export default function InvoicesScreen() {
       .catch(() => Alert.alert("Invoices unavailable", "Could not load invoices or inventory."))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    const trimmed = inventoryQuery.trim();
+    if (!trimmed) return;
+
+    const timer = globalThis.setTimeout(() => {
+      setInventoryLoading(true);
+      api.listItems({ perPage: 20, availableOnly: true, q: trimmed })
+        .then((inventoryPage) => setInventory(inventoryPage.items))
+        .catch(() => Alert.alert("Inventory search failed", "Could not search your inventory."))
+        .finally(() => setInventoryLoading(false));
+    }, 350);
+
+    return () => globalThis.clearTimeout(timer);
+  }, [inventoryQuery]);
 
   const filteredInventory = useMemo(() => {
     if (!inventoryQuery.trim()) return inventory;
@@ -234,7 +250,7 @@ export default function InvoicesScreen() {
             <SectionLabel>From Inventory</SectionLabel>
             <TextInput
               style={styles.input}
-              placeholder="Search inventory"
+              placeholder="Search by item name, SKU, or category"
               placeholderTextColor={COLORS.textSoft}
               value={inventoryQuery}
               onChangeText={setInventoryQuery}
@@ -242,10 +258,11 @@ export default function InvoicesScreen() {
             <Text style={styles.helperText}>
               {recentlyAddedName
                 ? `${recentlyAddedName} was added to the invoice below.`
-                : "Tap an item to add it straight into the invoice builder."}
+                : "Search finds matching in-stock items from your inventory, then adds the selected item below."}
             </Text>
+            {inventoryLoading ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}
             <View style={{ gap: SPACING.sm }}>
-              {filteredInventory.slice(0, 6).map((item) => (
+              {filteredInventory.slice(0, 8).map((item) => (
                 <TouchableOpacity key={item.id} activeOpacity={0.84} onPress={() => addFromInventory(item)}>
                   <View style={styles.inventoryOption}>
                     <View style={styles.inventoryTextWrap}>
@@ -260,6 +277,9 @@ export default function InvoicesScreen() {
                   </View>
                 </TouchableOpacity>
               ))}
+              {!inventoryLoading && filteredInventory.length === 0 ? (
+                <Text style={styles.helperText}>No in-stock items matched that search.</Text>
+              ) : null}
             </View>
           </Card>
 
@@ -322,33 +342,45 @@ export default function InvoicesScreen() {
           </View>
 
           <Card style={{ gap: SPACING.md }}>
-            <SectionLabel>Adjustments</SectionLabel>
+            <SectionLabel>Totals</SectionLabel>
+            <Text style={styles.helperText}>
+              Add only the extra charges or credits the customer should see on this invoice.
+            </Text>
             <View style={[styles.dualRow, compactLineItemLayout && styles.dualRowStack]}>
+              <View style={styles.adjustmentField}>
+                <Text style={styles.fieldLabel}>Sales tax</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="0.00"
+                  placeholderTextColor={COLORS.textSoft}
+                  value={tax}
+                  onChangeText={setTax}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={styles.adjustmentField}>
+                <Text style={styles.fieldLabel}>Shipping charged</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="0.00"
+                  placeholderTextColor={COLORS.textSoft}
+                  value={shipping}
+                  onChangeText={setShipping}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+            <View style={styles.adjustmentField}>
+              <Text style={styles.fieldLabel}>Discount or credit</Text>
               <TextInput
-                style={[styles.input, styles.flexInput]}
-                placeholder="Tax"
+                style={styles.input}
+                placeholder="0.00"
                 placeholderTextColor={COLORS.textSoft}
-                value={tax}
-                onChangeText={setTax}
-                keyboardType="decimal-pad"
-              />
-              <TextInput
-                style={[styles.input, styles.flexInput]}
-                placeholder="Shipping"
-                placeholderTextColor={COLORS.textSoft}
-                value={shipping}
-                onChangeText={setShipping}
+                value={discount}
+                onChangeText={setDiscount}
                 keyboardType="decimal-pad"
               />
             </View>
-            <TextInput
-              style={styles.input}
-              placeholder="Discount"
-              placeholderTextColor={COLORS.textSoft}
-              value={discount}
-              onChangeText={setDiscount}
-              keyboardType="decimal-pad"
-            />
             <TextInput
               style={[styles.input, styles.notesInput]}
               placeholder="Notes"
@@ -497,6 +529,8 @@ const styles = StyleSheet.create({
   dualRow: { flexDirection: "row", gap: SPACING.sm, width: "100%" },
   dualRowStack: { flexDirection: "column" },
   flexInput: { flex: 1, minWidth: 0 },
+  adjustmentField: { flex: 1, minWidth: 0, gap: 6 },
+  fieldLabel: { color: COLORS.text, fontSize: 12, fontWeight: "800" },
   inventoryOption: {
     flexDirection: "row",
     alignItems: "center",
