@@ -398,6 +398,23 @@ export interface InventoryImportCommit {
   rows_errored: number;
 }
 
+export interface InventoryImportIssue {
+  row: number;
+  message: string;
+}
+
+export interface InventoryImportResult {
+  dry_run: boolean;
+  rows_seen: number;
+  rows_importable: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: InventoryImportIssue[];
+  warnings: InventoryImportIssue[];
+  sample_items: Record<string, any>[];
+}
+
 export async function previewInventoryImport(
   formData: FormData
 ): Promise<InventoryImportPreview> {
@@ -405,6 +422,40 @@ export async function previewInventoryImport(
     method: "POST",
     body: formData,
   });
+}
+
+export async function importInventoryFromLink(
+  url: string,
+  dryRun = false
+): Promise<InventoryImportResult> {
+  return request<InventoryImportResult>("/inventory/import", {
+    method: "POST",
+    body: JSON.stringify({
+      url,
+      dry_run: dryRun,
+      source_name: "mobile-link",
+    }),
+  });
+}
+
+export async function importInventoryFile(
+  file: { uri: string; name: string; mimeType?: string },
+  dryRun = false
+): Promise<InventoryImportResult> {
+  const formData = new FormData();
+  formData.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType || "text/csv",
+  } as any);
+
+  return request<InventoryImportResult>(
+    `/inventory/import/file?dry_run=${dryRun ? "true" : "false"}`,
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
 }
 
 export async function commitInventoryImport(

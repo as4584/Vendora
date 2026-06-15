@@ -5,10 +5,12 @@ Soft-deleted records return 404, never exposed.
 """
 import csv
 import io
+import ipaddress
 import math
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -35,10 +37,18 @@ from app.schemas.inventory import (
     ImportRowResult,
     ImportCommitResponse,
     InventoryActivityEntry,
+    InventoryImportRequest,
+    InventoryImportResult,
 )
 from app.dependencies.auth import get_current_user
-from app.dependencies.tier_limiter import enforce_item_limit
+from app.dependencies.tier_limiter import TIER_LIMITS, enforce_item_limit
 from app.services.inventory import transition_item, get_available_quantity
+from app.services.spreadsheet_import import (
+    detect_format,
+    google_sheet_csv_url,
+    parse_inventory_rows,
+    rows_from_bytes,
+)
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -96,6 +106,145 @@ def _get_active_item(item_id: str, user_id, db: Session) -> InventoryItem:
             detail="Item not found.",
         )
     return item
+
+
+def _validate_import_host(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Import link must be a public http(s) spreadsheet URL.",
+        )
+
+    host = parsed.hostname.lower()
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Import link must be publicly reachable.",
+            )
+    except ValueError:
+        blocked_hosts = {"localhost", "127.0.0.1", "0.0.0.0"}
+        if host in blocked_hosts or host.endswith(".local"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Import link must be publicly reachable.",
+            )
+    return google_sheet_csv_url(url)
+
+
+def _find_import_match(
+    db: Session,
+    user_id,
+    payload: dict,
+    external_id: str,
+) -> InventoryItem | None:
+    if payload.get("upc"):
+        match = db.query(InventoryItem).filter(
+            InventoryItem.user_id == user_id,
+            InventoryItem.deleted_at.is_(None),
+            InventoryItem.upc == payload["upc"],
+        ).first()
+        if match:
+            return match
+    if payload.get("sku"):
+        match = db.query(InventoryItem).filter(
+            InventoryItem.user_id == user_id,
+            InventoryItem.deleted_at.is_(None),
+            InventoryItem.sku == payload["sku"],
+        ).first()
+        if match:
+            return match
+    return db.query(InventoryItem).filter(
+        InventoryItem.user_id == user_id,
+        InventoryItem.deleted_at.is_(None),
+        InventoryItem.source == "spreadsheet",
+        InventoryItem.external_id == external_id,
+    ).first()
+
+
+def _import_inventory_content(
+    *,
+    filename: str,
+    content_type: str | None,
+    content: bytes,
+    dry_run: bool,
+    source_name: str | None,
+    db: Session,
+    current_user: User,
+) -> InventoryImportResult:
+    rows = rows_from_bytes(content, detect_format(filename, content_type, content))
+    parsed_rows = parse_inventory_rows(rows)
+
+    result = {
+        "dry_run": dry_run,
+        "rows_seen": len(rows),
+        "rows_importable": 0,
+        "created": 0,
+        "updated": 0,
+        "skipped": 0,
+        "errors": [],
+        "warnings": [],
+        "sample_items": [],
+    }
+
+    existing_count = db.query(InventoryItem).filter(
+        InventoryItem.user_id == current_user.id,
+        InventoryItem.deleted_at.is_(None),
+    ).count()
+    tier_limit = TIER_LIMITS.get(current_user.subscription_tier)
+
+    for parsed_row in parsed_rows:
+        for warning in parsed_row.warnings:
+            result["warnings"].append({"row": parsed_row.row_number, "message": warning})
+
+        if not parsed_row.payload:
+            result["skipped"] += 1
+            continue
+
+        result["rows_importable"] += 1
+        match = _find_import_match(db, current_user.id, parsed_row.payload, parsed_row.external_id)
+        if match:
+            result["updated"] += 1
+        else:
+            if tier_limit is not None and existing_count + result["created"] >= tier_limit:
+                result["skipped"] += 1
+                result["errors"].append({
+                    "row": parsed_row.row_number,
+                    "message": f"Tier limit reached at {tier_limit} inventory items.",
+                })
+                continue
+            result["created"] += 1
+
+        if len(result["sample_items"]) < 5:
+            result["sample_items"].append(parsed_row.payload)
+
+        if dry_run:
+            continue
+
+        payload = dict(parsed_row.payload)
+        raw_attrs = payload.pop("custom_attributes", {}) or {}
+        if match:
+            existing_attrs = match.custom_attributes or {}
+            payload["custom_attributes"] = {**existing_attrs, **raw_attrs}
+            for field, value in payload.items():
+                setattr(match, field, value)
+            db.add(match)
+        else:
+            item = InventoryItem(
+                user_id=current_user.id,
+                source="spreadsheet",
+                external_id=parsed_row.external_id,
+                custom_attributes=raw_attrs,
+                **payload,
+            )
+            db.add(item)
+
+    if not dry_run:
+        db.commit()
+
+    return InventoryImportResult(**result)
 
 
 @router.post("", response_model=ItemResponse, status_code=status.HTTP_201_CREATED)
@@ -185,6 +334,63 @@ def list_items(
         page=page,
         per_page=per_page,
         pages=math.ceil(total / per_page) if total > 0 else 0,
+    )
+
+
+@router.post("/import", response_model=InventoryImportResult)
+async def import_inventory_from_link(
+    payload: InventoryImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import inventory from a public/read-only spreadsheet link.
+
+    Supports Google Sheets read-only URLs by converting them to CSV export URLs.
+    """
+    import_url = _validate_import_host(payload.url)
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            response = await client.get(import_url)
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Spreadsheet link returned HTTP {exc.response.status_code}.",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not download the spreadsheet link.",
+        ) from exc
+
+    return _import_inventory_content(
+        filename=urlparse(import_url).path,
+        content_type=response.headers.get("content-type"),
+        content=response.content,
+        dry_run=payload.dry_run,
+        source_name=payload.source_name,
+        db=db,
+        current_user=current_user,
+    )
+
+
+@router.post("/import/file", response_model=InventoryImportResult)
+async def import_inventory_file(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import inventory from an uploaded CSV or XLSX spreadsheet."""
+    content = await file.read()
+    return _import_inventory_content(
+        filename=file.filename or "inventory.csv",
+        content_type=file.content_type,
+        content=content,
+        dry_run=dry_run,
+        source_name="file-upload",
+        db=db,
+        current_user=current_user,
     )
 
 

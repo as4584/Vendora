@@ -19,6 +19,30 @@ class PhotoUpdate(BaseModel):
     photo_back: str | None = None    # base64 data URL or remote URL
 
 
+class InventoryImportRequest(BaseModel):
+    """Import inventory from a public/read-only spreadsheet link."""
+    url: str = Field(..., max_length=2048)
+    dry_run: bool = False
+    source_name: str | None = Field(None, max_length=100)
+
+
+class InventoryImportIssue(BaseModel):
+    row: int
+    message: str
+
+
+class InventoryImportResult(BaseModel):
+    dry_run: bool
+    rows_seen: int
+    rows_importable: int
+    created: int
+    updated: int
+    skipped: int
+    errors: list[InventoryImportIssue]
+    warnings: list[InventoryImportIssue]
+    sample_items: list[dict[str, Any]]
+
+
 VALID_STATUSES = ["in_stock", "listed", "sold", "shipped", "paid", "archived"]
 
 

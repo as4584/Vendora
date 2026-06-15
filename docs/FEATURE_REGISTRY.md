@@ -258,6 +258,20 @@ Test Coverage: 60% acceptable
 
 Notes: Upload CSV, parse transactions, match to inventory.
 
+Feature: Inventory Spreadsheet Import
+
+Status: Stable
+
+Layer: Module
+
+Dependencies: Inventory engine, python-multipart, openpyxl, Expo Document Picker
+
+Risk Level: Medium
+
+Test Coverage: Backend import tests + full inventory regression + mobile smoke
+
+Notes: Imports CSV/XLSX uploads and read-only spreadsheet links into inventory. Maps messy seller columns, preserves unknown data in custom_attributes.import_raw, attaches photo URLs, upserts by UPC/SKU, and enforces tier limits.
+
 Feature: Google Sheets Sync
 
 Status: Planned

@@ -1,0 +1,115 @@
+"""Inventory spreadsheet import tests."""
+
+
+CSV_CONTENT = """Product Name,Brand,SKU,Category,Cost,List Price,Qty,Image URL,Condition
+Jordan 4 Military Blue,Nike,J4-MB-10,Sneakers,$120.00,$260.00,2,https://example.com/j4.jpg,New
+Vintage Denim Jacket,Levis,LV-JKT-M,Clothing,25,80,1,,Used
+"""
+
+
+def test_import_inventory_csv_file_creates_items(client, auth_headers):
+    resp = client.post(
+        "/api/v1/inventory/import/file",
+        files={"file": ("inventory.csv", CSV_CONTENT, "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["rows_seen"] == 2
+    assert data["created"] == 2
+    assert data["updated"] == 0
+    assert data["skipped"] == 0
+
+    items_resp = client.get("/api/v1/inventory?per_page=10", headers=auth_headers)
+    items = items_resp.json()["items"]
+    assert {item["name"] for item in items} == {
+        "Jordan 4 Military Blue",
+        "Vintage Denim Jacket",
+    }
+    jordan = next(item for item in items if item["sku"] == "J4-MB-10")
+    assert jordan["quantity"] == 2
+    assert jordan["buy_price"] == "120.00"
+    assert jordan["expected_sell_price"] == "260.00"
+    assert jordan["photo_front_url"] == "https://example.com/j4.jpg"
+    assert jordan["custom_attributes"]["brand"] == "Nike"
+
+
+def test_import_inventory_csv_file_dry_run_does_not_create_items(client, auth_headers):
+    resp = client.post(
+        "/api/v1/inventory/import/file?dry_run=true",
+        files={"file": ("inventory.csv", CSV_CONTENT, "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["dry_run"] is True
+    assert data["rows_importable"] == 2
+    assert data["created"] == 2
+
+    items_resp = client.get("/api/v1/inventory", headers=auth_headers)
+    assert items_resp.json()["total"] == 0
+
+
+def test_import_inventory_csv_file_updates_existing_sku(client, auth_headers):
+    client.post(
+        "/api/v1/inventory",
+        json={"name": "Old Name", "sku": "J4-MB-10", "quantity": 1},
+        headers=auth_headers,
+    )
+
+    resp = client.post(
+        "/api/v1/inventory/import/file",
+        files={"file": ("inventory.csv", CSV_CONTENT, "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["created"] == 1
+    assert data["updated"] == 1
+
+    items_resp = client.get("/api/v1/inventory?per_page=10", headers=auth_headers)
+    assert items_resp.json()["total"] == 2
+    jordan = next(item for item in items_resp.json()["items"] if item["sku"] == "J4-MB-10")
+    assert jordan["name"] == "Jordan 4 Military Blue"
+    assert jordan["quantity"] == 2
+
+
+def test_import_inventory_from_read_only_link(client, auth_headers, monkeypatch):
+    from app.routers import inventory as inventory_router
+
+    class FakeResponse:
+        headers = {"content-type": "text/csv"}
+        content = CSV_CONTENT.encode("utf-8")
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url):
+            assert url == "https://docs.google.com/spreadsheets/d/example/export?format=csv&gid=0"
+            return FakeResponse()
+
+    monkeypatch.setattr(inventory_router.httpx, "AsyncClient", FakeAsyncClient)
+
+    resp = client.post(
+        "/api/v1/inventory/import",
+        json={"url": "https://docs.google.com/spreadsheets/d/example/edit?usp=sharing"},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["created"] == 2
+    assert data["rows_importable"] == 2

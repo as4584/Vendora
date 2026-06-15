@@ -5,8 +5,8 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
-  TouchableOpacity,
   Platform,
+  TextInput,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as api from "../../../services/api";
@@ -18,6 +18,9 @@ export default function InventoryImportScreen() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [link, setLink] = useState("");
+  const [linkResult, setLinkResult] = useState<api.InventoryImportResult | null>(null);
+  const [linkLoading, setLinkLoading] = useState<"preview" | "import" | null>(null);
 
   const handlePickFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({
@@ -67,6 +70,30 @@ export default function InventoryImportScreen() {
     }
   };
 
+  const handleLinkImport = async (dryRun: boolean) => {
+    const trimmedLink = link.trim();
+    if (!trimmedLink) {
+      Alert.alert("Spreadsheet link required", "Paste a read-only Google Sheets, CSV, or XLSX link first.");
+      return;
+    }
+
+    setLinkLoading(dryRun ? "preview" : "import");
+    try {
+      const result = await api.importInventoryFromLink(trimmedLink, dryRun);
+      setLinkResult(result);
+      if (!dryRun) {
+        Alert.alert(
+          "Spreadsheet imported",
+          `${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`
+        );
+      }
+    } catch (err: any) {
+      Alert.alert("Link import failed", err?.message || "Could not import from this spreadsheet link.");
+    } finally {
+      setLinkLoading(null);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <HeaderTitle
@@ -82,6 +109,62 @@ export default function InventoryImportScreen() {
         </Text>
         <ActionButton label={loading ? "Preparing Preview..." : "Choose CSV File"} onPress={handlePickFile} disabled={loading} />
         {fileName ? <Text style={styles.fileName}>Selected: {fileName}</Text> : null}
+      </Card>
+
+      <Card style={{ gap: SPACING.md }}>
+        <SectionLabel>Read-Only Link</SectionLabel>
+        <TextInput
+          value={link}
+          onChangeText={setLink}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          placeholder="https://docs.google.com/spreadsheets/d/..."
+          placeholderTextColor={COLORS.textMuted}
+          style={styles.input}
+        />
+        <View style={styles.actionRow}>
+          <ActionButton
+            label={linkLoading === "preview" ? "Checking..." : "Preview Link"}
+            onPress={() => handleLinkImport(true)}
+            disabled={Boolean(linkLoading)}
+            tone="secondary"
+            compact
+          />
+          <ActionButton
+            label={linkLoading === "import" ? "Importing..." : "Import Link"}
+            onPress={() => handleLinkImport(false)}
+            disabled={Boolean(linkLoading)}
+            compact
+          />
+        </View>
+        {linkResult ? (
+          <View style={styles.previewList}>
+            <View style={styles.summaryRow}>
+              <Pill label={`Create ${linkResult.created}`} tone="success" />
+              <Pill label={`Update ${linkResult.updated}`} tone="info" />
+              <Pill label={`Skipped ${linkResult.skipped}`} tone="neutral" />
+              <Pill label={`Errors ${linkResult.errors.length}`} tone={linkResult.errors.length ? "danger" : "neutral"} />
+            </View>
+            {linkResult.sample_items.slice(0, 3).map((item, index) => (
+              <View key={`${item.name || "item"}-${index}`} style={styles.previewRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.previewTitle}>{item.name || "Imported item"}</Text>
+                  <Text style={styles.previewBody}>
+                    {[item.sku, item.category, item.expected_sell_price ? `$${item.expected_sell_price}` : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            {linkResult.errors.slice(0, 3).map((issue) => (
+              <Text key={`${issue.row}-${issue.message}`} style={styles.errorText}>
+                Row {issue.row}: {issue.message}
+              </Text>
+            ))}
+          </View>
+        ) : null}
       </Card>
 
       {preview ? (
@@ -134,6 +217,16 @@ const styles = StyleSheet.create({
   content: { padding: SPACING.lg, paddingBottom: 48, gap: SPACING.md },
   helperText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
   fileName: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
+  input: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: SPACING.md,
+    color: COLORS.text,
+    backgroundColor: COLORS.cardAlt,
+  },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm },
   summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs },
   previewList: { gap: SPACING.sm },
   previewRow: {
@@ -146,4 +239,5 @@ const styles = StyleSheet.create({
   },
   previewTitle: { color: COLORS.text, fontSize: 13, fontWeight: "700" },
   previewBody: { color: COLORS.textMuted, fontSize: 12, marginTop: 3 },
+  errorText: { color: COLORS.danger, fontSize: 12, lineHeight: 18 },
 });
