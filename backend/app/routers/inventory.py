@@ -351,6 +351,8 @@ async def import_inventory_from_link(
     Supports Google Sheets read-only URLs by converting them to XLSX/CSV export URLs.
     """
     import_urls = _validate_import_host(payload.url)
+    if payload.dry_run:
+        import_urls = sorted(import_urls, key=lambda candidate: 0 if "format=csv" in candidate else 1)
     last_error: HTTPException | None = None
     timeout = httpx.Timeout(120.0, connect=20.0)
     headers = {

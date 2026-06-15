@@ -343,6 +343,48 @@ def test_import_link_falls_back_to_csv_when_google_xlsx_returns_html(client, aut
     ]
 
 
+def test_import_link_dry_run_prefers_google_csv_export(client, auth_headers, monkeypatch):
+    from app.routers import inventory as inventory_router
+
+    calls = []
+
+    class FakeResponse:
+        headers = {"content-type": "text/csv"}
+        content = CSV_CONTENT.encode("utf-8")
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url):
+            calls.append(url)
+            return FakeResponse()
+
+    monkeypatch.setattr(inventory_router.httpx, "AsyncClient", FakeAsyncClient)
+
+    resp = client.post(
+        "/api/v1/inventory/import",
+        json={
+            "url": "https://docs.google.com/spreadsheets/d/example/edit?usp=sharing#gid=987654321",
+            "dry_run": True,
+        },
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["rows_importable"] == 2
+    assert calls == ["https://docs.google.com/spreadsheets/d/example/export?format=csv&gid=987654321"]
+
+
 def test_import_csv_detects_header_after_title_row(client, auth_headers):
     csv_content = """Inventory Upload
 Generated from seller worksheet
