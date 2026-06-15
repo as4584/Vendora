@@ -23,8 +23,9 @@ from fastapi import HTTPException, status
 
 MAX_CSV_IMPORT_BYTES = 8 * 1024 * 1024
 MAX_XLSX_IMPORT_BYTES = 200 * 1024 * 1024
-MAX_EMBEDDED_IMAGE_DIMENSION = 1200
-JPEG_THUMBNAIL_QUALITY = 82
+MAX_EMBEDDED_IMAGE_BYTES = 12 * 1024 * 1024
+MAX_EMBEDDED_IMAGE_DIMENSION = 640
+JPEG_THUMBNAIL_QUALITY = 76
 
 FIELD_ALIASES: dict[str, set[str]] = {
     "name": {"name", "item", "itemname", "title", "product", "productname", "description"},
@@ -490,6 +491,9 @@ def _warehouse_matrix_rows_to_dicts(
 
 
 def _image_data_url(image_bytes: bytes, path: str) -> str | None:
+    if len(image_bytes) > MAX_EMBEDDED_IMAGE_BYTES:
+        return None
+
     try:
         from PIL import Image
     except ImportError:
@@ -505,7 +509,7 @@ def _image_data_url(image_bytes: bytes, path: str) -> str | None:
                 if image.mode not in {"RGB", "L"}:
                     image = image.convert("RGB")
                 output = io.BytesIO()
-                image.save(output, format="JPEG", quality=JPEG_THUMBNAIL_QUALITY, optimize=True)
+                image.save(output, format="JPEG", quality=JPEG_THUMBNAIL_QUALITY)
                 encoded = base64.b64encode(output.getvalue()).decode("ascii")
                 return f"data:image/jpeg;base64,{encoded}"
         except Exception:
@@ -692,12 +696,13 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
             ) from exc
 
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-        sheet = workbook.active
+        try:
+            sheet = workbook.active
+            table_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
+        finally:
+            workbook.close()
         embedded_images = _xlsx_first_sheet_images(content)
-        return _table_rows_to_dicts(
-            [list(row) for row in sheet.iter_rows(values_only=True)],
-            embedded_images=embedded_images,
-        )
+        return _table_rows_to_dicts(table_rows, embedded_images=embedded_images)
 
     text = content.decode("utf-8-sig", errors="replace")
     sample = text[:2048]
