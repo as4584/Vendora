@@ -210,12 +210,16 @@ def google_sheet_csv_url(url: str) -> str:
     parsed = urlparse(url)
     if parsed.netloc not in {"docs.google.com", "www.docs.google.com"}:
         return url
-    match = re.search(r"/spreadsheets/d/([^/]+)", parsed.path)
-    if not match:
-        return url
+    published_match = re.search(r"/spreadsheets/(?:u/\d+/)?d/e/([^/]+)", parsed.path)
+    match = re.search(r"/spreadsheets/(?:u/\d+/)?d/([^/]+)", parsed.path)
     qs = parse_qs(parsed.query)
     fragment_qs = parse_qs(parsed.fragment)
     gid = (qs.get("gid") or fragment_qs.get("gid") or ["0"])[0]
+    if published_match:
+        query = urlencode({"single": "true", "output": "csv", "gid": gid})
+        return f"https://docs.google.com/spreadsheets/d/e/{published_match.group(1)}/pub?{query}"
+    if not match:
+        return url
     query = urlencode({"format": "csv", "gid": gid})
     return f"https://docs.google.com/spreadsheets/d/{match.group(1)}/export?{query}"
 
@@ -224,10 +228,23 @@ def google_sheet_xlsx_url(url: str) -> str:
     parsed = urlparse(url)
     if parsed.netloc not in {"docs.google.com", "www.docs.google.com"}:
         return url
-    match = re.search(r"/spreadsheets/d/([^/]+)", parsed.path)
+    match = re.search(r"/spreadsheets/(?:u/\d+/)?d/([^/]+)", parsed.path)
+    if match and match.group(1) == "e":
+        return url
     if not match:
         return url
     return f"https://docs.google.com/spreadsheets/d/{match.group(1)}/export?format=xlsx"
+
+
+def google_sheet_export_urls(url: str) -> list[str]:
+    parsed = urlparse(url)
+    if parsed.netloc not in {"docs.google.com", "www.docs.google.com"}:
+        return [url]
+    if re.search(r"/spreadsheets/(?:u/\d+/)?d/e/([^/]+)", parsed.path):
+        return [google_sheet_csv_url(url)]
+    if re.search(r"/spreadsheets/(?:u/\d+/)?d/([^/]+)", parsed.path):
+        return [google_sheet_xlsx_url(url), google_sheet_csv_url(url)]
+    return [url]
 
 
 def detect_format(filename: str | None, content_type: str | None, content: bytes) -> str:

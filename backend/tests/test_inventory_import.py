@@ -4,6 +4,7 @@ import io
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as WorkbookImage
 from PIL import Image
+from app.services.spreadsheet_import import google_sheet_export_urls
 
 
 CSV_CONTENT = """Product Name,Brand,SKU,Category,Cost,List Price,Qty,Image URL,Condition
@@ -281,6 +282,65 @@ def test_import_link_uses_google_sheet_gid_fragment(client, auth_headers, monkey
 
     assert resp.status_code == 200
     assert resp.json()["rows_importable"] == 2
+
+
+def test_google_sheet_export_urls_accept_account_scoped_link():
+    urls = google_sheet_export_urls(
+        "https://docs.google.com/spreadsheets/u/0/d/example/edit?gid=123#gid=123"
+    )
+
+    assert urls == [
+        "https://docs.google.com/spreadsheets/d/example/export?format=xlsx",
+        "https://docs.google.com/spreadsheets/d/example/export?format=csv&gid=123",
+    ]
+
+
+def test_import_link_falls_back_to_csv_when_google_xlsx_returns_html(client, auth_headers, monkeypatch):
+    from app.routers import inventory as inventory_router
+
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, content, content_type):
+            self.content = content
+            self.headers = {"content-type": content_type}
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url):
+            calls.append(url)
+            if url.endswith("format=xlsx"):
+                return FakeResponse(b"<!doctype html><html><body>Export warming up</body></html>", "text/html")
+            assert url == "https://docs.google.com/spreadsheets/d/example/export?format=csv&gid=987654321"
+            return FakeResponse(CSV_CONTENT.encode("utf-8"), "text/csv")
+
+    monkeypatch.setattr(inventory_router.httpx, "AsyncClient", FakeAsyncClient)
+
+    resp = client.post(
+        "/api/v1/inventory/import",
+        json={"url": "https://docs.google.com/spreadsheets/d/example/edit?usp=sharing#gid=987654321"},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["created"] == 2
+    assert data["rows_importable"] == 2
+    assert calls == [
+        "https://docs.google.com/spreadsheets/d/example/export?format=xlsx",
+        "https://docs.google.com/spreadsheets/d/example/export?format=csv&gid=987654321",
+    ]
 
 
 def test_import_csv_detects_header_after_title_row(client, auth_headers):

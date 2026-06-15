@@ -45,8 +45,8 @@ from app.dependencies.tier_limiter import TIER_LIMITS, enforce_item_limit
 from app.services.inventory import transition_item, get_available_quantity
 from app.services.spreadsheet_import import (
     detect_format,
+    google_sheet_export_urls,
     google_sheet_csv_url,
-    google_sheet_xlsx_url,
     parse_inventory_rows,
     rows_from_bytes,
 )
@@ -109,7 +109,7 @@ def _get_active_item(item_id: str, user_id, db: Session) -> InventoryItem:
     return item
 
 
-def _validate_import_host(url: str) -> str:
+def _validate_import_host(url: str) -> list[str]:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise HTTPException(
@@ -132,9 +132,9 @@ def _validate_import_host(url: str) -> str:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Import link must be publicly reachable.",
             )
-    if host in {"docs.google.com", "www.docs.google.com"} and "/spreadsheets/d/" in parsed.path:
-        return google_sheet_xlsx_url(url)
-    return google_sheet_csv_url(url)
+    if host in {"docs.google.com", "www.docs.google.com"}:
+        return google_sheet_export_urls(url)
+    return [google_sheet_csv_url(url)]
 
 
 def _find_import_match(
@@ -348,32 +348,55 @@ async def import_inventory_from_link(
 ):
     """Import inventory from a public/read-only spreadsheet link.
 
-    Supports Google Sheets read-only URLs by converting them to CSV export URLs.
+    Supports Google Sheets read-only URLs by converting them to XLSX/CSV export URLs.
     """
-    import_url = _validate_import_host(payload.url)
-    try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            response = await client.get(import_url)
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Spreadsheet link returned HTTP {exc.response.status_code}.",
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Could not download the spreadsheet link.",
-        ) from exc
+    import_urls = _validate_import_host(payload.url)
+    last_error: HTTPException | None = None
+    timeout = httpx.Timeout(120.0, connect=20.0)
+    headers = {
+        "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,*/*",
+        "User-Agent": "VendoraSpreadsheetImport/1.0",
+    }
 
-    return _import_inventory_content(
-        filename=urlparse(import_url).path,
-        content_type=response.headers.get("content-type"),
-        content=response.content,
-        dry_run=payload.dry_run,
-        source_name=payload.source_name,
-        db=db,
-        current_user=current_user,
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=headers) as client:
+        for import_url in import_urls:
+            try:
+                response = await client.get(import_url)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                last_error = HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Spreadsheet link returned HTTP {exc.response.status_code}.",
+                )
+                continue
+            except httpx.HTTPError:
+                last_error = HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Could not download the spreadsheet link.",
+                )
+                continue
+
+            try:
+                return _import_inventory_content(
+                    filename=urlparse(import_url).path,
+                    content_type=response.headers.get("content-type"),
+                    content=response.content,
+                    dry_run=payload.dry_run,
+                    source_name=payload.source_name,
+                    db=db,
+                    current_user=current_user,
+                )
+            except HTTPException as exc:
+                last_error = exc
+                if "web page instead of spreadsheet data" in str(exc.detail):
+                    continue
+                raise
+
+    if last_error:
+        raise last_error
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Could not download the spreadsheet link.",
     )
 
 

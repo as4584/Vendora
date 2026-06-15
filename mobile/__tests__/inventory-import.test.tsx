@@ -14,6 +14,7 @@ jest.mock('expo-document-picker', () => ({
 jest.mock('../services/api', () => ({
   previewInventoryImport: jest.fn(),
   commitInventoryImport: jest.fn(),
+  importInventoryFromLink: jest.fn(),
 }));
 
 import React from 'react';
@@ -106,5 +107,45 @@ describe('InventoryImportScreen', () => {
     });
 
     expect(apiMock.commitInventoryImport).toHaveBeenCalledWith('job-22');
+  });
+
+  it('previews a spreadsheet link and confirms the result', async () => {
+    (apiMock.importInventoryFromLink as jest.Mock).mockResolvedValue({
+      dry_run: true,
+      rows_seen: 40,
+      rows_importable: 40,
+      created: 40,
+      updated: 0,
+      skipped: 0,
+      errors: [],
+      warnings: [],
+      sample_items: [
+        { name: 'The Cotton Wreath Hoodie Black', photo_front_url: 'data:image/jpeg;base64,abc' },
+      ],
+    });
+
+    const screen = render(<InventoryImportScreen />);
+
+    fireEvent.changeText(
+      screen.getByPlaceholderText('https://docs.google.com/spreadsheets/d/...'),
+      'https://docs.google.com/spreadsheets/d/example/edit?gid=0#gid=0'
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Preview Link'));
+    });
+
+    await waitFor(() => {
+      expect(apiMock.importInventoryFromLink).toHaveBeenCalledWith(
+        'https://docs.google.com/spreadsheets/d/example/edit?gid=0#gid=0',
+        true
+      );
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Preview ready',
+        expect.stringContaining('40 items found')
+      );
+      expect(screen.getByText('Importable 40')).toBeTruthy();
+      expect(screen.getByText('The Cotton Wreath Hoodie Black')).toBeTruthy();
+    });
   });
 });

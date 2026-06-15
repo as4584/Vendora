@@ -78,11 +78,22 @@ export default function InventoryImportScreen() {
     }
 
     setLinkLoading(dryRun ? "preview" : "import");
+    setLinkResult(null);
     try {
       const result = await api.importInventoryFromLink(trimmedLink, dryRun);
       setLinkResult(result);
-      if (!dryRun) {
-        const importedCount = result.created + result.updated;
+      const importedCount = result.created + result.updated;
+      const photoSampleCount = result.sample_items.filter(
+        (item) => typeof item.photo_front_url === "string" && item.photo_front_url.startsWith("data:image/")
+      ).length;
+      if (dryRun) {
+        Alert.alert(
+          result.rows_importable > 0 ? "Preview ready" : "No importable items found",
+          `${result.rows_importable} item${result.rows_importable === 1 ? "" : "s"} found. ` +
+            `${result.created} would be created, ${result.updated} would be updated, ${result.skipped} skipped.` +
+            (photoSampleCount > 0 ? ` Photos detected in ${photoSampleCount} preview item${photoSampleCount === 1 ? "" : "s"}.` : "")
+        );
+      } else {
         Alert.alert(
           importedCount > 0 ? "Spreadsheet imported" : "No items imported",
           `${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`
@@ -142,6 +153,7 @@ export default function InventoryImportScreen() {
         {linkResult ? (
           <View style={styles.previewList}>
             <View style={styles.summaryRow}>
+              <Pill label={`Importable ${linkResult.rows_importable}`} tone="info" />
               <Pill label={`Create ${linkResult.created}`} tone="success" />
               <Pill label={`Update ${linkResult.updated}`} tone="info" />
               <Pill label={`Skipped ${linkResult.skipped}`} tone="neutral" />
