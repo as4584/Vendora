@@ -1,4 +1,9 @@
 """Inventory spreadsheet import tests."""
+import io
+
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image as WorkbookImage
+from PIL import Image
 
 
 CSV_CONTENT = """Product Name,Brand,SKU,Category,Cost,List Price,Qty,Image URL,Condition
@@ -18,6 +23,42 @@ Navy",,
 ,S,1,,,S,0
 ,M,2,,,M,3
 """
+
+
+def _xlsx_bytes(rows):
+    workbook = Workbook()
+    sheet = workbook.active
+    for row in rows:
+        sheet.append(row)
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def _warehouse_xlsx_with_image_bytes():
+    workbook = Workbook()
+    sheet = workbook.active
+    rows = [
+        [None, None, None],
+        ["The Cotton Wreath Hoodie\nBlack", None, None],
+        [None, None, None],
+        [None, None, None],
+        [None, None, None],
+        [None, "Size", "QTY"],
+        [None, "S", 1],
+        [None, "M", 2],
+    ]
+    for row in rows:
+        sheet.append(row)
+
+    image_bytes = io.BytesIO()
+    Image.new("RGB", (8, 8), color=(16, 80, 160)).save(image_bytes, format="PNG")
+    image_bytes.seek(0)
+    sheet.add_image(WorkbookImage(image_bytes), "A3")
+
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
 
 
 def test_import_inventory_csv_file_creates_items(client, auth_headers):
@@ -75,6 +116,30 @@ def test_import_inventory_warehouse_size_qty_matrix(client, auth_headers):
         {"size": "M", "quantity": 2},
     ]
     assert navy["quantity"] == 4
+
+
+def test_import_inventory_warehouse_xlsx_embedded_image(client, auth_headers):
+    resp = client.post(
+        "/api/v1/inventory/import/file",
+        files={
+            "file": (
+                "warehouse.xlsx",
+                _warehouse_xlsx_with_image_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["created"] == 1
+
+    items_resp = client.get("/api/v1/inventory?per_page=10", headers=auth_headers)
+    item = items_resp.json()["items"][0]
+    assert item["name"] == "The Cotton Wreath Hoodie Black"
+    assert item["quantity"] == 3
+    assert item["photo_front_url"].startswith("data:image/jpeg;base64,")
 
 
 def test_import_inventory_extracts_photo_url_from_image_formula(client, auth_headers):
@@ -140,8 +205,12 @@ def test_import_inventory_from_read_only_link(client, auth_headers, monkeypatch)
     from app.routers import inventory as inventory_router
 
     class FakeResponse:
-        headers = {"content-type": "text/csv"}
-        content = CSV_CONTENT.encode("utf-8")
+        headers = {"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+        content = _xlsx_bytes([
+            ["Product Name", "Brand", "SKU", "Category", "Cost", "List Price", "Qty", "Image URL", "Condition"],
+            ["Jordan 4 Military Blue", "Nike", "J4-MB-10", "Sneakers", "$120.00", "$260.00", 2, "https://example.com/j4.jpg", "New"],
+            ["Vintage Denim Jacket", "Levis", "LV-JKT-M", "Clothing", 25, 80, 1, None, "Used"],
+        ])
 
         def raise_for_status(self):
             return None
@@ -157,7 +226,7 @@ def test_import_inventory_from_read_only_link(client, auth_headers, monkeypatch)
             return False
 
         async def get(self, url):
-            assert url == "https://docs.google.com/spreadsheets/d/example/export?format=csv&gid=0"
+            assert url == "https://docs.google.com/spreadsheets/d/example/export?format=xlsx"
             return FakeResponse()
 
     monkeypatch.setattr(inventory_router.httpx, "AsyncClient", FakeAsyncClient)
@@ -178,8 +247,12 @@ def test_import_link_uses_google_sheet_gid_fragment(client, auth_headers, monkey
     from app.routers import inventory as inventory_router
 
     class FakeResponse:
-        headers = {"content-type": "text/csv"}
-        content = CSV_CONTENT.encode("utf-8")
+        headers = {"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+        content = _xlsx_bytes([
+            ["Product Name", "Qty"],
+            ["Jordan 4 Military Blue", 2],
+            ["Vintage Denim Jacket", 1],
+        ])
 
         def raise_for_status(self):
             return None
@@ -195,7 +268,7 @@ def test_import_link_uses_google_sheet_gid_fragment(client, auth_headers, monkey
             return False
 
         async def get(self, url):
-            assert url == "https://docs.google.com/spreadsheets/d/example/export?format=csv&gid=987654321"
+            assert url == "https://docs.google.com/spreadsheets/d/example/export?format=xlsx"
             return FakeResponse()
 
     monkeypatch.setattr(inventory_router.httpx, "AsyncClient", FakeAsyncClient)

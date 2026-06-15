@@ -6,18 +6,25 @@ Vendora inventory model. The router owns authentication and persistence.
 from __future__ import annotations
 
 import csv
+import base64
 import hashlib
 import io
+import posixpath
 import re
+import zipfile
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from xml.etree import ElementTree
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from fastapi import HTTPException, status
 
 
-MAX_IMPORT_BYTES = 8 * 1024 * 1024
+MAX_CSV_IMPORT_BYTES = 8 * 1024 * 1024
+MAX_XLSX_IMPORT_BYTES = 200 * 1024 * 1024
+MAX_EMBEDDED_IMAGE_DIMENSION = 1200
+JPEG_THUMBNAIL_QUALITY = 82
 
 FIELD_ALIASES: dict[str, set[str]] = {
     "name": {"name", "item", "itemname", "title", "product", "productname", "description"},
@@ -124,6 +131,13 @@ class ParsedImportRow:
     warnings: list[str]
 
 
+@dataclass(frozen=True)
+class EmbeddedImage:
+    row: int
+    col: int
+    data_url: str
+
+
 def normalize_header(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
 
@@ -184,6 +198,8 @@ def extract_url(value: Any) -> str | None:
     raw = str(value or "").strip()
     if not raw:
         return None
+    if raw.startswith("data:image/"):
+        return raw
     match = URL_RE.search(raw)
     if not match:
         return None
@@ -202,6 +218,16 @@ def google_sheet_csv_url(url: str) -> str:
     gid = (qs.get("gid") or fragment_qs.get("gid") or ["0"])[0]
     query = urlencode({"format": "csv", "gid": gid})
     return f"https://docs.google.com/spreadsheets/d/{match.group(1)}/export?{query}"
+
+
+def google_sheet_xlsx_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.netloc not in {"docs.google.com", "www.docs.google.com"}:
+        return url
+    match = re.search(r"/spreadsheets/d/([^/]+)", parsed.path)
+    if not match:
+        return url
+    return f"https://docs.google.com/spreadsheets/d/{match.group(1)}/export?format=xlsx"
 
 
 def detect_format(filename: str | None, content_type: str | None, content: bytes) -> str:
@@ -297,7 +323,7 @@ def _find_matrix_product_name(
     header_idx: int,
     pairs: list[tuple[int, int]],
     pair_idx: int,
-) -> tuple[str, int] | tuple[None, None]:
+) -> tuple[str, int, int] | tuple[None, None, None]:
     size_col, qty_col = pairs[pair_idx]
     left_bound = pairs[pair_idx - 1][1] + 1 if pair_idx > 0 else 0
     right_bound = pairs[pair_idx + 1][0] - 1 if pair_idx + 1 < len(pairs) else qty_col + 2
@@ -316,8 +342,8 @@ def _find_matrix_product_name(
                 continue
             if _is_matrix_size_label(candidate) or candidate.isdigit():
                 continue
-            return candidate, row_idx + 1
-    return None, None
+            return candidate, row_idx + 1, col + 1
+    return None, None, None
 
 
 def _collect_matrix_variants(
@@ -388,7 +414,10 @@ def _infer_color(raw_name: str) -> str | None:
     return " ".join(reversed(color_tail)).title()[:50]
 
 
-def _warehouse_matrix_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[str, Any]]:
+def _warehouse_matrix_rows_to_dicts(
+    table_rows: list[list[Any]],
+    embedded_images: list[EmbeddedImage],
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
 
     for header_idx, row in enumerate(table_rows):
@@ -400,12 +429,21 @@ def _warehouse_matrix_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[st
         for pair_idx, variants in variants_by_pair.items():
             if not variants:
                 continue
-            product_name, product_row_number = _find_matrix_product_name(table_rows, header_idx, pairs, pair_idx)
-            if not product_name or product_row_number is None:
+            product_name, product_row_number, product_col_number = _find_matrix_product_name(
+                table_rows,
+                header_idx,
+                pairs,
+                pair_idx,
+            )
+            if not product_name or product_row_number is None or product_col_number is None:
                 continue
 
             name = _compact_text(product_name)
             total_quantity = sum(int(variant["quantity"]) for variant in variants)
+            size_col, qty_col = pairs[pair_idx]
+            left_bound = pairs[pair_idx - 1][1] + 1 if pair_idx > 0 else 0
+            right_bound = pairs[pair_idx + 1][0] - 1 if pair_idx + 1 < len(pairs) else qty_col + 2
+            right_bound = max(left_bound, min(right_bound, max((len(row) for row in table_rows), default=0) - 1))
             parsed_row: dict[str, Any] = {
                 "Product Name": name,
                 "Qty": str(total_quantity),
@@ -413,6 +451,16 @@ def _warehouse_matrix_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[st
                 "__layout": "size_quantity_matrix",
                 "__row_number": product_row_number,
             }
+            image_url = _closest_matrix_image(
+                embedded_images,
+                product_row=product_row_number,
+                product_col=product_col_number,
+                header_row=header_idx + 1,
+                left_bound=left_bound,
+                right_bound=right_bound,
+            )
+            if image_url:
+                parsed_row["Image URL"] = image_url
             category = _infer_category(name)
             if category:
                 parsed_row["Category"] = category
@@ -424,8 +472,155 @@ def _warehouse_matrix_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[st
     return rows
 
 
-def _table_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[str, Any]]:
-    matrix_rows = _warehouse_matrix_rows_to_dicts(table_rows)
+def _image_data_url(image_bytes: bytes, path: str) -> str | None:
+    try:
+        from PIL import Image
+    except ImportError:
+        Image = None
+
+    if Image is not None:
+        try:
+            with Image.open(io.BytesIO(image_bytes)) as image:
+                image.thumbnail(
+                    (MAX_EMBEDDED_IMAGE_DIMENSION, MAX_EMBEDDED_IMAGE_DIMENSION),
+                    Image.Resampling.LANCZOS,
+                )
+                if image.mode not in {"RGB", "L"}:
+                    image = image.convert("RGB")
+                output = io.BytesIO()
+                image.save(output, format="JPEG", quality=JPEG_THUMBNAIL_QUALITY, optimize=True)
+                encoded = base64.b64encode(output.getvalue()).decode("ascii")
+                return f"data:image/jpeg;base64,{encoded}"
+        except Exception:
+            pass
+
+    extension = path.rsplit(".", 1)[-1].lower()
+    mime = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }.get(extension)
+    if not mime:
+        return None
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def _resolve_xlsx_relationship_path(base_path: str, target: str) -> str:
+    if target.startswith("/"):
+        return target.lstrip("/")
+    return posixpath.normpath(posixpath.join(posixpath.dirname(base_path), target))
+
+
+def _xlsx_first_sheet_images(content: bytes) -> list[EmbeddedImage]:
+    namespaces = {
+        "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+        "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        "xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
+    }
+
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile:
+        return []
+
+    try:
+        sheet_xml = archive.read("xl/worksheets/sheet1.xml")
+        sheet_rels_xml = archive.read("xl/worksheets/_rels/sheet1.xml.rels")
+    except KeyError:
+        return []
+
+    sheet_root = ElementTree.fromstring(sheet_xml)
+    drawing = sheet_root.find("main:drawing", namespaces)
+    if drawing is None:
+        return []
+    drawing_rel_id = drawing.attrib.get(f"{{{namespaces['r']}}}id")
+    if not drawing_rel_id:
+        return []
+
+    sheet_rels = ElementTree.fromstring(sheet_rels_xml)
+    drawing_target = None
+    for relationship in sheet_rels.findall("rel:Relationship", namespaces):
+        if relationship.attrib.get("Id") == drawing_rel_id:
+            drawing_target = relationship.attrib.get("Target")
+            break
+    if not drawing_target:
+        return []
+
+    drawing_path = _resolve_xlsx_relationship_path("xl/worksheets/sheet1.xml", drawing_target)
+    drawing_rels_path = posixpath.join(
+        posixpath.dirname(drawing_path),
+        "_rels",
+        f"{posixpath.basename(drawing_path)}.rels",
+    )
+
+    try:
+        drawing_root = ElementTree.fromstring(archive.read(drawing_path))
+        drawing_rels = ElementTree.fromstring(archive.read(drawing_rels_path))
+    except KeyError:
+        return []
+
+    media_targets = {
+        relationship.attrib.get("Id"): relationship.attrib.get("Target")
+        for relationship in drawing_rels.findall("rel:Relationship", namespaces)
+    }
+
+    images: list[EmbeddedImage] = []
+    for anchor_name in ("oneCellAnchor", "twoCellAnchor"):
+        for anchor in drawing_root.findall(f"xdr:{anchor_name}", namespaces):
+            marker = anchor.find("xdr:from", namespaces)
+            blip = anchor.find(".//a:blip", namespaces)
+            if marker is None or blip is None:
+                continue
+            embed_id = blip.attrib.get(f"{{{namespaces['r']}}}embed")
+            media_target = media_targets.get(embed_id)
+            if not media_target:
+                continue
+
+            media_path = _resolve_xlsx_relationship_path(drawing_path, media_target)
+            try:
+                data_url = _image_data_url(archive.read(media_path), media_path)
+            except KeyError:
+                data_url = None
+            if not data_url:
+                continue
+
+            row = int(marker.findtext("xdr:row", default="0", namespaces=namespaces)) + 1
+            col = int(marker.findtext("xdr:col", default="0", namespaces=namespaces)) + 1
+            images.append(EmbeddedImage(row=row, col=col, data_url=data_url))
+    return images
+
+
+def _closest_matrix_image(
+    images: list[EmbeddedImage],
+    *,
+    product_row: int,
+    product_col: int,
+    header_row: int,
+    left_bound: int,
+    right_bound: int,
+) -> str | None:
+    candidates: list[tuple[int, EmbeddedImage]] = []
+    for image in images:
+        if not (product_row <= image.row <= header_row):
+            continue
+        if not (left_bound + 1 <= image.col <= right_bound + 1):
+            continue
+        score = abs(image.row - product_row) * 10 + abs(image.col - product_col)
+        candidates.append((score, image))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: item[0])[1].data_url
+
+
+def _table_rows_to_dicts(
+    table_rows: list[list[Any]],
+    embedded_images: list[EmbeddedImage] | None = None,
+) -> list[dict[str, Any]]:
+    matrix_rows = _warehouse_matrix_rows_to_dicts(table_rows, embedded_images or [])
     if matrix_rows:
         return matrix_rows
 
@@ -461,10 +656,12 @@ def _table_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[str, Any]]:
 
 
 def rows_from_bytes(content: bytes, file_format: str, content_type: str | None = None) -> list[dict[str, Any]]:
-    if len(content) > MAX_IMPORT_BYTES:
+    max_bytes = MAX_XLSX_IMPORT_BYTES if file_format == "xlsx" else MAX_CSV_IMPORT_BYTES
+    max_mb = max_bytes // (1024 * 1024)
+    if len(content) > max_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Spreadsheet is too large. Import files must be 8 MB or less.",
+            detail=f"Spreadsheet is too large. Import files must be {max_mb} MB or less.",
         )
     _reject_html_download(content, content_type)
 
@@ -479,7 +676,11 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
 
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         sheet = workbook.active
-        return _table_rows_to_dicts([list(row) for row in sheet.iter_rows(values_only=True)])
+        embedded_images = _xlsx_first_sheet_images(content)
+        return _table_rows_to_dicts(
+            [list(row) for row in sheet.iter_rows(values_only=True)],
+            embedded_images=embedded_images,
+        )
 
     text = content.decode("utf-8-sig", errors="replace")
     sample = text[:2048]

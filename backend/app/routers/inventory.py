@@ -46,6 +46,7 @@ from app.services.inventory import transition_item, get_available_quantity
 from app.services.spreadsheet_import import (
     detect_format,
     google_sheet_csv_url,
+    google_sheet_xlsx_url,
     parse_inventory_rows,
     rows_from_bytes,
 )
@@ -131,6 +132,8 @@ def _validate_import_host(url: str) -> str:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Import link must be publicly reachable.",
             )
+    if host in {"docs.google.com", "www.docs.google.com"} and "/spreadsheets/d/" in parsed.path:
+        return google_sheet_xlsx_url(url)
     return google_sheet_csv_url(url)
 
 
