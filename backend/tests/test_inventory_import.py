@@ -113,3 +113,94 @@ def test_import_inventory_from_read_only_link(client, auth_headers, monkeypatch)
     data = resp.json()
     assert data["created"] == 2
     assert data["rows_importable"] == 2
+
+
+def test_import_link_uses_google_sheet_gid_fragment(client, auth_headers, monkeypatch):
+    from app.routers import inventory as inventory_router
+
+    class FakeResponse:
+        headers = {"content-type": "text/csv"}
+        content = CSV_CONTENT.encode("utf-8")
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url):
+            assert url == "https://docs.google.com/spreadsheets/d/example/export?format=csv&gid=987654321"
+            return FakeResponse()
+
+    monkeypatch.setattr(inventory_router.httpx, "AsyncClient", FakeAsyncClient)
+
+    resp = client.post(
+        "/api/v1/inventory/import",
+        json={"url": "https://docs.google.com/spreadsheets/d/example/edit?usp=sharing#gid=987654321"},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["rows_importable"] == 2
+
+
+def test_import_csv_detects_header_after_title_row(client, auth_headers):
+    csv_content = """Inventory Upload
+Generated from seller worksheet
+
+Product Name,Brand,SKU,Category,Cost,List Price,Qty,Image URL,Condition
+Jordan 4 Military Blue,Nike,J4-MB-10,Sneakers,$120.00,$260.00,2,https://example.com/j4.jpg,New
+"""
+
+    resp = client.post(
+        "/api/v1/inventory/import/file",
+        files={"file": ("inventory.csv", csv_content, "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["created"] == 1
+    assert data["sample_items"][0]["name"] == "Jordan 4 Military Blue"
+
+
+def test_import_link_rejects_html_download(client, auth_headers, monkeypatch):
+    from app.routers import inventory as inventory_router
+
+    class FakeResponse:
+        headers = {"content-type": "text/html"}
+        content = b"<!doctype html><html><body>Sign in</body></html>"
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url):
+            return FakeResponse()
+
+    monkeypatch.setattr(inventory_router.httpx, "AsyncClient", FakeAsyncClient)
+
+    resp = client.post(
+        "/api/v1/inventory/import",
+        json={"url": "https://docs.google.com/spreadsheets/d/example/edit?usp=sharing"},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 400
+    assert "web page instead of spreadsheet data" in resp.json()["detail"]

@@ -82,8 +82,9 @@ export default function InventoryImportScreen() {
       const result = await api.importInventoryFromLink(trimmedLink, dryRun);
       setLinkResult(result);
       if (!dryRun) {
+        const importedCount = result.created + result.updated;
         Alert.alert(
-          "Spreadsheet imported",
+          importedCount > 0 ? "Spreadsheet imported" : "No items imported",
           `${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`
         );
       }
@@ -160,6 +161,11 @@ export default function InventoryImportScreen() {
             ))}
             {linkResult.errors.slice(0, 3).map((issue) => (
               <Text key={`${issue.row}-${issue.message}`} style={styles.errorText}>
+                Row {issue.row}: {issue.message}
+              </Text>
+            ))}
+            {linkResult.warnings.slice(0, 3).map((issue) => (
+              <Text key={`warning-${issue.row}-${issue.message}`} style={styles.warningText}>
                 Row {issue.row}: {issue.message}
               </Text>
             ))}
@@ -240,4 +246,5 @@ const styles = StyleSheet.create({
   previewTitle: { color: COLORS.text, fontSize: 13, fontWeight: "700" },
   previewBody: { color: COLORS.textMuted, fontSize: 12, marginTop: 3 },
   errorText: { color: COLORS.danger, fontSize: 12, lineHeight: 18 },
+  warningText: { color: COLORS.warning, fontSize: 12, lineHeight: 18 },
 });

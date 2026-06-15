@@ -128,7 +128,8 @@ def google_sheet_csv_url(url: str) -> str:
     if not match:
         return url
     qs = parse_qs(parsed.query)
-    gid = qs.get("gid", ["0"])[0]
+    fragment_qs = parse_qs(parsed.fragment)
+    gid = (qs.get("gid") or fragment_qs.get("gid") or ["0"])[0]
     query = urlencode({"format": "csv", "gid": gid})
     return f"https://docs.google.com/spreadsheets/d/{match.group(1)}/export?{query}"
 
@@ -141,12 +142,84 @@ def detect_format(filename: str | None, content_type: str | None, content: bytes
     return "csv"
 
 
-def rows_from_bytes(content: bytes, file_format: str) -> list[dict[str, Any]]:
+def _reject_html_download(content: bytes, content_type: str | None = None) -> None:
+    ctype = (content_type or "").lower()
+    prefix = content[:512].lstrip().lower()
+    if "text/html" in ctype or prefix.startswith(b"<!doctype html") or prefix.startswith(b"<html"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "The link downloaded a web page instead of spreadsheet data. "
+                "Make the sheet shared as anyone-with-link read-only, or use a direct CSV/XLSX export link."
+            ),
+        )
+
+
+def _header_score(values: list[Any]) -> int:
+    fields = [resolve_field(str(value)) for value in values if str(value or "").strip()]
+    unique_fields = {field for field in fields if field}
+    if not unique_fields:
+        return 0
+    score = len(unique_fields)
+    if "name" in unique_fields:
+        score += 3
+    if {"sku", "upc", "brand", "category"} & unique_fields:
+        score += 2
+    if {"buy_price", "expected_sell_price", "quantity"} & unique_fields:
+        score += 2
+    return score
+
+
+def _unique_headers(values: list[Any]) -> list[str]:
+    headers: list[str] = []
+    seen: dict[str, int] = {}
+    for idx, value in enumerate(values, start=1):
+        header = str(value or "").strip() or f"Column {idx}"
+        count = seen.get(header, 0)
+        seen[header] = count + 1
+        headers.append(header if count == 0 else f"{header} {count + 1}")
+    return headers
+
+
+def _table_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[str, Any]]:
+    candidates = [
+        (idx, _header_score(row))
+        for idx, row in enumerate(table_rows[:25])
+        if any(str(value or "").strip() for value in row)
+    ]
+    if not candidates:
+        return []
+
+    header_idx, score = max(candidates, key=lambda item: item[1])
+    if score < 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Could not find an inventory header row. Add headers like Product Name, SKU, "
+                "Brand, Cost, List Price, Qty, or Image URL."
+            ),
+        )
+
+    headers = _unique_headers(table_rows[header_idx])
+    rows: list[dict[str, Any]] = []
+    for row in table_rows[header_idx + 1:]:
+        if not any(value not in (None, "") for value in row):
+            continue
+        rows.append({
+            headers[idx]: value
+            for idx, value in enumerate(row)
+            if idx < len(headers) and value not in (None, "")
+        })
+    return rows
+
+
+def rows_from_bytes(content: bytes, file_format: str, content_type: str | None = None) -> list[dict[str, Any]]:
     if len(content) > MAX_IMPORT_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="Spreadsheet is too large. Import files must be 8 MB or less.",
         )
+    _reject_html_download(content, content_type)
 
     if file_format == "xlsx":
         try:
@@ -159,13 +232,7 @@ def rows_from_bytes(content: bytes, file_format: str) -> list[dict[str, Any]]:
 
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         sheet = workbook.active
-        iterator = sheet.iter_rows(values_only=True)
-        headers = [str(cell or "").strip() for cell in next(iterator, [])]
-        return [
-            {headers[idx]: value for idx, value in enumerate(row) if idx < len(headers)}
-            for row in iterator
-            if any(value not in (None, "") for value in row)
-        ]
+        return _table_rows_to_dicts([list(row) for row in sheet.iter_rows(values_only=True)])
 
     text = content.decode("utf-8-sig", errors="replace")
     sample = text[:2048]
@@ -173,7 +240,7 @@ def rows_from_bytes(content: bytes, file_format: str) -> list[dict[str, Any]]:
         dialect = csv.Sniffer().sniff(sample) if sample.strip() else csv.excel
     except csv.Error:
         dialect = csv.excel
-    return [dict(row) for row in csv.DictReader(io.StringIO(text), dialect=dialect)]
+    return _table_rows_to_dicts([list(row) for row in csv.reader(io.StringIO(text), dialect=dialect)])
 
 
 def parse_inventory_rows(rows: list[dict[str, Any]]) -> list[ParsedImportRow]:

@@ -174,7 +174,7 @@ def _import_inventory_content(
     db: Session,
     current_user: User,
 ) -> InventoryImportResult:
-    rows = rows_from_bytes(content, detect_format(filename, content_type, content))
+    rows = rows_from_bytes(content, detect_format(filename, content_type, content), content_type)
     parsed_rows = parse_inventory_rows(rows)
 
     result = {
