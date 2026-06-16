@@ -21,7 +21,8 @@ jest.mock('../services/api', () => ({
 }));
 
 jest.mock('../utils/fileActions', () => ({
-  openPdfFile: jest.fn(),
+  previewPdfFile: jest.fn(),
+  downloadPdfFile: jest.fn(),
 }));
 
 import React from 'react';
@@ -42,7 +43,12 @@ const INVENTORY_ITEM = {
   color: 'Bred',
   condition: 'New',
   serial_number: null,
-  custom_attributes: null,
+  custom_attributes: {
+    variants: [
+      { size: '9', quantity: 1 },
+      { size: '10', quantity: 1 },
+    ],
+  },
   buy_price: '150.00',
   expected_sell_price: '340.00',
   actual_sell_price: null,
@@ -78,6 +84,7 @@ const CREATED_INVOICE = {
       unit_price: '340.00',
       line_total: '340.00',
       inventory_item_id: 'item-1',
+      size_label: '10',
     },
   ],
   created_at: '2026-04-25T12:00:00Z',
@@ -120,14 +127,18 @@ describe('InvoicesScreen', () => {
       expect(screen.getByText('From Inventory')).toBeTruthy();
     });
 
+    await waitFor(() => {
+      expect(screen.getByText('9')).toBeTruthy();
+    });
+
     await act(async () => {
-      fireEvent.press(screen.getByText('Add'));
+      fireEvent.press(screen.getByText('10'));
     });
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('Jordan 1 Retro High')).toBeTruthy();
+      expect(screen.getByDisplayValue('Jordan 1 Retro High - Size 10')).toBeTruthy();
       expect(screen.getAllByText('From Inventory').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('Jordan 1 Retro High was added to the invoice below.')).toBeTruthy();
+      expect(screen.getByText('Jordan 1 Retro High size 10 was added to the invoice below.')).toBeTruthy();
     });
 
     await act(async () => {
@@ -144,8 +155,9 @@ describe('InvoicesScreen', () => {
           customer_name: 'Alex',
           items: [
             expect.objectContaining({
-              description: 'Jordan 1 Retro High',
+              description: 'Jordan 1 Retro High - Size 10',
               inventory_item_id: 'item-1',
+              size_label: '10',
             }),
           ],
         }),
@@ -195,7 +207,17 @@ describe('InvoicesScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Close Preview')).toBeTruthy();
+      expect(screen.getByText('Preview PDF')).toBeTruthy();
       expect(screen.getByText('Download PDF')).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Preview PDF'));
+    });
+
+    await waitFor(() => {
+      expect(apiMock.exportInvoicePdf).toHaveBeenCalledWith('inv-1');
+      expect(fileActionsMock.previewPdfFile).toHaveBeenCalledWith('JVBERi0xLjQK', 'invoice-0001.pdf');
     });
 
     await act(async () => {
@@ -204,7 +226,7 @@ describe('InvoicesScreen', () => {
 
     await waitFor(() => {
       expect(apiMock.exportInvoicePdf).toHaveBeenCalledWith('inv-1');
-      expect(fileActionsMock.openPdfFile).toHaveBeenCalledWith('JVBERi0xLjQK', 'invoice-0001.pdf');
+      expect(fileActionsMock.downloadPdfFile).toHaveBeenCalledWith('JVBERi0xLjQK', 'invoice-0001.pdf');
     });
   });
 

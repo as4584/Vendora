@@ -594,6 +594,7 @@ export interface InvoiceItem {
   id: string;
   invoice_id: string;
   inventory_item_id: string | null;
+  size_label: string | null;
   description: string;
   quantity: number;
   unit_price: string;
@@ -631,6 +632,7 @@ export interface CreateInvoicePayload {
   customer_email?: string;
   items: {
     inventory_item_id?: string;
+    size_label?: string;
     description: string;
     quantity: number;
     unit_price: string;
@@ -646,6 +648,7 @@ export interface UpdateInvoicePayload {
   customer_email?: string;
   items: {
     inventory_item_id?: string;
+    size_label?: string;
     description: string;
     quantity: number;
     unit_price: string;

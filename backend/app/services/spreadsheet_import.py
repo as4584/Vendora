@@ -86,6 +86,27 @@ STATUS_ALIASES = {
 URL_RE = re.compile(r"https?://[^\s\"')<>]+", re.IGNORECASE)
 SIZE_HEADER_VALUES = {"size", "sizes"}
 QTY_HEADER_VALUES = {"qty", "quantity", "stock", "onhand", "qoh"}
+HORIZONTAL_SIZE_HEADERS = {
+    "xxs",
+    "xs",
+    "s",
+    "sm",
+    "small",
+    "m",
+    "md",
+    "medium",
+    "l",
+    "lg",
+    "large",
+    "xl",
+    "xxl",
+    "2xl",
+    "xxxl",
+    "3xl",
+    "4xl",
+    "os",
+    "onesize",
+}
 PRODUCT_WORDS = {
     "beanie",
     "cap",
@@ -248,6 +269,34 @@ def google_sheet_export_urls(url: str) -> list[str]:
     return [url]
 
 
+def google_sheet_candidate_csv_urls(url: str, html: str, limit: int = 80) -> list[str]:
+    parsed = urlparse(url)
+    match = re.search(r"/spreadsheets/(?:u/\d+/)?d/([^/]+)", parsed.path)
+    if parsed.netloc not in {"docs.google.com", "www.docs.google.com"} or not match:
+        return []
+
+    gids: list[str] = []
+    for pattern in (
+        r'gid=(\d+)',
+        r'\[\\"(\d{1,10})\\",\d+,\d+,\d+,\d+\].{0,700}(?:ITEM NAME|INVENTORY|XXS|XS|SM|MENS|PANTS|TOTAL)',
+        r'"sheetId":(\d+)',
+    ):
+        for found in re.findall(pattern, html):
+            gid = found if isinstance(found, str) else found[0]
+            if gid not in gids:
+                gids.append(gid)
+            if len(gids) >= limit:
+                break
+        if len(gids) >= limit:
+            break
+
+    sheet_id = match.group(1)
+    return [
+        f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?{urlencode({'format': 'csv', 'gid': gid})}"
+        for gid in gids
+    ]
+
+
 def detect_format(filename: str | None, content_type: str | None, content: bytes) -> str:
     name = (filename or "").lower()
     ctype = (content_type or "").lower()
@@ -309,7 +358,7 @@ def _is_matrix_size_label(value: Any) -> bool:
     label = _compact_text(value).upper()
     if not label:
         return False
-    if label in {"XS", "S", "M", "L", "XL", "XXL", "XXXL", "OS", "O/S", "ONE SIZE"}:
+    if label in {"XXS", "XS", "S", "SM", "M", "MD", "L", "LG", "XL", "XXL", "2XL", "XXXL", "3XL", "OS", "O/S", "ONE SIZE"}:
         return True
     return bool(re.fullmatch(r"\d{1,2}(\.\d)?", label))
 
@@ -430,6 +479,93 @@ def _infer_color(raw_name: str) -> str | None:
     if not color_tail:
         return None
     return " ".join(reversed(color_tail)).title()[:50]
+
+
+def _display_size_label(value: Any) -> str:
+    raw = _compact_text(value)
+    normalized = normalize_header(raw)
+    return {
+        "sm": "S",
+        "small": "S",
+        "md": "M",
+        "medium": "M",
+        "lg": "L",
+        "large": "L",
+        "onesize": "OS",
+    }.get(normalized, raw.upper())
+
+
+def _horizontal_size_table_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    current_category: str | None = None
+
+    for header_idx, row in enumerate(table_rows):
+        normalized = [normalize_header(value) for value in row]
+        name_cols = [idx for idx, value in enumerate(normalized) if value in {"itemname", "productname", "name"}]
+        if not name_cols:
+            non_empty = [_compact_text(value) for value in row if _compact_text(value)]
+            if "inventory" in normalized and non_empty:
+                current_category = non_empty[0][:50]
+            continue
+
+        name_col = name_cols[0]
+        size_cols = [
+            (idx, _display_size_label(row[idx]))
+            for idx, value in enumerate(normalized)
+            if idx > name_col and value in HORIZONTAL_SIZE_HEADERS
+        ]
+        if not size_cols:
+            continue
+
+        total_cols = [
+            idx
+            for idx, value in enumerate(normalized)
+            if idx > name_col and value in {"instock", "total", "quantity", "qty"}
+        ]
+
+        for row_number, data_row in enumerate(table_rows[header_idx + 1:], start=header_idx + 2):
+            if _horizontal_size_table_rows_to_dicts_should_stop(data_row, name_col):
+                break
+
+            name = _compact_text(data_row[name_col] if name_col < len(data_row) else "")
+            if not name or normalize_header(name) in {"itemname", "productname", "totalitemsinstock"}:
+                continue
+
+            variants: list[dict[str, int | str]] = []
+            for col, size in size_cols:
+                quantity = _matrix_quantity(data_row[col] if col < len(data_row) else "")
+                variants.append({"size": size, "quantity": quantity})
+
+            total_quantity = sum(int(variant["quantity"]) for variant in variants)
+            if total_quantity == 0:
+                for total_col in total_cols:
+                    total_quantity = max(total_quantity, _matrix_quantity(data_row[total_col] if total_col < len(data_row) else ""))
+            if total_quantity <= 0:
+                continue
+
+            parsed_row: dict[str, Any] = {
+                "Product Name": name,
+                "Qty": str(total_quantity),
+                "__variants": variants,
+                "__layout": "horizontal_size_table",
+                "__row_number": row_number,
+            }
+            if current_category:
+                parsed_row["Category"] = current_category
+            color = _infer_color(name)
+            if color:
+                parsed_row["Color"] = color
+            rows.append(parsed_row)
+
+    return rows
+
+
+def _horizontal_size_table_rows_to_dicts_should_stop(row: list[Any], name_col: int) -> bool:
+    normalized = [normalize_header(value) for value in row]
+    if "inventory" in normalized and not {"itemname", "productname"} & set(normalized):
+        return True
+    value = normalize_header(row[name_col] if name_col < len(row) else "")
+    return value in {"itemname", "productname"}
 
 
 def _warehouse_matrix_rows_to_dicts(
@@ -641,6 +777,10 @@ def _table_rows_to_dicts(
     table_rows: list[list[Any]],
     embedded_images: list[EmbeddedImage] | None = None,
 ) -> list[dict[str, Any]]:
+    horizontal_rows = _horizontal_size_table_rows_to_dicts(table_rows)
+    if horizontal_rows:
+        return horizontal_rows
+
     matrix_rows = _warehouse_matrix_rows_to_dicts(table_rows, embedded_images or [])
     if matrix_rows:
         return matrix_rows
@@ -696,13 +836,21 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
             ) from exc
 
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        last_error: HTTPException | None = None
         try:
-            sheet = workbook.active
-            table_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
+            for sheet_idx, sheet in enumerate(workbook.worksheets):
+                table_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
+                try:
+                    embedded_images = _xlsx_first_sheet_images(content) if sheet_idx == 0 else []
+                    return _table_rows_to_dicts(table_rows, embedded_images=embedded_images)
+                except HTTPException as exc:
+                    last_error = exc
+                    continue
         finally:
             workbook.close()
-        embedded_images = _xlsx_first_sheet_images(content)
-        return _table_rows_to_dicts(table_rows, embedded_images=embedded_images)
+        if last_error:
+            raise last_error
+        return []
 
     text = content.decode("utf-8-sig", errors="replace")
     sample = text[:2048]
@@ -790,6 +938,17 @@ def parse_inventory_rows(rows: list[dict[str, Any]]) -> list[ParsedImportRow]:
         custom_attributes["import_raw"] = {
             str(k): v for k, v in raw.items() if not str(k).startswith("__") and v not in (None, "")
         }
+
+        if not payload.get("buy_price") and not payload.get("expected_sell_price") and not payload.get("actual_sell_price"):
+            warnings.append("Price missing. Ask the user to add cost or list price before selling this item.")
+            custom_attributes.setdefault("import_review", {})["missing_price"] = True
+        if not payload.get("size") and not custom_attributes.get("variants"):
+            warnings.append("Size missing. Ask the user to confirm the size or mark it one-size.")
+            custom_attributes.setdefault("import_review", {})["missing_size"] = True
+        if not payload.get("photo_front_url"):
+            warnings.append("Photo missing. Ask the user if they want to add a product photo.")
+            custom_attributes.setdefault("import_review", {})["missing_photo"] = True
+
         payload["custom_attributes"] = custom_attributes
         payload = {k: v for k, v in payload.items() if v not in (None, "")}
 

@@ -86,12 +86,24 @@ export default function InventoryImportScreen() {
       const photoSampleCount = result.sample_items.filter(
         (item) => typeof item.photo_front_url === "string" && item.photo_front_url.startsWith("data:image/")
       ).length;
+      const missingPriceCount = result.warnings.filter((issue) => issue.message.includes("Price missing")).length;
+      const missingSizeCount = result.warnings.filter((issue) => issue.message.includes("Size missing")).length;
+      const missingPhotoCount = result.warnings.filter((issue) => issue.message.includes("Photo missing")).length;
+      const reviewMessage =
+        missingPriceCount || missingSizeCount || missingPhotoCount
+          ? ` Needs review: ${[
+              missingPriceCount ? `${missingPriceCount} missing price` : null,
+              missingSizeCount ? `${missingSizeCount} missing size` : null,
+              missingPhotoCount ? `${missingPhotoCount} missing photo` : null,
+            ].filter(Boolean).join(", ")}.`
+          : "";
       if (dryRun) {
         Alert.alert(
           result.rows_importable > 0 ? "Preview ready" : "No importable items found",
           `${result.rows_importable} item${result.rows_importable === 1 ? "" : "s"} found. ` +
             `${result.created} would be created, ${result.updated} would be updated, ${result.skipped} skipped.` +
-            (photoSampleCount > 0 ? ` Photos detected in ${photoSampleCount} preview item${photoSampleCount === 1 ? "" : "s"}.` : "")
+            (photoSampleCount > 0 ? ` Photos detected in ${photoSampleCount} preview item${photoSampleCount === 1 ? "" : "s"}.` : "") +
+            reviewMessage
         );
       } else {
         Alert.alert(
@@ -158,6 +170,10 @@ export default function InventoryImportScreen() {
               <Pill label={`Update ${linkResult.updated}`} tone="info" />
               <Pill label={`Skipped ${linkResult.skipped}`} tone="neutral" />
               <Pill label={`Errors ${linkResult.errors.length}`} tone={linkResult.errors.length ? "danger" : "neutral"} />
+              <Pill
+                label={`Review ${linkResult.warnings.length}`}
+                tone={linkResult.warnings.length ? "warning" : "neutral"}
+              />
             </View>
             {linkResult.sample_items.slice(0, 3).map((item, index) => (
               <View key={`${item.name || "item"}-${index}`} style={styles.previewRow}>

@@ -167,8 +167,8 @@ export default function InventoryListScreen() {
 
   const onExport = async () => {
     try {
-      const csv = await api.exportInventoryCSV();
-      await downloadTextFile(csv, "vendora-inventory.csv");
+      const csv = await api.exportInventoryWarehouseCSV();
+      await downloadTextFile(csv, "vendora-inventory-warehouse.csv");
     } catch (err: any) {
       Alert.alert("Export failed", err?.message || "Could not export the inventory CSV.");
     }

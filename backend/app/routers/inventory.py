@@ -45,6 +45,7 @@ from app.dependencies.tier_limiter import TIER_LIMITS, enforce_item_limit
 from app.services.inventory import transition_item, get_available_quantity
 from app.services.spreadsheet_import import (
     detect_format,
+    google_sheet_candidate_csv_urls,
     google_sheet_export_urls,
     google_sheet_csv_url,
     parse_inventory_rows,
@@ -392,6 +393,20 @@ async def import_inventory_from_link(
                 last_error = exc
                 if "web page instead of spreadsheet data" in str(exc.detail):
                     continue
+                if "Could not find an inventory header row" in str(exc.detail):
+                    discovery_text = response.text
+                    try:
+                        discovery_response = await client.get(payload.url)
+                        if discovery_response.status_code < 400:
+                            discovery_text = discovery_response.text
+                    except httpx.HTTPError:
+                        pass
+                    extra_urls = google_sheet_candidate_csv_urls(payload.url, discovery_text)
+                    for extra_url in extra_urls:
+                        if extra_url not in import_urls:
+                            import_urls.append(extra_url)
+                    if extra_urls:
+                        continue
                 raise
 
     if last_error:

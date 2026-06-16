@@ -189,6 +189,8 @@ def generate_invoice_pdf(
 
     for item in items:
         desc_full = str(item.description or "")
+        if getattr(item, "size_label", None):
+            desc_full = f"{desc_full}\nSize: {item.size_label}"
         parts     = desc_full.split("\n", 1)
         main_desc = parts[0]
         sub_desc  = parts[1].strip() if len(parts) > 1 else ""

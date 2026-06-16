@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class InvoiceItemCreate(BaseModel):
     inventory_item_id: Optional[UUID] = None
+    size_label: Optional[str] = Field(None, max_length=50)
     description: str = Field(max_length=500)
     quantity: int = Field(default=1, ge=1)
     unit_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
@@ -18,6 +19,7 @@ class InvoiceItemResponse(BaseModel):
     id: UUID
     invoice_id: UUID
     inventory_item_id: Optional[UUID] = None
+    size_label: Optional[str] = None
     description: str
     quantity: int
     unit_price: Decimal

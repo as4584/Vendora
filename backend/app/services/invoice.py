@@ -15,6 +15,7 @@ import logging
 from decimal import Decimal
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm import Session
 
 from app.models.invoice import Invoice, InvoiceItem
@@ -93,6 +94,70 @@ def calculate_invoice_totals(
     }
 
 
+def _variant_rows(item: InventoryItem) -> list[dict]:
+    attrs = item.custom_attributes or {}
+    variants = attrs.get("variants")
+    return variants if isinstance(variants, list) else []
+
+
+def check_invoice_item_availability(item: InventoryItem, requested_qty: int, size_label: str | None = None) -> None:
+    if not size_label:
+        from app.services.inventory import check_availability
+
+        check_availability(item, requested_qty)
+        return
+
+    normalized_size = size_label.strip().lower()
+    for variant in _variant_rows(item):
+        if str(variant.get("size") or "").strip().lower() != normalized_size:
+            continue
+        available = max(0, int(variant.get("quantity") or 0))
+        if available >= requested_qty:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "insufficient_size_stock",
+                "message": (
+                    f"Only {available} unit(s) of size {size_label} available for '{item.name}'. "
+                    f"{requested_qty} requested."
+                ),
+                "available": available,
+                "requested": requested_qty,
+                "item_id": str(item.id),
+                "size": size_label,
+            },
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": "size_not_available",
+            "message": f"Size {size_label} is not available for '{item.name}'.",
+            "available": 0,
+            "requested": requested_qty,
+            "item_id": str(item.id),
+            "size": size_label,
+        },
+    )
+
+
+def _deduct_variant_quantity(item: InventoryItem, size_label: str | None, quantity: int) -> None:
+    if not size_label:
+        return
+    variants = _variant_rows(item)
+    normalized_size = size_label.strip().lower()
+    for variant in variants:
+        if str(variant.get("size") or "").strip().lower() != normalized_size:
+            continue
+        variant["quantity"] = max(0, int(variant.get("quantity") or 0) - quantity)
+        attrs = dict(item.custom_attributes or {})
+        attrs["variants"] = variants
+        item.custom_attributes = attrs
+        flag_modified(item, "custom_attributes")
+        return
+
+
 def process_invoice_payment(invoice: Invoice, db: Session) -> None:
     """Called when an invoice is marked as paid (via Stripe webhook or manual transition).
 
@@ -134,6 +199,7 @@ def process_invoice_payment(invoice: Invoice, db: Session) -> None:
                 # Route stock deduction through the shared service with idempotency
                 idem_key = f"invoice:{invoice.id}:invitem:{inv_item.id}:pay"
                 try:
+                    _deduct_variant_quantity(item, inv_item.size_label, inv_item.quantity)
                     deduct_stock(
                         db,
                         item,

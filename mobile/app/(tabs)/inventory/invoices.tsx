@@ -15,7 +15,7 @@ import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, sizeBreakdown } from "../../../utils/inventory";
-import { openPdfFile } from "../../../utils/fileActions";
+import { downloadPdfFile, previewPdfFile } from "../../../utils/fileActions";
 
 interface DraftLineItem {
   description: string;
@@ -24,6 +24,14 @@ interface DraftLineItem {
   inventory_item_id?: string;
   size_label?: string;
   stock_label?: string;
+}
+
+function availableVariants(item: api.InventoryItem): api.SizeVariant[] {
+  const variants = item.custom_attributes?.variants;
+  if (!Array.isArray(variants)) return [];
+  return variants
+    .filter((variant: any) => variant?.size && Number(variant?.quantity || 0) > 0)
+    .map((variant: any) => ({ size: String(variant.size), quantity: Number(variant.quantity || 0) }));
 }
 
 export default function InvoicesScreen() {
@@ -110,14 +118,15 @@ export default function InvoicesScreen() {
     });
   };
 
-  const addFromInventory = (item: api.InventoryItem) => {
+  const addFromInventory = (item: api.InventoryItem, variant?: api.SizeVariant) => {
+    const selectedSize = variant?.size || item.size || undefined;
     const nextItem: DraftLineItem = {
-      description: item.name,
+      description: selectedSize ? `${item.name} - Size ${selectedSize}` : item.name,
       quantity: "1",
       unit_price: item.expected_sell_price || item.buy_price || "",
       inventory_item_id: item.id,
-      size_label: sizeBreakdown(item),
-      stock_label: `Stock ${resolveQty(item)}`,
+      size_label: selectedSize,
+      stock_label: variant ? `Size stock ${variant.quantity}` : `Stock ${resolveQty(item)}`,
     };
 
     setLineItems((previous) => {
@@ -129,7 +138,7 @@ export default function InvoicesScreen() {
       return hasOnlyBlankDraft ? [nextItem] : [...previous, nextItem];
     });
 
-    setRecentlyAddedName(item.name);
+    setRecentlyAddedName(selectedSize ? `${item.name} size ${selectedSize}` : item.name);
     globalThis.setTimeout(() => {
       scrollRef.current?.scrollTo({
         y: Math.max(lineItemsAnchorY.current - SPACING.md, 0),
@@ -142,11 +151,15 @@ export default function InvoicesScreen() {
     router.replace("/dashboard" as any);
   };
 
-  const handleOpenInvoice = async (invoiceId: string) => {
+  const handleOpenInvoice = async (invoiceId: string, mode: "preview" | "download" = "preview") => {
     setOpeningInvoiceId(invoiceId);
     try {
       const { pdf_base64, filename } = await api.exportInvoicePdf(invoiceId);
-      await openPdfFile(pdf_base64, filename);
+      if (mode === "download") {
+        await downloadPdfFile(pdf_base64, filename);
+      } else {
+        await previewPdfFile(pdf_base64, filename);
+      }
     } catch (err: any) {
       Alert.alert("Invoice unavailable", err?.message || "Could not open the invoice PDF.");
     } finally {
@@ -178,6 +191,7 @@ export default function InvoicesScreen() {
           quantity: parseInt(item.quantity || "1", 10) || 1,
           unit_price: item.unit_price.trim(),
           inventory_item_id: item.inventory_item_id,
+          size_label: item.size_label,
         })),
       });
 
@@ -262,21 +276,42 @@ export default function InvoicesScreen() {
             </Text>
             {inventoryLoading ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}
             <View style={{ gap: SPACING.sm }}>
-              {filteredInventory.slice(0, 8).map((item) => (
-                <TouchableOpacity key={item.id} activeOpacity={0.84} onPress={() => addFromInventory(item)}>
-                  <View style={styles.inventoryOption}>
+              {filteredInventory.slice(0, 8).map((item) => {
+                const variants = availableVariants(item);
+                return (
+                <View key={item.id} style={styles.inventoryOption}>
                     <View style={styles.inventoryTextWrap}>
                       <Text style={styles.optionTitle}>{item.name}</Text>
                       <Text style={styles.optionMeta}>
                         {sizeBreakdown(item)} - Stock {resolveQty(item)} - Ask {formatCurrency(item.expected_sell_price)}
                       </Text>
+                      {variants.length > 0 ? (
+                        <View style={styles.sizeChoiceRow}>
+                          {variants.map((variant) => (
+                            <TouchableOpacity
+                              key={`${item.id}-${variant.size}`}
+                              activeOpacity={0.84}
+                              onPress={() => addFromInventory(item, variant)}
+                            >
+                              <View style={styles.sizeChoice}>
+                                <Text style={styles.sizeChoiceText}>{variant.size}</Text>
+                                <Text style={styles.sizeChoiceQty}>{variant.quantity}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
-                    <View style={styles.inlineAction}>
-                      <Text style={styles.inlineActionText}>Add</Text>
-                    </View>
+                    {variants.length === 0 ? (
+                      <TouchableOpacity activeOpacity={0.84} onPress={() => addFromInventory(item)}>
+                        <View style={styles.inlineAction}>
+                          <Text style={styles.inlineActionText}>Add</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
-                </TouchableOpacity>
-              ))}
+                );
+              })}
               {!inventoryLoading && filteredInventory.length === 0 ? (
                 <Text style={styles.helperText}>No in-stock items matched that search.</Text>
               ) : null}
@@ -299,7 +334,7 @@ export default function InvoicesScreen() {
                     <View style={styles.lineItemMetaRow}>
                       <Pill label="From Inventory" tone="success" />
                       <Text style={styles.lineItemHint}>
-                        {item.size_label} - {item.stock_label}
+                        {item.size_label ? `Size ${item.size_label}` : "No size selected"} - {item.stock_label}
                       </Text>
                     </View>
                   ) : null}
@@ -442,6 +477,7 @@ export default function InvoicesScreen() {
                       <Text style={styles.optionTitle}>{item.description}</Text>
                       <Text style={styles.optionMeta}>
                         Qty {item.quantity} - Unit {formatCurrency(item.unit_price)}
+                        {item.size_label ? ` - Size ${item.size_label}` : ""}
                       </Text>
                     </View>
                     <Text style={styles.previewLineTotal}>{formatCurrency(item.line_total)}</Text>
@@ -452,8 +488,15 @@ export default function InvoicesScreen() {
               {selectedInvoice.notes ? <Text style={styles.helperText}>{selectedInvoice.notes}</Text> : null}
 
               <ActionButton
-                label={openingInvoiceId === selectedInvoice.id ? "Preparing PDF..." : "Download PDF"}
+                label={openingInvoiceId === selectedInvoice.id ? "Preparing PDF..." : "Preview PDF"}
                 onPress={() => handleOpenInvoice(selectedInvoice.id)}
+                tone="secondary"
+                compact
+                disabled={openingInvoiceId === selectedInvoice.id}
+              />
+              <ActionButton
+                label={openingInvoiceId === selectedInvoice.id ? "Preparing PDF..." : "Download PDF"}
+                onPress={() => handleOpenInvoice(selectedInvoice.id, "download")}
                 tone="secondary"
                 compact
                 disabled={openingInvoiceId === selectedInvoice.id}
@@ -553,6 +596,20 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   inlineActionText: { color: "#AFCEFF", fontSize: 12, fontWeight: "800" },
+  sizeChoiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  sizeChoice: {
+    minWidth: 58,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.cardAlt,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+    gap: 2,
+  },
+  sizeChoiceText: { color: COLORS.text, fontSize: 12, fontWeight: "900" },
+  sizeChoiceQty: { color: COLORS.textMuted, fontSize: 10, fontWeight: "700" },
   lineItemCard: {
     gap: SPACING.sm,
     backgroundColor: COLORS.bgElevated,

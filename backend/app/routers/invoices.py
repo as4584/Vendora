@@ -30,12 +30,12 @@ from app.schemas.invoice import (
 )
 from app.services.invoice import (
     calculate_invoice_totals,
+    check_invoice_item_availability,
     transition_invoice,
     process_invoice_payment,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.stripe_service import create_payment_intent
-from app.services.inventory import check_availability
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -88,8 +88,7 @@ def create_invoice(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Inventory item {item.inventory_item_id} not found.",
                 )
-            # Validate stock is available for the requested quantity
-            check_availability(inv, item.quantity)
+            check_invoice_item_availability(inv, item.quantity, item.size_label)
 
     # Calculate totals
     totals = calculate_invoice_totals(
@@ -116,6 +115,7 @@ def create_invoice(
         line_item = InvoiceItem(
             invoice_id=invoice.id,
             inventory_item_id=item_data.inventory_item_id,
+            size_label=item_data.size_label,
             description=item_data.description,
             quantity=item_data.quantity,
             unit_price=item_data.unit_price,
@@ -214,8 +214,7 @@ def update_invoice(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Inventory item {item.inventory_item_id} not found.",
                 )
-            # Validate stock is available for the requested quantity
-            check_availability(inv, item.quantity)
+            check_invoice_item_availability(inv, item.quantity, item.size_label)
 
     totals = calculate_invoice_totals(
         payload.items, payload.tax, payload.shipping, payload.discount
@@ -236,6 +235,7 @@ def update_invoice(
         line_item = InvoiceItem(
             invoice_id=invoice.id,
             inventory_item_id=item_data.inventory_item_id,
+            size_label=item_data.size_label,
             description=item_data.description,
             quantity=item_data.quantity,
             unit_price=item_data.unit_price,

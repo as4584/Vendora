@@ -61,6 +61,7 @@ class InvoiceItem(Base):
         ForeignKey("inventory_items.id", ondelete="SET NULL"),
         nullable=True,
     )
+    size_label = Column(String(50), nullable=True)
     description = Column(String(500), nullable=False)
     quantity = Column(Integer, nullable=False, server_default="1")
     unit_price = Column(Numeric(10, 2), nullable=False)

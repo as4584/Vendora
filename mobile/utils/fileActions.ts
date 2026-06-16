@@ -66,12 +66,7 @@ export async function downloadTextFile(
   throw new Error("File sharing is not available on this device.");
 }
 
-export async function openPdfFile(base64: string, filename: string) {
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    webDownloadBlob(base64ToPdfBlob(base64), filename);
-    return;
-  }
-
+async function writeOrSharePdf(base64: string, filename: string) {
   const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
   if (!baseDir) {
     throw new Error("File storage is not available on this device.");
@@ -93,3 +88,23 @@ export async function openPdfFile(base64: string, filename: string) {
 
   throw new Error("PDF sharing is not available on this device.");
 }
+
+export async function previewPdfFile(base64: string, filename: string) {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    webDownloadBlob(base64ToPdfBlob(base64), filename, true);
+    return;
+  }
+
+  return writeOrSharePdf(base64, filename);
+}
+
+export async function downloadPdfFile(base64: string, filename: string) {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    webDownloadBlob(base64ToPdfBlob(base64), filename);
+    return;
+  }
+
+  return writeOrSharePdf(base64, filename);
+}
+
+export const openPdfFile = previewPdfFile;

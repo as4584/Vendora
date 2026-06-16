@@ -67,6 +67,32 @@ class TestCreateInvoice:
         assert resp.status_code == 201
         assert resp.json()["items"][0]["inventory_item_id"] == item["id"]
 
+    def test_create_invoice_with_selected_size(self, client, auth_headers):
+        item = client.post("/api/v1/inventory", json={
+            **SAMPLE_ITEM,
+            "quantity": 3,
+            "custom_attributes": {
+                "variants": [
+                    {"size": "M", "quantity": 1},
+                    {"size": "L", "quantity": 2},
+                ]
+            },
+        }, headers=auth_headers).json()
+
+        resp = client.post("/api/v1/invoices", json={
+            "customer_name": "Sized Buyer",
+            "items": [{
+                "description": f"{SAMPLE_ITEM['name']} - Size L",
+                "quantity": 1,
+                "unit_price": "350.00",
+                "inventory_item_id": item["id"],
+                "size_label": "L",
+            }],
+        }, headers=auth_headers)
+
+        assert resp.status_code == 201
+        assert resp.json()["items"][0]["size_label"] == "L"
+
     def test_create_invoice_no_items_rejected(self, client, auth_headers):
         """At least one line item required."""
         resp = client.post("/api/v1/invoices", json={

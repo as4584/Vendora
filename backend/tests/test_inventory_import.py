@@ -25,6 +25,13 @@ Navy",,
 ,M,2,,,M,3
 """
 
+HORIZONTAL_SIZE_TABLE_CSV = """,,ESSENTIALS,,,,,,,,,,,,,,,,,,
+,,TSHIRTS,INVENTORY,,,,,,,TOTAL,,,,,,,,,PHOTOS,
+,,ITEM NAME,XXS,XS,SM,M,LG,XL,2XL,( IN STOCK ),,,,,,,,,FRONT,BACK
+,,Fear of God Essentials Sixers/Warm Heather,0,1,1,0,1,1,0,4,,,,,,,,,,
+,,Fear of God Essentials NBA/Black,0,0,1,0,0,0,0,1,,,,,,,,,,
+"""
+
 
 def _xlsx_bytes(rows):
     workbook = Workbook()
@@ -117,6 +124,31 @@ def test_import_inventory_warehouse_size_qty_matrix(client, auth_headers):
         {"size": "M", "quantity": 2},
     ]
     assert navy["quantity"] == 4
+
+
+def test_import_inventory_horizontal_size_table_warns_for_missing_price(client, auth_headers):
+    resp = client.post(
+        "/api/v1/inventory/import/file?dry_run=true",
+        files={"file": ("horizontal.csv", HORIZONTAL_SIZE_TABLE_CSV, "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["rows_importable"] == 2
+    assert data["sample_items"][0]["name"] == "Fear of God Essentials Sixers/Warm Heather"
+    assert data["sample_items"][0]["quantity"] == 4
+    assert data["sample_items"][0]["custom_attributes"]["variants"] == [
+        {"size": "XXS", "quantity": 0},
+        {"size": "XS", "quantity": 1},
+        {"size": "S", "quantity": 1},
+        {"size": "M", "quantity": 0},
+        {"size": "L", "quantity": 1},
+        {"size": "XL", "quantity": 1},
+        {"size": "2XL", "quantity": 0},
+    ]
+    assert data["sample_items"][0]["custom_attributes"]["import_review"]["missing_price"] is True
+    assert any("Price missing" in issue["message"] for issue in data["warnings"])
 
 
 def test_import_inventory_warehouse_xlsx_embedded_image(client, auth_headers):
