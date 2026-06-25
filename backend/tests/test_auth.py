@@ -13,6 +13,7 @@ from app.services.auth import (
 )
 from app.services.email import EmailDeliveryError
 from app.schemas.user import _validate_profile_picture
+from reset_management_password import TARGET_EMAIL, TARGET_PASSWORD, reset_account_password
 
 
 class TestRegister:
@@ -265,6 +266,34 @@ class TestPasswordReset:
             json={"token": token, "password": "NewPassword2"},
         )
         assert resp.status_code == 400
+class TestManagementPasswordReset:
+    def test_reset_management_password_updates_login_password(self, client, db):
+        user = User(
+            email=TARGET_EMAIL,
+            password_hash=hash_password("OldPass123"),
+            subscription_tier="free",
+            is_partner=False,
+        )
+        db.add(user)
+        db.commit()
+
+        reset_account_password(db)
+
+        old_login = client.post("/api/v1/auth/login", json={
+            "email": TARGET_EMAIL,
+            "password": "OldPass123",
+        })
+        assert old_login.status_code == 401
+
+        new_login = client.post("/api/v1/auth/login", json={
+            "email": TARGET_EMAIL,
+            "password": TARGET_PASSWORD,
+        })
+        assert new_login.status_code == 200
+
+        db.refresh(user)
+        assert user.subscription_tier == "pro"
+        assert user.is_partner is True
 
 
 class TestMe:
