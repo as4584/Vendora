@@ -1,15 +1,40 @@
 """Auth router — /api/v1/auth endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin, UserResponse, TokenResponse, UserProfileUpdate
-from app.services.auth import hash_password, verify_password, create_access_token
+from app.schemas.user import (
+    MessageResponse,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    TokenResponse,
+    UserCreate,
+    UserLogin,
+    UserProfileUpdate,
+    UserResponse,
+)
+from app.services.auth import (
+    create_access_token,
+    create_password_reset_token,
+    hash_password,
+    hash_password_reset_token,
+    verify_password,
+)
+from app.services.email import EmailDeliveryError, send_password_reset_email
+from app.rate_limit import limiter
 from app.services.tester_access import apply_tester_entitlements, persist_tester_entitlements
 from app.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
+RESET_REQUEST_MESSAGE = (
+    "If an account exists for that email, a password reset link has been sent."
+)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -56,6 +81,75 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     user = persist_tester_entitlements(db, user)
     token = create_access_token(data={"sub": str(user.id)})
     return TokenResponse(access_token=token)
+
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@limiter.limit("5/minute")
+def forgot_password(
+    payload: PasswordResetRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Email a one-time reset link without revealing whether the account exists."""
+    normalized_email = payload.email.strip().lower()
+    user = (
+        db.query(User)
+        .filter(
+            func.lower(User.email) == normalized_email,
+            User.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not user:
+        return MessageResponse(message=RESET_REQUEST_MESSAGE)
+
+    token, token_hash, expires_at = create_password_reset_token()
+    user.password_reset_token_hash = token_hash
+    user.password_reset_expires_at = expires_at
+    db.add(user)
+    db.commit()
+
+    try:
+        send_password_reset_email(user.email, token)
+    except EmailDeliveryError:
+        # Preserve the same public response for existing and unknown accounts.
+        logger.exception("Password reset email delivery failed")
+
+    return MessageResponse(message=RESET_REQUEST_MESSAGE)
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+    """Consume a valid one-time token and replace the user's password."""
+    token_hash = hash_password_reset_token(payload.token)
+    user = (
+        db.query(User)
+        .filter(
+            User.password_reset_token_hash == token_hash,
+            User.deleted_at.is_(None),
+        )
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+    expires_at = user.password_reset_expires_at if user else None
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if not user or not expires_at or expires_at <= now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This password reset link is invalid or has expired.",
+        )
+
+    user.password_hash = hash_password(payload.password)
+    user.password_reset_token_hash = None
+    user.password_reset_expires_at = None
+    db.add(user)
+    db.commit()
+    return MessageResponse(message="Your password has been reset. You can now sign in.")
 
 
 @router.get("/me", response_model=UserResponse)

@@ -8,20 +8,15 @@ from alembic import command as alembic_command
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.errors import RateLimitExceeded
 
 from app.routers import auth, inventory, transactions, dashboard, invoices, webhooks
 from app.routers import export, features, sellers, integrations
+from app.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
-
-# Disable rate limiting in test environment so test suites don't hit the cap
-_rate_limits = [] if os.getenv("ENVIRONMENT") == "testing" else ["100/minute"]
-limiter = Limiter(key_func=get_remote_address, default_limits=_rate_limits)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,7 +32,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Vendora API",
     description="Reseller Operating System — Inventory + Payments + Profit + Trust",
-    version="4.0.0",
+    version="4.1.0",
     docs_url="/api/v1/docs",
     redoc_url="/api/v1/redoc",
     openapi_url="/api/v1/openapi.json",
@@ -84,5 +79,5 @@ app.include_router(integrations.router, prefix="/api/v1")
 @app.get("/api/v1/health", tags=["health"])
 def health_check():
     """Health check endpoint."""
-    return {"status": "ok", "version": "4.0.0"}
+    return {"status": "ok", "version": "4.1.0"}
 # trigger reload

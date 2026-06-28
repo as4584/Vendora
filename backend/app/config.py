@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     ALLOWED_ORIGIN: str = "http://localhost:3000,http://localhost:8081"
     PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"
     TESTER_EMAIL_ALLOWLIST: str = "management.donxera@gmail.com"
+    # Password reset email (SendGrid)
+    SENDGRID_API: str = ""
+    SENDGRID_FROM_EMAIL: str = "noreply@lexmakesit.com"
+    SENDGRID_FROM_NAME: str = "Vendora"
+    PASSWORD_RESET_URL: str = "vendora://reset-password"
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
     # Stripe
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""

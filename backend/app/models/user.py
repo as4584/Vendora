@@ -1,7 +1,7 @@
 """User model — Core Engine Layer."""
 import uuid
 
-from sqlalchemy import Column, String, Boolean, CheckConstraint, Uuid, Text
+from sqlalchemy import Column, String, Boolean, CheckConstraint, Uuid, Text, DateTime
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID # Keep just in case or remove? Remove.
 
 from app.models.base import Base, TimestampMixin, SoftDeleteMixin
@@ -24,3 +24,5 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     is_partner = Column(Boolean, nullable=False, server_default="false")
     stripe_account_id = Column(String(255), nullable=True)
     profile_picture = Column(Text, nullable=True)  # base64 data URL of profile image
+    password_reset_token_hash = Column(String(64), nullable=True, index=True)
+    password_reset_expires_at = Column(DateTime(timezone=True), nullable=True)

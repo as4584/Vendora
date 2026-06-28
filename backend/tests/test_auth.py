@@ -1,7 +1,13 @@
 """Auth endpoint tests for /api/v1/auth/*."""
 
+from datetime import datetime, timedelta, timezone
+
 from app.models.user import User
-from app.services.auth import create_access_token, hash_password
+from app.services.auth import (
+    create_access_token,
+    hash_password,
+    hash_password_reset_token,
+)
 
 
 class TestRegister:
@@ -100,6 +106,116 @@ class TestLogin:
         db.refresh(user)
         assert user.subscription_tier == "pro"
         assert user.is_partner is True
+
+
+class TestPasswordReset:
+    def test_forgot_password_is_generic_and_stores_only_hash(
+        self, client, db, monkeypatch
+    ):
+        user = User(
+            email="reset@vendora.test",
+            password_hash=hash_password("OldPassword1"),
+        )
+        db.add(user)
+        db.commit()
+        delivered = {}
+
+        def fake_send(email, token):
+            delivered["email"] = email
+            delivered["token"] = token
+
+        monkeypatch.setattr(
+            "app.routers.auth.send_password_reset_email", fake_send
+        )
+        resp = client.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": " RESET@VENDORA.TEST "},
+        )
+
+        assert resp.status_code == 202
+        assert resp.json()["message"].startswith("If an account exists")
+        db.refresh(user)
+        assert delivered["email"] == user.email
+        assert user.password_reset_token_hash == hash_password_reset_token(
+            delivered["token"]
+        )
+        assert delivered["token"] != user.password_reset_token_hash
+        assert user.password_reset_expires_at is not None
+
+    def test_forgot_password_unknown_email_has_same_response(
+        self, client, monkeypatch
+    ):
+        delivered = []
+        monkeypatch.setattr(
+            "app.routers.auth.send_password_reset_email",
+            lambda email, token: delivered.append((email, token)),
+        )
+
+        resp = client.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": "missing@vendora.test"},
+        )
+
+        assert resp.status_code == 202
+        assert resp.json()["message"].startswith("If an account exists")
+        assert delivered == []
+
+    def test_reset_password_changes_login_and_consumes_token(
+        self, client, db, monkeypatch
+    ):
+        user = User(
+            email="consume@vendora.test",
+            password_hash=hash_password("OldPassword1"),
+        )
+        db.add(user)
+        db.commit()
+        delivered = {}
+        monkeypatch.setattr(
+            "app.routers.auth.send_password_reset_email",
+            lambda email, token: delivered.update(token=token),
+        )
+        client.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": user.email},
+        )
+
+        resp = client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": delivered["token"], "password": "NewPassword2"},
+        )
+        assert resp.status_code == 200
+        assert client.post(
+            "/api/v1/auth/login",
+            json={"email": user.email, "password": "NewPassword2"},
+        ).status_code == 200
+        assert client.post(
+            "/api/v1/auth/login",
+            json={"email": user.email, "password": "OldPassword1"},
+        ).status_code == 401
+
+        reused = client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": delivered["token"], "password": "AnotherPass3"},
+        )
+        assert reused.status_code == 400
+
+    def test_reset_password_rejects_expired_token(self, client, db):
+        token = "expired-token-that-is-long-enough-for-validation"
+        user = User(
+            email="expired@vendora.test",
+            password_hash=hash_password("OldPassword1"),
+            password_reset_token_hash=hash_password_reset_token(token),
+            password_reset_expires_at=datetime.now(timezone.utc)
+            - timedelta(minutes=1),
+        )
+        db.add(user)
+        db.commit()
+
+        resp = client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": token, "password": "NewPassword2"},
+        )
+        assert resp.status_code == 400
 
 
 class TestMe:

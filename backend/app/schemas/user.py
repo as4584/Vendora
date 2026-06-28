@@ -16,6 +16,19 @@ class UserLogin(BaseModel):
     password: str = Field(..., min_length=1, max_length=128)
 
 
+class PasswordResetRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(..., min_length=32, max_length=512)
+    password: str = Field(..., min_length=8, max_length=128)
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class UserResponse(BaseModel):
     id: UUID
     email: str

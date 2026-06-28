@@ -1,4 +1,6 @@
-"""Auth service — password hashing and JWT token operations."""
+"""Auth service — password hashing and token operations."""
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from jose import jwt, JWTError
@@ -23,6 +25,22 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against its bcrypt hash."""
     return pwd_context.verify(plain_password, hashed_password)
+
+
+def create_password_reset_token() -> tuple[str, str, datetime]:
+    """Create a random one-time token, its database-safe hash, and expiry."""
+    token = secrets.token_urlsafe(48)
+    return (
+        token,
+        hash_password_reset_token(token),
+        datetime.now(timezone.utc)
+        + timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+    )
+
+
+def hash_password_reset_token(token: str) -> str:
+    """Hash a reset token so the usable token is never stored in the database."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
