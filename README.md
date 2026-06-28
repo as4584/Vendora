@@ -93,10 +93,10 @@ Push to feature branch
    Both test suites pass
         │
         ▼
-   EAS Update → preview channel
+   EAS Update → preview + production channels
         │
         ▼
-   Expo Go (testers) gets update automatically on next open
+   Tester/internal builds and production builds receive the same release
 ```
 
 All deployments are gated — broken code never reaches testers.
@@ -170,7 +170,7 @@ npx playwright test
 
 **Tier enforcement middleware** — a FastAPI dependency (`tier_limiter`) checks the user's subscription tier on every protected route. Free tier is capped at 50 items; Pro is unlimited. Checked at the dependency layer so no router needs to know about it.
 
-**OTA updates** — mobile updates ship via EAS Update without requiring App Store review. Testers on the `preview` channel receive updates on next app open.
+**OTA updates** — mobile updates ship to both `preview` (tester/internal builds) and `production` after smoke tests pass. Expo Go users should reopen the shared channel link to refresh a cached project.
 
 ---
 

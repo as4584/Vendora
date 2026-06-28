@@ -57,10 +57,15 @@ jobs:
   # Only runs on push to main (not PRs), only if smoke tests pass.
   # App picks this up automatically on next open.
   publish-preview:
-    name: Publish OTA → Production Channel
+    # Internal tester builds use preview; store builds use production.
+    # Keep both channels here so a green release cannot strand testers.
+    name: Publish OTA → ${{ matrix.channel }} Channel
     runs-on: ubuntu-latest
     needs: iphone-smoke
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        channel: [preview, production]
     steps:
       - uses: actions/checkout@v4
 
@@ -81,6 +86,6 @@ jobs:
         working-directory: mobile
         run: |
           eas update \
-            --channel production \
+            --channel ${{ matrix.channel }} \
             --message "ci: ${{ github.event.head_commit.message }}" \
             --non-interactive

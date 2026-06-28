@@ -85,7 +85,10 @@ export default function LoginScreen() {
                     </View>
 
                     <Link href="/(auth)/forgot-password" asChild>
-                        <TouchableOpacity style={styles.forgotPasswordLink}>
+                        <TouchableOpacity
+                            testID="forgot-password-link"
+                            style={styles.forgotPasswordLink}
+                        >
                             <Text style={styles.forgotPasswordText}>Forgot password?</Text>
                         </TouchableOpacity>
                     </Link>
