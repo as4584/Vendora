@@ -17,9 +17,9 @@ test.describe('Login screen', () => {
     await expect(page.locator('text=Your Reseller OS')).toBeVisible();
 
     // Form fields are present
-    await expect(page.locator('text=Email')).toBeVisible();
-    await expect(page.locator('text=Password')).toBeVisible();
-    await expect(page.locator('text=Forgot password?')).toBeVisible();
+    await expect(page.getByText('Email', { exact: true })).toBeVisible();
+    await expect(page.getByText('Password', { exact: true })).toBeVisible();
+    await expect(page.getByText('Forgot password?', { exact: true })).toBeVisible();
 
     // No blank page — at least 500 chars of content
     const html = await page.content();
@@ -47,8 +47,8 @@ test.describe('Login screen', () => {
 test.describe('Forgot password screen', () => {
   test('opens from login and renders the reset request form', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('text=Forgot password?')).toBeVisible();
-    await page.click('text=Forgot password?');
+    await expect(page.getByText('Forgot password?', { exact: true })).toBeVisible();
+    await page.getByText('Forgot password?', { exact: true }).click();
 
     await expect(page.locator('text=Reset your password')).toBeVisible();
     await expect(page.locator('text=Send Reset Link')).toBeVisible();

@@ -117,7 +117,7 @@ class TestSystemResilience:
     def test_health_check(self, client):
         resp = client.get("/api/v1/health")
         assert resp.status_code == 200
-        assert resp.json()["version"] == "4.0.0"
+        assert resp.json()["version"] == "4.1.0"
 
     def test_invalid_json(self, client, auth_headers):
         resp = client.post(
