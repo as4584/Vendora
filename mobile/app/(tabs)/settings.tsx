@@ -313,6 +313,8 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </Card>
 
+      <InvoiceBrandingCard user={user} onSaved={refreshUser} />
+
       <Card style={{ gap: SPACING.sm }}>
         <SectionLabel>Vendora Plus</SectionLabel>
         <Text style={styles.helperText}>Billing, analytics, storefront, and support are now available in the app.</Text>
@@ -502,6 +504,74 @@ export default function SettingsScreen() {
   );
 }
 
+const ACCENT_PRESETS = ["#3B7BDB", "#f26722", "#00A86B", "#8B5CF6", "#EF4444", "#0EA5E9", "#111827"];
+const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
+
+function InvoiceBrandingCard({ user, onSaved }: { user: api.User | null; onSaved: () => Promise<void> | void }) {
+  const [color, setColor] = useState(user?.invoice_accent_color || "#3B7BDB");
+  const [address, setAddress] = useState(user?.business_address || "");
+  const [phone, setPhone] = useState(user?.business_phone || "");
+  const [saving, setSaving] = useState(false);
+
+  const validHex = HEX_RE.test(color);
+
+  const save = async () => {
+    if (!validHex) {
+      Alert.alert("Invalid color", "Use a hex color like #3B7BDB.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.updateProfile({
+        invoice_accent_color: color,
+        business_address: address || null,
+        business_phone: phone || null,
+      });
+      await onSaved();
+      Alert.alert("Saved", "Your invoice branding was updated.");
+    } catch (err: any) {
+      Alert.alert("Save failed", err?.message || "Could not update branding.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card style={{ gap: SPACING.md }}>
+      <SectionLabel>Invoice Branding</SectionLabel>
+      <Text style={styles.helperText}>Your color, logo and contact details show on every invoice PDF. (Logo = your profile photo above.)</Text>
+
+      <Text style={styles.brandFieldLabel}>Brand color</Text>
+      <View style={styles.swatchRow}>
+        {ACCENT_PRESETS.map((c) => (
+          <TouchableOpacity key={c} accessibilityLabel={`Use color ${c}`} onPress={() => setColor(c)}>
+            <View style={[styles.swatch, { backgroundColor: c }, color.toLowerCase() === c.toLowerCase() && styles.swatchActive]} />
+          </TouchableOpacity>
+        ))}
+      </View>
+      <View style={styles.hexRow}>
+        <View style={[styles.swatchLg, { backgroundColor: validHex ? color : "#334155" }]} />
+        <TextInput
+          accessibilityLabel="Brand color hex"
+          style={[styles.input, { flex: 1 }]}
+          value={color}
+          onChangeText={setColor}
+          autoCapitalize="none"
+          placeholder="#3B7BDB"
+          placeholderTextColor={COLORS.textSoft}
+        />
+      </View>
+
+      <Text style={styles.brandFieldLabel}>Business address</Text>
+      <TextInput style={styles.input} value={address} onChangeText={setAddress} placeholder="123 Main St, City ST" placeholderTextColor={COLORS.textSoft} />
+      <Text style={styles.brandFieldLabel}>Business phone</Text>
+      <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="(555) 123-4567" placeholderTextColor={COLORS.textSoft} keyboardType="phone-pad" />
+
+      <ActionButton label={saving ? "Saving..." : "Save Branding"} onPress={save} disabled={saving} />
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: SPACING.lg, paddingBottom: 48, gap: SPACING.md },
@@ -517,6 +587,21 @@ const styles = StyleSheet.create({
   avatarLetter: { color: COLORS.text, fontSize: 28, fontWeight: "800" },
   emailText: { color: COLORS.text, fontSize: 15, fontWeight: "800" },
   helperText: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
+  input: {
+    backgroundColor: COLORS.bgElevated,
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: 14,
+    color: COLORS.text,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  brandFieldLabel: { color: COLORS.text, fontSize: 12, fontWeight: "800", marginTop: 4 },
+  swatchRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  swatch: { width: 34, height: 34, borderRadius: 999, borderWidth: 2, borderColor: "transparent" },
+  swatchActive: { borderColor: COLORS.text },
+  hexRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  swatchLg: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
   syncOverviewRow: { flexDirection: "row", justifyContent: "space-between", gap: SPACING.md },
   syncStatValue: { color: COLORS.text, fontSize: 22, fontWeight: "800" },
   syncStatLabel: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
