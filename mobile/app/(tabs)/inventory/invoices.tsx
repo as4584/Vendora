@@ -500,14 +500,18 @@ export default function InvoicesScreen() {
               {selectedInvoice.notes ? <Text style={styles.helperText}>{selectedInvoice.notes}</Text> : null}
 
               <ActionButton
-                label={openingInvoiceId === selectedInvoice.id ? "Preparing PDF..." : "Preview PDF"}
-                onPress={() => handleOpenInvoice(selectedInvoice.id)}
-                tone="secondary"
+                label="Preview"
+                onPress={() =>
+                  router.push({
+                    pathname: "/inventory/invoice-preview" as any,
+                    params: { id: selectedInvoice.id },
+                  })
+                }
+                tone="primary"
                 compact
-                disabled={openingInvoiceId === selectedInvoice.id}
               />
               <ActionButton
-                label={openingInvoiceId === selectedInvoice.id ? "Preparing PDF..." : "Download PDF"}
+                label={openingInvoiceId === selectedInvoice.id ? "Preparing PDF..." : "Share PDF"}
                 onPress={() => handleOpenInvoice(selectedInvoice.id, "download")}
                 tone="secondary"
                 compact

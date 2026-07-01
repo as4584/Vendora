@@ -186,7 +186,10 @@ export interface User {
   id: string;
   email: string;
   business_name: string | null;
-  profile_picture: string | null;  // base64 data URL
+  profile_picture: string | null;  // base64 data URL (business icon)
+  business_address: string | null;
+  business_phone: string | null;
+  invoice_accent_color: string | null;  // hex, e.g. #3B7BDB
   subscription_tier: string;
   is_partner: boolean;
   created_at: string;
@@ -269,17 +272,24 @@ export async function getMe(): Promise<User> {
   return request<User>("/auth/me");
 }
 
+export interface ProfilePatch {
+  business_name?: string | null;
+  profile_picture?: string | null;
+  business_address?: string | null;
+  business_phone?: string | null;
+  invoice_accent_color?: string | null;
+}
+
 export async function updateProfile(
-  businessName?: string | null,
+  businessNameOrPatch?: string | null | ProfilePatch,
   profilePicture?: string | null
 ): Promise<User> {
-  return request<User>("/auth/profile", {
-    method: "PATCH",
-    body: JSON.stringify({
-      business_name: businessName,
-      profile_picture: profilePicture,
-    }),
-  });
+  // Back-compatible: (businessName, profilePicture) OR a partial patch object.
+  const body: ProfilePatch =
+    businessNameOrPatch && typeof businessNameOrPatch === "object"
+      ? businessNameOrPatch
+      : { business_name: businessNameOrPatch as string | null | undefined, profile_picture: profilePicture };
+  return request<User>("/auth/profile", { method: "PATCH", body: JSON.stringify(body) });
 }
 
 export interface InvoicePdfResponse {
