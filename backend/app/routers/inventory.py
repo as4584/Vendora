@@ -17,6 +17,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel as _PydBase
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -763,6 +764,71 @@ def delete_item(
     db.add(item)
     db.commit()
     return None
+
+
+class BulkDeleteRequest(_PydBase):
+    item_ids: list[str]
+    # When true, also try to remove the item from its original source (e.g. a
+    # connected spreadsheet/POS). Read-only imports can't be written back to.
+    delete_from_source: bool = False
+
+
+class BulkDeleteResponse(_PydBase):
+    deleted: int
+    source_removed: int = 0
+    source_unsupported: int = 0
+    source_note: str = ""
+
+
+@router.post("/bulk-delete", response_model=BulkDeleteResponse)
+def bulk_delete_items(
+    payload: BulkDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft-delete many inventory items at once (owned + active only).
+
+    `delete_from_source` note: spreadsheet imports are read-only (a public
+    Sheets URL or an uploaded file), so items sourced from a spreadsheet cannot
+    be removed at the source from here — those are counted in `source_unsupported`.
+    """
+    if not payload.item_ids:
+        raise HTTPException(status_code=400, detail="item_ids is required")
+
+    deleted = 0
+    source_unsupported = 0
+    now = datetime.now(timezone.utc)
+    for item_id in payload.item_ids[:500]:
+        item = (
+            db.query(InventoryItem)
+            .filter(
+                InventoryItem.id == item_id,
+                InventoryItem.user_id == current_user.id,
+                InventoryItem.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not item:
+            continue
+        if payload.delete_from_source and item.source == "spreadsheet":
+            source_unsupported += 1
+        item.deleted_at = now
+        db.add(item)
+        deleted += 1
+    db.commit()
+
+    note = ""
+    if payload.delete_from_source and source_unsupported:
+        note = (
+            f"{source_unsupported} item(s) came from a read-only spreadsheet import, "
+            "so they were removed from Vendora but can't be edited in your original sheet."
+        )
+    return BulkDeleteResponse(
+        deleted=deleted,
+        source_removed=0,
+        source_unsupported=source_unsupported,
+        source_note=note,
+    )
 
 
 @router.patch("/{item_id}/photos", response_model=ItemResponse)

@@ -447,6 +447,23 @@ export async function deleteItem(id: string): Promise<void> {
   return request<void>(`/inventory/${id}`, { method: "DELETE" });
 }
 
+export interface BulkDeleteResult {
+  deleted: number;
+  source_removed: number;
+  source_unsupported: number;
+  source_note: string;
+}
+
+export async function bulkDeleteItems(
+  itemIds: string[],
+  deleteFromSource = false
+): Promise<BulkDeleteResult> {
+  return request<BulkDeleteResult>("/inventory/bulk-delete", {
+    method: "POST",
+    body: JSON.stringify({ item_ids: itemIds, delete_from_source: deleteFromSource }),
+  });
+}
+
 export async function updateItemStatus(
   id: string,
   status: string

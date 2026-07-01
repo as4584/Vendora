@@ -30,9 +30,15 @@ const STATUS_TONES: Record<string, "success" | "warning" | "danger" | "info" | "
 function InventoryCard({
   item,
   onPress,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
 }: {
   item: api.InventoryItem;
   onPress: () => void;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const qty = resolveQty(item);
   const lowStock = qty > 0 && qty <= 3;
@@ -41,9 +47,20 @@ function InventoryCard({
   const backPhoto = resolvedPhoto(item, "back");
 
   return (
-    <TouchableOpacity accessibilityLabel={`Open ${item.name}`} accessibilityRole="button" activeOpacity={0.84} onPress={onPress}>
-      <Card style={styles.itemCard}>
+    <TouchableOpacity
+      accessibilityLabel={selectMode ? `Select ${item.name}` : `Open ${item.name}`}
+      accessibilityRole="button"
+      activeOpacity={0.84}
+      onPress={selectMode ? onToggleSelect : onPress}
+      onLongPress={onToggleSelect}
+    >
+      <Card style={selectMode && selected ? { ...styles.itemCard, ...styles.itemCardSelected } : styles.itemCard}>
         <View style={styles.itemCardRow}>
+          {selectMode ? (
+            <View style={[styles.checkbox, selected && styles.checkboxOn]}>
+              {selected ? <Text style={styles.checkboxTick}>✓</Text> : null}
+            </View>
+          ) : null}
           <View style={styles.photoColumn}>
             {frontPhoto ? (
               <Image source={{ uri: frontPhoto }} style={styles.mainPhoto} resizeMode="cover" />
@@ -99,6 +116,9 @@ export default function InventoryListScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filtersRef = useRef<{
     query: string;
@@ -164,6 +184,51 @@ export default function InventoryListScreen() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelect = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const runBulkDelete = async (deleteFromSource: boolean) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setDeleting(true);
+    try {
+      const result = await api.bulkDeleteItems(ids, deleteFromSource);
+      exitSelect();
+      await fetchItems({ page: 1, refresh: true });
+      const extra = result.source_note ? `\n\n${result.source_note}` : "";
+      Alert.alert("Deleted", `${result.deleted} item${result.deleted === 1 ? "" : "s"} removed.${extra}`);
+    } catch (err: any) {
+      Alert.alert("Delete failed", err?.message || "Could not delete the selected items.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmBulkDelete = () => {
+    const n = selectedIds.size;
+    if (n === 0) return;
+    Alert.alert(
+      `Delete ${n} item${n === 1 ? "" : "s"}?`,
+      "Choose where to remove them.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete from app only", style: "destructive", onPress: () => runBulkDelete(false) },
+        { text: "Delete from app + source", style: "destructive", onPress: () => runBulkDelete(true) },
+      ]
+    );
+  };
+
   const onExport = async () => {
     try {
       const csv = await api.exportInventoryWarehouseCSV();
@@ -195,7 +260,13 @@ export default function InventoryListScreen() {
         data={items}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <InventoryCard item={item} onPress={() => router.push(`/inventory/${item.id}` as any)} />
+          <InventoryCard
+            item={item}
+            onPress={() => router.push(`/inventory/${item.id}` as any)}
+            selectMode={selectMode}
+            selected={selectedIds.has(item.id)}
+            onToggleSelect={() => toggleSelect(item.id)}
+          />
         )}
         contentContainerStyle={styles.content}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
@@ -207,6 +278,11 @@ export default function InventoryListScreen() {
             <HeaderTitle title="Inventory" subtitle={`${total} items ready for stock, sync, and spreadsheet review.`} />
 
             <View style={styles.actionRow}>
+              {selectMode ? (
+                <ActionButton label="Cancel" onPress={exitSelect} tone="ghost" compact />
+              ) : (
+                <ActionButton label="Select" onPress={() => setSelectMode(true)} tone="secondary" compact />
+              )}
               <ActionButton label="Import" onPress={() => router.push("/inventory/import" as any)} tone="secondary" compact />
               <ActionButton label="Export" onPress={onExport} tone="secondary" compact />
               <ActionButton label="Add Stock" onPress={() => router.push("/inventory/add" as any)} compact />
@@ -263,6 +339,18 @@ export default function InventoryListScreen() {
           </Card>
         }
       />
+      {selectMode && selectedIds.size > 0 ? (
+        <View style={styles.bulkBar}>
+          <Text style={styles.bulkCount}>{selectedIds.size} selected</Text>
+          <ActionButton
+            label={deleting ? "Deleting..." : `Delete ${selectedIds.size}`}
+            onPress={confirmBulkDelete}
+            tone="primary"
+            compact
+            disabled={deleting}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -283,7 +371,21 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   itemCard: { padding: 0 },
+  itemCardSelected: { borderColor: COLORS.primary, borderWidth: 2 },
   itemCardRow: { flexDirection: "row", gap: SPACING.md },
+  checkbox: {
+    width: 26, height: 26, borderRadius: 999, borderWidth: 2, borderColor: COLORS.border,
+    alignItems: "center", justifyContent: "center", alignSelf: "center",
+  },
+  checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  checkboxTick: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  bulkBar: {
+    position: "absolute", left: SPACING.lg, right: SPACING.lg, bottom: SPACING.lg,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, borderWidth: 1,
+    borderRadius: 16, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
+  },
+  bulkCount: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
   photoColumn: { width: 88, gap: SPACING.xs },
   mainPhoto: { width: 88, height: 88, borderRadius: 14, backgroundColor: COLORS.cardAlt },
   backPhotoWrap: { alignItems: "flex-end" },
