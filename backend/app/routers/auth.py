@@ -202,11 +202,17 @@ def update_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update business name and/or profile picture (base64 data URL)."""
+    """Update business name, profile picture (base64 data URL), and invoice branding."""
     if payload.business_name is not None:
         current_user.business_name = payload.business_name
     if payload.profile_picture is not None:
         current_user.profile_picture = payload.profile_picture
+    if payload.business_address is not None:
+        current_user.business_address = payload.business_address
+    if payload.business_phone is not None:
+        current_user.business_phone = payload.business_phone
+    if payload.invoice_accent_color is not None:
+        current_user.invoice_accent_color = payload.invoice_accent_color
     db.add(current_user)
     db.commit()
     db.refresh(current_user)

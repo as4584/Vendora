@@ -23,11 +23,23 @@ DARK       = (30, 30, 30)         # primary text
 MID        = (110, 110, 110)      # secondary / label text
 WHITE      = (255, 255, 255)
 BLACK      = (0, 0, 0)
-BLUE_LBL   = (68, 114, 196)       # metadata key colour
+BLUE_LBL   = (68, 114, 196)       # metadata key colour (default; overridden by accent)
 LIGHT_LINE = (220, 220, 220)      # separator / row divider lines
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+def _hex_to_rgb(value: Optional[str]) -> Optional[tuple]:
+    """'#3B7BDB' -> (59, 123, 219). Returns None on missing/invalid input."""
+    if not value:
+        return None
+    v = value.strip().lstrip("#")
+    if len(v) != 6:
+        return None
+    try:
+        return (int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16))
+    except ValueError:
+        return None
 
 def _load_profile_tmp(user: User) -> Optional[str]:
     """Decode base64 profile_picture to a temp .jpg file. Returns path or None."""
@@ -46,9 +58,10 @@ def _load_profile_tmp(user: User) -> Optional[str]:
         return None
 
 
-def _draw_initials_circle(pdf: FPDF, x: float, y: float, size: float, user: User) -> None:
-    """Blue filled circle with up to 2 business initials as a fallback logo."""
-    pdf.set_fill_color(*BLUE)
+def _draw_initials_circle(pdf: FPDF, x: float, y: float, size: float, user: User,
+                          color: tuple = BLUE) -> None:
+    """Accent-filled circle with up to 2 business initials as a fallback logo."""
+    pdf.set_fill_color(*color)
     pdf.ellipse(x, y, size, size, style="F")
     name = user.business_name or user.email.split("@")[0]
     initials = "".join(w[0].upper() for w in name.split()[:2]) or "V"
@@ -83,28 +96,50 @@ def generate_invoice_pdf(
     T: float = 15      # top margin
     W: float = 170     # usable width  (A4 210 − 2×20)
 
-    # ── Logo / profile picture ────────────────────────────────────────────────
+    # Per-business accent colour (falls back to Vendora blue).
+    accent = _hex_to_rgb(getattr(user, "invoice_accent_color", None)) or BLUE
+
+    # ── Top accent bar (full width) ───────────────────────────────────────────
+    pdf.set_fill_color(*accent)
+    pdf.rect(0, 0, 210, 4, style="F")
+
+    # ── Logo / profile picture (the business icon) ────────────────────────────
     pic_size: float = 22
     tmp_path = _load_profile_tmp(user)
     if tmp_path:
         try:
             pdf.image(tmp_path, x=L, y=T, w=pic_size, h=pic_size)
         except Exception:
-            _draw_initials_circle(pdf, L, T, pic_size, user)
+            _draw_initials_circle(pdf, L, T, pic_size, user, accent)
         finally:
             try:
                 os.unlink(tmp_path)
             except OSError:
                 pass
     else:
-        _draw_initials_circle(pdf, L, T, pic_size, user)
+        _draw_initials_circle(pdf, L, T, pic_size, user, accent)
 
     # Business name (below logo)
     biz = (user.business_name or user.email.split("@")[0])[:40]
+    name_y: float = T + pic_size + 2
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(*DARK)
-    pdf.set_xy(L, T + pic_size + 2)
+    pdf.set_xy(L, name_y)
     pdf.cell(W / 2, 5, biz, align="L")
+
+    # Business contact lines (address / phone / email) — customizable branding
+    contact_lines = [
+        str(c).replace("\n", ", ")[:60]
+        for c in (getattr(user, "business_address", None), getattr(user, "business_phone", None), user.email)
+        if c
+    ]
+    cy: float = name_y + 5
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(*MID)
+    for line in contact_lines[:3]:
+        pdf.set_xy(L, cy)
+        pdf.cell(W / 2, 4, line, align="L")
+        cy += 4
 
     # "INVOICE" heading (right side, large)
     pdf.set_font("Helvetica", "B", 28)
@@ -112,8 +147,8 @@ def generate_invoice_pdf(
     pdf.set_xy(L + W / 2, T)
     pdf.cell(W / 2, 12, "INVOICE", align="R")
 
-    # ── Separator ─────────────────────────────────────────────────────────────
-    y_sep: float = T + pic_size + 9
+    # ── Separator (adapts to the contact block height) ────────────────────────
+    y_sep: float = max(cy + 2, T + pic_size + 9)
     pdf.set_draw_color(*LIGHT_LINE)
     pdf.line(L, y_sep, L + W, y_sep)
 
@@ -122,7 +157,7 @@ def generate_invoice_pdf(
 
     # "BILL TO:" label
     pdf.set_font("Helvetica", "B", 8)
-    pdf.set_text_color(*BLUE_LBL)
+    pdf.set_text_color(*accent)
     pdf.set_xy(L, y_meta)
     pdf.cell(18, 5, "BILL TO:", align="L")
 
@@ -156,7 +191,7 @@ def generate_invoice_pdf(
     for i, (label, value) in enumerate(meta_rows):
         ry = y_meta + i * 7
         pdf.set_font("Helvetica", "B", 8)
-        pdf.set_text_color(*BLUE_LBL)
+        pdf.set_text_color(*accent)
         pdf.set_xy(rx, ry)
         pdf.cell(lbl_w, 5, label, align="L")
         pdf.set_font("Helvetica", "", 9)
@@ -171,7 +206,7 @@ def generate_invoice_pdf(
     col_labels = ["Description", "Quantity", "Unit price", "Amount"]
     col_aligns = ["L", "C", "R", "R"]
 
-    pdf.set_fill_color(*BLUE)
+    pdf.set_fill_color(*accent)
     pdf.rect(L, y_table, W, hdr_h, style="F")
 
     x = L

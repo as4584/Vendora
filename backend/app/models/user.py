@@ -21,6 +21,10 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     subscription_tier = Column(String(20), nullable=False, server_default="free")
     is_partner = Column(Boolean, nullable=False, server_default="false")
     stripe_account_id = Column(String(255), nullable=True)
-    profile_picture = Column(Text, nullable=True)  # base64 data URL of profile image
+    profile_picture = Column(Text, nullable=True)  # base64 data URL of profile image / business icon
+    # Invoice branding (shown on the generated PDF)
+    business_address = Column(Text, nullable=True)
+    business_phone = Column(String(40), nullable=True)
+    invoice_accent_color = Column(String(9), nullable=True)  # hex e.g. #3B7BDB
     password_reset_token_hash = Column(String(64), nullable=True, index=True)
     password_reset_expires_at = Column(DateTime(timezone=True), nullable=True)
