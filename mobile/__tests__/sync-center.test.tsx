@@ -1,3 +1,8 @@
+import React from 'react';
+import { render, waitFor } from '@testing-library/react-native';
+import * as apiMock from '../services/api';
+import SyncCenterScreen from '../app/(tabs)/settings/sync-center';
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: {
@@ -11,11 +16,6 @@ jest.mock('../services/api', () => ({
   listSyncRuns: jest.fn(),
   listReconciliationIssues: jest.fn(),
 }));
-
-import React from 'react';
-import { act, render, waitFor } from '@testing-library/react-native';
-import * as apiMock from '../services/api';
-import SyncCenterScreen from '../app/(tabs)/settings/sync-center';
 
 describe('SyncCenterScreen', () => {
   beforeEach(() => {
@@ -53,8 +53,20 @@ describe('SyncCenterScreen', () => {
       expect(screen.getByText('Sync Runs')).toBeTruthy();
       expect(screen.getByText('LIGHTSPEED')).toBeTruthy();
       expect(screen.getByText('COMPLETED')).toBeTruthy();
-      expect(screen.getByText('SQUARE • missing item')).toBeTruthy();
+      expect(screen.getByText(/SQUARE.*missing item/)).toBeTruthy();
       expect(screen.getByText('OPEN')).toBeTruthy();
-    });
+    }, { timeout: 3000 });
+  });
+
+  it('renders partial results and an alert when one provider request fails', async () => {
+    (apiMock.listSyncRuns as jest.Mock).mockRejectedValue(new Error('sync history unavailable'));
+
+    const screen = render(<SyncCenterScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Some provider history could not be loaded/)).toBeTruthy();
+      expect(screen.getByText(/SQUARE.*missing item/)).toBeTruthy();
+      expect(screen.getByText('OPEN')).toBeTruthy();
+    }, { timeout: 3000 });
   });
 });

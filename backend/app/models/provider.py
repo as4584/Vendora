@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
-from sqlalchemy import Column, String, Integer, ForeignKey, Index, CheckConstraint, Text
+from sqlalchemy import Column, String, Integer, ForeignKey, Index, CheckConstraint, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base
@@ -65,9 +65,16 @@ class ProviderSyncRun(Base):
     error_message = Column(Text, nullable=True)
     # How the run was initiated: manual | webhook | retry
     trigger_type = Column(String(20), nullable=False, default="manual")
-    # UUID of the webhook event that triggered this run (FK constraint exists in DB via migration 014
-    # but is NOT declared in ORM to avoid circular dependency with ProviderWebhookEvent in create_all)
-    triggered_by_event_id = Column(UUID(as_uuid=True), nullable=True)
+    triggered_by_event_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "provider_webhook_events.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="provider_sync_runs_triggered_by_event_id_fkey",
+        ),
+        nullable=True,
+    )
 
 
 class ReconciliationIssue(Base):
@@ -156,13 +163,25 @@ class ProviderWebhookEvent(Base):
     """
 
     __tablename__ = "provider_webhook_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider", "event_id", name="uq_webhook_events_provider_event_id"
+        ),
+        Index("ix_webhook_events_provider", "provider"),
+        Index("ix_webhook_events_received_at", "received_at"),
+        Index("ix_webhook_events_processed", "processed"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider = Column(String(50), nullable=False)
     # Nullable — app-level webhooks may not be associated with a single user
     user_id = Column(UUID(as_uuid=True), nullable=True)
     # Provider-assigned event/notification ID used for deduplication
-    event_id = Column(String(255), nullable=False)
+    event_id = Column(
+        String(255),
+        nullable=False,
+        comment="Provider-assigned event ID for deduplication",
+    )
     event_type = Column(String(100), nullable=False)
     # Raw JSON body for audit / replay
     raw_payload = Column(sa.Text, nullable=True)

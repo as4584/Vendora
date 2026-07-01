@@ -5,6 +5,57 @@ Tests CSV export for Pro-only gating and content correctness.
 import pytest
 import csv
 import io
+from app.models.inventory import InventoryItem
+from app.services.csv_export import (
+    _image_formula,
+    _resolved_photo,
+    _size_breakdown,
+    _variant_rows,
+    export_inventory_warehouse_csv,
+)
+
+
+class TestCSVHelperEdges:
+    def test_photo_formula_and_legacy_fallbacks(self):
+        item = InventoryItem(name="Photo", quantity=1, custom_attributes={"photo_front": "https://legacy.test/a.jpg"})
+        assert _resolved_photo(item, "photo_front") == "https://legacy.test/a.jpg"
+        assert _resolved_photo(item, "photo_back") == ""
+        assert _image_formula("") == ""
+        assert _image_formula('https://example.test/a"b.jpg') == '=IMAGE("https://example.test/a""b.jpg")'
+
+    def test_size_helpers_ignore_malformed_variants(self):
+        item = InventoryItem(
+            name="Sizes",
+            size="L",
+            quantity=2,
+            custom_attributes={"variants": ["bad", {"size": ""}, {"size": "S", "quantity": "bad"}]},
+        )
+        assert _size_breakdown(item) == "S (0)"
+        assert _variant_rows(item) == [("S", 0)]
+
+        item.custom_attributes = {"variants": []}
+        assert _size_breakdown(item) == "L (2)"
+        assert _variant_rows(item) == [("L", 2)]
+        item.custom_attributes = {"variants": ["bad", {"size": ""}]}
+        assert _size_breakdown(item) == "L (2)"
+        item.size = None
+        item.quantity = -2
+        assert _size_breakdown(item) == ""
+        assert _variant_rows(item) == [("OS", 0)]
+
+    def test_empty_and_uneven_warehouse_exports(self, db, test_user):
+        empty = list(csv.reader(io.StringIO(export_inventory_warehouse_csv(db, test_user.id))))
+        assert empty[0][0] == "Product Name"
+        first = InventoryItem(
+            user_id=test_user.id, name="One", status="in_stock", quantity=3,
+            custom_attributes={"variants": [{"size": "S", "quantity": 1}, {"size": "M", "quantity": 2}]},
+        )
+        second = InventoryItem(user_id=test_user.id, name="Two", status="in_stock", quantity=1)
+        db.add_all([first, second])
+        db.commit()
+        rows = list(csv.reader(io.StringIO(export_inventory_warehouse_csv(db, test_user.id))))
+        assert any("One" in row for row in rows)
+        assert not any(row and "Image URL" in row for row in rows)
 
 
 class TestCSVExportGating:
@@ -20,7 +71,7 @@ class TestCSVExportGating:
 
     def test_unauthenticated(self, client):
         resp = client.get("/api/v1/export/inventory")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 class TestCSVExportContent:

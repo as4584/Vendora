@@ -8,10 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.models.auth_session import AuthSession
 from app.schemas.user import (
     MessageResponse,
+    AccountDeleteRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
+    RefreshTokenRequest,
     TokenResponse,
     UserCreate,
     UserLogin,
@@ -23,6 +26,10 @@ from app.services.auth import (
     create_password_reset_token,
     hash_password,
     hash_password_reset_token,
+    hash_refresh_token,
+    issue_session,
+    revoke_all_sessions,
+    rotate_session,
     verify_password,
 )
 from app.services.email import EmailDeliveryError, send_password_reset_email
@@ -43,7 +50,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     # Check duplicate email
     existing = (
         db.query(User)
-        .filter(User.email == payload.email, User.deleted_at.is_(None))
+        .filter(func.lower(User.email) == str(payload.email), User.deleted_at.is_(None))
         .first()
     )
     if existing:
@@ -53,7 +60,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
         )
 
     user = User(
-        email=payload.email,
+        email=str(payload.email),
         password_hash=hash_password(payload.password),
         business_name=payload.business_name,
     )
@@ -65,11 +72,12 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     """Authenticate and return JWT access token."""
     user = (
         db.query(User)
-        .filter(User.email == payload.email, User.deleted_at.is_(None))
+        .filter(func.lower(User.email) == str(payload.email), User.deleted_at.is_(None))
         .first()
     )
     if not user or not verify_password(payload.password, user.password_hash):
@@ -79,8 +87,37 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
         )
 
     user = persist_tester_entitlements(db, user)
-    token = create_access_token(data={"sub": str(user.id)})
-    return TokenResponse(access_token=token)
+    access_token, refresh_token, _ = issue_session(
+        db, user.id, request.headers.get("user-agent")
+    )
+    db.commit()
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("30/minute")
+def refresh_session(
+    payload: RefreshTokenRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    rotated = rotate_session(db, payload.refresh_token)
+    if rotated is None:
+        raise HTTPException(status_code=401, detail="Refresh token is invalid or expired.")
+    access_token, refresh_token, _ = rotated
+    db.commit()
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/logout", response_model=MessageResponse)
+def logout(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
+    session = db.query(AuthSession).filter(
+        AuthSession.refresh_token_hash == hash_refresh_token(payload.refresh_token)
+    ).first()
+    if session and session.revoked_at is None:
+        session.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+    return MessageResponse(message="Signed out.")
 
 
 @router.post(
@@ -147,6 +184,7 @@ def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db))
     user.password_hash = hash_password(payload.password)
     user.password_reset_token_hash = None
     user.password_reset_expires_at = None
+    revoke_all_sessions(db, user.id)
     db.add(user)
     db.commit()
     return MessageResponse(message="Your password has been reset. You can now sign in.")
@@ -173,3 +211,17 @@ def update_profile(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+
+@router.delete("/account", response_model=MessageResponse)
+def delete_account(
+    payload: AccountDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently delete the account and user-owned data through DB cascades."""
+    if not verify_password(payload.password, current_user.password_hash):
+        raise HTTPException(status_code=401, detail="Password is incorrect.")
+    db.delete(current_user)
+    db.commit()
+    return MessageResponse(message="Account permanently deleted.")

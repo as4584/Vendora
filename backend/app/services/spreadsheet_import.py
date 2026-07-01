@@ -9,6 +9,7 @@ import csv
 import base64
 import hashlib
 import io
+from itertools import takewhile
 import posixpath
 import re
 import zipfile
@@ -22,7 +23,7 @@ from fastapi import HTTPException, status
 
 
 MAX_CSV_IMPORT_BYTES = 8 * 1024 * 1024
-MAX_XLSX_IMPORT_BYTES = 200 * 1024 * 1024
+MAX_XLSX_IMPORT_BYTES = 50 * 1024 * 1024
 MAX_EMBEDDED_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_EMBEDDED_IMAGE_DIMENSION = 640
 JPEG_THUMBNAIL_QUALITY = 76
@@ -471,11 +472,7 @@ def _infer_color(raw_name: str) -> str | None:
     if not any(word in PRODUCT_WORDS for word in tail_words):
         return lines[-1][:50]
 
-    color_tail: list[str] = []
-    for word in reversed(tail_words):
-        if word not in COLOR_WORDS:
-            break
-        color_tail.append(word)
+    color_tail = list(takewhile(lambda word: word in COLOR_WORDS, reversed(tail_words)))
     if not color_tail:
         return None
     return " ".join(reversed(color_tail)).title()[:50]

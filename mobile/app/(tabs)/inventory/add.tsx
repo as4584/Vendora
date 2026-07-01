@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Add Item Screen
  *
  * Form for creating a new inventory item with:
@@ -6,7 +6,7 @@
  *  â€¢ Barcode scanner modal (expo-camera)
  *  â€¢ Auto-SKU generator
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
     View,
     Text,
@@ -90,6 +90,7 @@ export default function AddItemScreen() {
     const [scannerOpen, setScannerOpen] = useState(false);
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
+    const scanLock = useRef(false);
 
     // â”€â”€ Photo picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const pickPhoto = async (side: PhotoSide) => {
@@ -163,12 +164,14 @@ export default function AddItemScreen() {
                 return;
             }
         }
+        scanLock.current = false;
         setScanned(false);
         setScannerOpen(true);
     };
 
     const onBarcodeScanned = ({ data }: { data: string }) => {
-        if (scanned) return;
+        if (scanLock.current) return;
+        scanLock.current = true;
         setScanned(true);
         setScannerOpen(false);
         setUpc(data);
@@ -278,6 +281,8 @@ export default function AddItemScreen() {
                 <Text style={styles.sectionTitle}>Photos</Text>
                 <View style={styles.photoRow}>
                     <TouchableOpacity
+                        accessibilityLabel="Add front photo"
+                        accessibilityRole="button"
                         style={styles.photoSlot}
                         onPress={() => showPhotoOptions("front")}
                     >
@@ -291,6 +296,8 @@ export default function AddItemScreen() {
                         )}
                     </TouchableOpacity>
                     <TouchableOpacity
+                        accessibilityLabel="Add back photo"
+                        accessibilityRole="button"
                         style={styles.photoSlot}
                         onPress={() => showPhotoOptions("back")}
                     >
@@ -309,6 +316,7 @@ export default function AddItemScreen() {
                 <Text style={styles.sectionTitle}>Required</Text>
                 <Text style={styles.label}>Item Name</Text>
                 <TextInput
+                    accessibilityLabel="Item Name"
                     style={styles.input}
                     placeholder="e.g. Jordan 1 Retro High OG"
                     placeholderTextColor="#555"
@@ -323,6 +331,7 @@ export default function AddItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Category</Text>
                         <TextInput
+                            accessibilityLabel="Category"
                             style={styles.input}
                             placeholder="sneakers"
                             placeholderTextColor="#555"
@@ -335,6 +344,7 @@ export default function AddItemScreen() {
                         <Text style={styles.label}>SKU</Text>
                         <View style={styles.skuRow}>
                             <TextInput
+                                accessibilityLabel="SKU"
                                 style={[styles.input, styles.skuInput]}
                                 placeholder="SKU-001"
                                 placeholderTextColor="#555"
@@ -343,6 +353,8 @@ export default function AddItemScreen() {
                                 autoCapitalize="characters"
                             />
                             <TouchableOpacity
+                                accessibilityLabel="Generate SKU"
+                                accessibilityRole="button"
                                 style={styles.autoButton}
                                 onPress={handleAutoSKU}
                             >
@@ -356,6 +368,7 @@ export default function AddItemScreen() {
                 <Text style={styles.label}>UPC / Barcode</Text>
                 <View style={styles.skuRow}>
                     <TextInput
+                        accessibilityLabel="UPC or Barcode"
                         style={[styles.input, styles.skuInput]}
                         placeholder="Scan or type barcode"
                         placeholderTextColor="#555"
@@ -363,7 +376,12 @@ export default function AddItemScreen() {
                         onChangeText={setUpc}
                         keyboardType="numeric"
                     />
-                    <TouchableOpacity style={styles.scanButton} onPress={openScanner}>
+                    <TouchableOpacity
+                        accessibilityLabel="Scan barcode"
+                        accessibilityRole="button"
+                        style={styles.scanButton}
+                        onPress={openScanner}
+                    >
                         <Text style={styles.scanButtonText}>🔍</Text>
                     </TouchableOpacity>
                 </View>
@@ -372,6 +390,7 @@ export default function AddItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Size</Text>
                         <TextInput
+                            accessibilityLabel="Size"
                             style={styles.input}
                             placeholder="10"
                             placeholderTextColor="#555"
@@ -382,6 +401,7 @@ export default function AddItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Color</Text>
                         <TextInput
+                            accessibilityLabel="Color"
                             style={styles.input}
                             placeholder="red/black"
                             placeholderTextColor="#555"
@@ -393,6 +413,7 @@ export default function AddItemScreen() {
 
                 <Text style={styles.label}>Condition</Text>
                 <TextInput
+                    accessibilityLabel="Condition"
                     style={styles.input}
                     placeholder="new, used, refurbished"
                     placeholderTextColor="#555"
@@ -406,6 +427,7 @@ export default function AddItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Buy Price ($)</Text>
                         <TextInput
+                            accessibilityLabel="Buy Price"
                             style={styles.input}
                             placeholder="0.00"
                             placeholderTextColor="#555"
@@ -417,6 +439,7 @@ export default function AddItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Expected Sell ($)</Text>
                         <TextInput
+                            accessibilityLabel="Expected Sell Price"
                             style={styles.input}
                             placeholder="0.00"
                             placeholderTextColor="#555"
@@ -429,6 +452,7 @@ export default function AddItemScreen() {
 
                 <Text style={styles.label}>Platform</Text>
                 <TextInput
+                    accessibilityLabel="Platform"
                     style={styles.input}
                     placeholder="eBay, StockX, Mercari…"
                     placeholderTextColor="#555"
@@ -438,6 +462,7 @@ export default function AddItemScreen() {
 
                 <Text style={styles.label}>Vendor / Supplier</Text>
                 <TextInput
+                    accessibilityLabel="Vendor or Supplier"
                     style={styles.input}
                     placeholder="e.g. Nike, local thrift, auction"
                     placeholderTextColor="#555"
@@ -447,6 +472,7 @@ export default function AddItemScreen() {
 
                 <Text style={styles.label}>Notes</Text>
                 <TextInput
+                    accessibilityLabel="Notes"
                     style={[styles.input, { height: 90, textAlignVertical: "top" }]}
                     placeholder="Any extra details about this item…"
                     placeholderTextColor="#555"
@@ -469,6 +495,8 @@ export default function AddItemScreen() {
                                 <Text style={styles.variantSize}>{v.size}</Text>
                                 <View style={styles.qtyControls}>
                                     <TouchableOpacity
+                                        accessibilityLabel={`Decrease quantity for ${v.size}`}
+                                        accessibilityRole="button"
                                         style={styles.qtyBtn}
                                         onPress={() => adjustVariantQty(idx, -1)}
                                     >
@@ -476,6 +504,8 @@ export default function AddItemScreen() {
                                     </TouchableOpacity>
                                     <Text style={styles.qtyValue}>{v.quantity}</Text>
                                     <TouchableOpacity
+                                        accessibilityLabel={`Increase quantity for ${v.size}`}
+                                        accessibilityRole="button"
                                         style={styles.qtyBtn}
                                         onPress={() => adjustVariantQty(idx, 1)}
                                     >
@@ -483,6 +513,8 @@ export default function AddItemScreen() {
                                     </TouchableOpacity>
                                 </View>
                                 <TouchableOpacity
+                                    accessibilityLabel={`Remove size ${v.size}`}
+                                    accessibilityRole="button"
                                     style={styles.removeBtn}
                                     onPress={() => removeVariant(idx)}
                                 >
@@ -493,6 +525,7 @@ export default function AddItemScreen() {
 
                         <View style={styles.addSizeRow}>
                             <TextInput
+                                accessibilityLabel="New Size"
                                 style={styles.sizeInput}
                                 placeholder="e.g. M, 32x32, 10.5"
                                 placeholderTextColor="#555"
@@ -501,7 +534,12 @@ export default function AddItemScreen() {
                                 onSubmitEditing={addVariant}
                                 returnKeyType="done"
                             />
-                            <TouchableOpacity style={styles.addSizeBtn} onPress={addVariant}>
+                            <TouchableOpacity
+                                accessibilityLabel="Add Size"
+                                accessibilityRole="button"
+                                style={styles.addSizeBtn}
+                                onPress={addVariant}
+                            >
                                 <Text style={styles.addSizeBtnText}>+ Add Size</Text>
                             </TouchableOpacity>
                         </View>
@@ -517,6 +555,8 @@ export default function AddItemScreen() {
                         <Text style={styles.sectionTitle}>Quantity</Text>
                         <View style={styles.qtyRow}>
                             <TouchableOpacity
+                                accessibilityLabel="Decrease quantity"
+                                accessibilityRole="button"
                                 style={styles.qtyBtnLarge}
                                 onPress={() => setQuantity((q) => Math.max(1, q - 1))}
                             >
@@ -524,6 +564,8 @@ export default function AddItemScreen() {
                             </TouchableOpacity>
                             <Text style={styles.qtyValueLarge}>{quantity}</Text>
                             <TouchableOpacity
+                                accessibilityLabel="Increase quantity"
+                                accessibilityRole="button"
                                 style={styles.qtyBtnLarge}
                                 onPress={() => setQuantity((q) => q + 1)}
                             >
@@ -535,6 +577,7 @@ export default function AddItemScreen() {
 
                 {/* ── Submit ── */}
                 <TouchableOpacity
+                    accessibilityRole="button"
                     style={[styles.button, loading && styles.buttonDisabled]}
                     onPress={handleSubmit}
                     disabled={loading}
@@ -560,6 +603,7 @@ export default function AddItemScreen() {
                         <View style={styles.scannerFrame} />
                         <Text style={styles.scannerHint}>Point at a barcode to scan</Text>
                         <TouchableOpacity
+                            accessibilityRole="button"
                             style={styles.cancelScan}
                             onPress={() => setScannerOpen(false)}
                         >

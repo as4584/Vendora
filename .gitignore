@@ -41,11 +41,17 @@ vendora_data/
 
 # Local artifacts
 backend/vendora.db
+backend/test.db
 logs.txt
 
 # Coverage
 .coverage
 htmlcov/
+coverage/
+mobile/coverage/
 
 # act (local GitHub Actions runner)
 .act.secrets
+
+# Local Ordo execution records
+.ordo/

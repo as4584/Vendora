@@ -11,16 +11,91 @@ Tests _upsert_inventory_item directly (no HTTP mocking needed) to verify:
   - last_synced_at is stamped on the link row on every call
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from fastapi import HTTPException
 
 from app.models.inventory import (
     InventoryItem,
     InventoryExternalLink,
     InventoryStockLedger,
 )
+from app.services.lightspeed import lightspeed_service
+
+class TestLightspeedOAuthState:
+    def test_signed_state_round_trip(self):
+        user_id = uuid.uuid4()
+        state = lightspeed_service.build_state(user_id)
+
+        assert lightspeed_service.parse_state(state) == user_id
+
+    def test_tampered_state_is_rejected(self):
+        state = lightspeed_service.build_state(uuid.uuid4())
+        header, payload, signature = state.split(".")
+        replacement = "a" if signature[0] != "a" else "b"
+        tampered = ".".join((header, payload, replacement + signature[1:]))
+
+        with pytest.raises(HTTPException) as exc:
+            lightspeed_service.parse_state(tampered)
+
+        assert exc.value.status_code == 400
+
+    def test_callback_returns_to_the_mobile_app(self, client, test_user, monkeypatch):
+        from app.routers import integrations
+
+        async def exchange(code):
+            return {
+                "account_id": "account-1",
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+                "scope": "employee:inventory",
+            }
+
+        monkeypatch.setattr(lightspeed_service, "exchange_authorization_code", exchange)
+        monkeypatch.setattr(lightspeed_service, "upsert_token", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            integrations.settings,
+            "INTEGRATION_SUCCESS_URL",
+            "vendora://settings?integration=lightspeed&status=connected",
+        )
+
+        response = client.get(
+            "/api/v1/integrations/lightspeed/callback",
+            params={"code": "oauth-code", "state": lightspeed_service.build_state(test_user.id)},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers["location"].startswith("vendora://settings")
+
+    def test_callback_rejects_missing_account_id(self, client, test_user, monkeypatch):
+        async def exchange(code):
+            return {
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+            }
+
+        monkeypatch.setattr(lightspeed_service, "exchange_authorization_code", exchange)
+        response = client.get(
+            "/api/v1/integrations/lightspeed/callback",
+            params={"code": "oauth-code", "state": lightspeed_service.build_state(test_user.id)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Lightspeed response missing account_id"
+
+    def test_connect_returns_authorization_url(self, client, auth_headers, monkeypatch):
+        monkeypatch.setattr(lightspeed_service, "authorization_url", lambda state: f"https://lightspeed.test/oauth?state={state}")
+        response = client.get("/api/v1/integrations/lightspeed/connect", headers=auth_headers)
+        assert response.status_code == 200
+        assert response.json()["authorization_url"].startswith("https://lightspeed.test/oauth")
+
+
+
 from app.services.lightspeed import lightspeed_service
 
 
@@ -318,7 +393,7 @@ class TestLightspeedStatusEndpoint:
     def test_status_requires_auth(self, client):
         """Unauthenticated request is rejected."""
         resp = client.get("/api/v1/integrations/lightspeed/status")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_status_connected(self, client, auth_headers, db, test_user):
         """When a token row exists, status returns connected=True with account/expiry info."""
@@ -352,7 +427,7 @@ class TestLightspeedSyncEndpoint:
     def test_sync_requires_auth(self, client):
         """Unauthenticated request is rejected."""
         resp = client.post("/api/v1/integrations/lightspeed/sync")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
     def test_sync_not_connected_returns_404(self, client, auth_headers):
         """Sync endpoint returns 404 when no Lightspeed token is configured."""

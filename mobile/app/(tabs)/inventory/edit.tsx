@@ -4,7 +4,7 @@
  * Full edit form for an existing inventory item. Pre-populates all fields
  * from the current item data and saves changes via updateItem.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     View,
     Text,
@@ -16,7 +16,6 @@ import {
     ActivityIndicator,
     Modal,
     Image,
-    Dimensions,
     KeyboardAvoidingView,
     Platform,
 } from "react-native";
@@ -39,9 +38,9 @@ function isSizeCategory(cat: string): boolean {
 type PhotoSide = "front" | "back";
 
 export default function EditItemScreen() {
-    const router = useRouter();
+    const { back } = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
-    const [loadingItem, setLoadingItem] = useState(true);
+    const [loadingItem, setLoadingItem] = useState(Boolean(id));
     const [saving, setSaving] = useState(false);
 
     // Form state
@@ -73,10 +72,15 @@ export default function EditItemScreen() {
     const [scannerOpen, setScannerOpen] = useState(false);
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
+    const scanLock = useRef(false);
 
     // ── Load existing item ──
     useEffect(() => {
-        if (!id) return;
+        if (!id) {
+            Alert.alert("Error", "This item link is missing an inventory ID.");
+            back();
+            return;
+        }
         (async () => {
             try {
                 const item = await api.getItem(id);
@@ -108,12 +112,12 @@ export default function EditItemScreen() {
                 if (photoB) setBackPhoto(photoB);
             } catch (err: any) {
                 Alert.alert("Error", err.message || "Failed to load item.");
-                router.back();
+                back();
             } finally {
                 setLoadingItem(false);
             }
         })();
-    }, [id]);
+    }, [back, id]);
 
     // ── Photo picker ──
     const pickPhoto = async (side: PhotoSide) => {
@@ -187,12 +191,14 @@ export default function EditItemScreen() {
                 return;
             }
         }
+        scanLock.current = false;
         setScanned(false);
         setScannerOpen(true);
     };
 
     const onBarcodeScanned = ({ data }: { data: string }) => {
-        if (scanned) return;
+        if (scanLock.current) return;
+        scanLock.current = true;
         setScanned(true);
         setScannerOpen(false);
         setUpc(data);
@@ -274,7 +280,7 @@ export default function EditItemScreen() {
             }
 
             Alert.alert("✅ Updated", "Item changes saved!", [
-                { text: "OK", onPress: () => router.back() },
+                { text: "OK", onPress: back },
             ]);
         } catch (err: any) {
             Alert.alert("Error", err.message || "Failed to update item.");
@@ -304,7 +310,7 @@ export default function EditItemScreen() {
                 keyboardDismissMode="on-drag"
             >
                 {/* Back button */}
-                <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+                <TouchableOpacity accessibilityRole="button" style={styles.backBtn} onPress={back}>
                     <Text style={styles.backBtnText}>← Back</Text>
                 </TouchableOpacity>
 
@@ -314,6 +320,8 @@ export default function EditItemScreen() {
                 <Text style={styles.sectionTitle}>Photos</Text>
                 <View style={styles.photoRow}>
                     <TouchableOpacity
+                        accessibilityLabel="Edit front photo"
+                        accessibilityRole="button"
                         style={styles.photoSlot}
                         onPress={() => showPhotoOptions("front")}
                     >
@@ -327,6 +335,8 @@ export default function EditItemScreen() {
                         )}
                     </TouchableOpacity>
                     <TouchableOpacity
+                        accessibilityLabel="Edit back photo"
+                        accessibilityRole="button"
                         style={styles.photoSlot}
                         onPress={() => showPhotoOptions("back")}
                     >
@@ -345,6 +355,7 @@ export default function EditItemScreen() {
                 <Text style={styles.sectionTitle}>Required</Text>
                 <Text style={styles.label}>Item Name</Text>
                 <TextInput
+                    accessibilityLabel="Item Name"
                     style={styles.input}
                     placeholder="e.g. Jordan 1 Retro High OG"
                     placeholderTextColor="#555"
@@ -357,6 +368,7 @@ export default function EditItemScreen() {
 
                 <Text style={styles.label}>Brand</Text>
                 <TextInput
+                    accessibilityLabel="Brand"
                     style={styles.input}
                     placeholder="Nike, Adidas, etc."
                     placeholderTextColor="#555"
@@ -368,6 +380,7 @@ export default function EditItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Category</Text>
                         <TextInput
+                            accessibilityLabel="Category"
                             style={styles.input}
                             placeholder="sneakers"
                             placeholderTextColor="#555"
@@ -379,6 +392,7 @@ export default function EditItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>SKU</Text>
                         <TextInput
+                            accessibilityLabel="SKU"
                             style={styles.input}
                             placeholder="SKU-001"
                             placeholderTextColor="#555"
@@ -393,6 +407,7 @@ export default function EditItemScreen() {
                 <Text style={styles.label}>UPC / Barcode</Text>
                 <View style={styles.skuRow}>
                     <TextInput
+                        accessibilityLabel="UPC or Barcode"
                         style={[styles.input, styles.skuInput]}
                         placeholder="Scan or type barcode"
                         placeholderTextColor="#555"
@@ -400,7 +415,12 @@ export default function EditItemScreen() {
                         onChangeText={setUpc}
                         keyboardType="numeric"
                     />
-                    <TouchableOpacity style={styles.scanButton} onPress={openScanner}>
+                    <TouchableOpacity
+                        accessibilityLabel="Scan barcode"
+                        accessibilityRole="button"
+                        style={styles.scanButton}
+                        onPress={openScanner}
+                    >
                         <Text style={styles.scanButtonText}>🔍</Text>
                     </TouchableOpacity>
                 </View>
@@ -409,6 +429,7 @@ export default function EditItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Size</Text>
                         <TextInput
+                            accessibilityLabel="Size"
                             style={styles.input}
                             placeholder="10"
                             placeholderTextColor="#555"
@@ -419,6 +440,7 @@ export default function EditItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Color</Text>
                         <TextInput
+                            accessibilityLabel="Color"
                             style={styles.input}
                             placeholder="red/black"
                             placeholderTextColor="#555"
@@ -430,6 +452,7 @@ export default function EditItemScreen() {
 
                 <Text style={styles.label}>Condition</Text>
                 <TextInput
+                    accessibilityLabel="Condition"
                     style={styles.input}
                     placeholder="new, used, refurbished"
                     placeholderTextColor="#555"
@@ -443,6 +466,7 @@ export default function EditItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Buy Price ($)</Text>
                         <TextInput
+                            accessibilityLabel="Buy Price"
                             style={styles.input}
                             placeholder="0.00"
                             placeholderTextColor="#555"
@@ -454,6 +478,7 @@ export default function EditItemScreen() {
                     <View style={styles.halfField}>
                         <Text style={styles.label}>Expected Sell ($)</Text>
                         <TextInput
+                            accessibilityLabel="Expected Sell Price"
                             style={styles.input}
                             placeholder="0.00"
                             placeholderTextColor="#555"
@@ -466,6 +491,7 @@ export default function EditItemScreen() {
 
                 <Text style={styles.label}>Actual Sell Price ($)</Text>
                 <TextInput
+                    accessibilityLabel="Actual Sell Price"
                     style={styles.input}
                     placeholder="0.00"
                     placeholderTextColor="#555"
@@ -476,6 +502,7 @@ export default function EditItemScreen() {
 
                 <Text style={styles.label}>Platform</Text>
                 <TextInput
+                    accessibilityLabel="Platform"
                     style={styles.input}
                     placeholder="eBay, StockX, Mercari…"
                     placeholderTextColor="#555"
@@ -496,6 +523,8 @@ export default function EditItemScreen() {
                                 <Text style={styles.variantSize}>{v.size}</Text>
                                 <View style={styles.qtyControls}>
                                     <TouchableOpacity
+                                        accessibilityLabel={`Decrease quantity for ${v.size}`}
+                                        accessibilityRole="button"
                                         style={styles.qtyBtn}
                                         onPress={() => adjustVariantQty(idx, -1)}
                                     >
@@ -503,6 +532,8 @@ export default function EditItemScreen() {
                                     </TouchableOpacity>
                                     <Text style={styles.qtyValue}>{v.quantity}</Text>
                                     <TouchableOpacity
+                                        accessibilityLabel={`Increase quantity for ${v.size}`}
+                                        accessibilityRole="button"
                                         style={styles.qtyBtn}
                                         onPress={() => adjustVariantQty(idx, 1)}
                                     >
@@ -510,6 +541,8 @@ export default function EditItemScreen() {
                                     </TouchableOpacity>
                                 </View>
                                 <TouchableOpacity
+                                    accessibilityLabel={`Remove size ${v.size}`}
+                                    accessibilityRole="button"
                                     style={styles.removeBtn}
                                     onPress={() => removeVariant(idx)}
                                 >
@@ -520,6 +553,7 @@ export default function EditItemScreen() {
 
                         <View style={styles.addSizeRow}>
                             <TextInput
+                                accessibilityLabel="New Size"
                                 style={styles.sizeInput}
                                 placeholder="e.g. M, 32x32, 10.5"
                                 placeholderTextColor="#555"
@@ -528,7 +562,12 @@ export default function EditItemScreen() {
                                 onSubmitEditing={addVariant}
                                 returnKeyType="done"
                             />
-                            <TouchableOpacity style={styles.addSizeBtn} onPress={addVariant}>
+                            <TouchableOpacity
+                                accessibilityLabel="Add Size"
+                                accessibilityRole="button"
+                                style={styles.addSizeBtn}
+                                onPress={addVariant}
+                            >
                                 <Text style={styles.addSizeBtnText}>+ Add Size</Text>
                             </TouchableOpacity>
                         </View>
@@ -544,6 +583,8 @@ export default function EditItemScreen() {
                         <Text style={styles.sectionTitle}>Quantity</Text>
                         <View style={styles.qtyRow}>
                             <TouchableOpacity
+                                accessibilityLabel="Decrease quantity"
+                                accessibilityRole="button"
                                 style={styles.qtyBtnLarge}
                                 onPress={() => setQuantity((q) => Math.max(0, q - 1))}
                             >
@@ -551,6 +592,8 @@ export default function EditItemScreen() {
                             </TouchableOpacity>
                             <Text style={styles.qtyValueLarge}>{quantity}</Text>
                             <TouchableOpacity
+                                accessibilityLabel="Increase quantity"
+                                accessibilityRole="button"
                                 style={styles.qtyBtnLarge}
                                 onPress={() => setQuantity((q) => q + 1)}
                             >
@@ -562,6 +605,7 @@ export default function EditItemScreen() {
 
                 {/* ── Save Button ── */}
                 <TouchableOpacity
+                    accessibilityRole="button"
                     style={[styles.saveButton, saving && { opacity: 0.6 }]}
                     onPress={handleSave}
                     disabled={saving}
@@ -582,13 +626,14 @@ export default function EditItemScreen() {
             >
                 <View style={styles.scannerContainer}>
                     <CameraView
-                        style={StyleSheet.absoluteFillObject}
+                        style={StyleSheet.absoluteFill}
                         onBarcodeScanned={scanned ? undefined : onBarcodeScanned}
                         barcodeScannerSettings={{
                             barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"],
                         }}
                     />
                     <TouchableOpacity
+                        accessibilityRole="button"
                         style={styles.scannerClose}
                         onPress={() => setScannerOpen(false)}
                     >

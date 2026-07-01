@@ -5,5 +5,10 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 
-_default_limits = [] if os.getenv("ENVIRONMENT") == "testing" else ["100/minute"]
-limiter = Limiter(key_func=get_remote_address, default_limits=_default_limits)
+_is_testing = os.getenv("ENVIRONMENT") == "testing"
+_default_limits = [] if _is_testing else ["100/minute"]
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=_default_limits,
+    enabled=not _is_testing,
+)

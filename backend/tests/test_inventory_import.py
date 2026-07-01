@@ -1,5 +1,10 @@
 """Inventory spreadsheet import tests."""
 import io
+import socket
+
+import httpx
+import pytest
+from fastapi import HTTPException
 
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as WorkbookImage
@@ -31,6 +36,37 @@ HORIZONTAL_SIZE_TABLE_CSV = """,,ESSENTIALS,,,,,,,,,,,,,,,,,,
 ,,Fear of God Essentials Sixers/Warm Heather,0,1,1,0,1,1,0,4,,,,,,,,,,
 ,,Fear of God Essentials NBA/Black,0,0,1,0,0,0,0,1,,,,,,,,,,
 """
+
+
+class _StreamingResponse:
+    def __init__(self, chunks=(), *, status_code=200, headers=None):
+        self._chunks = list(chunks)
+        self.status_code = status_code
+        self.headers = headers or {}
+        self.extensions = {}
+        self.is_redirect = status_code in {301, 302, 303, 307, 308}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def aiter_bytes(self):
+        for chunk in self._chunks:
+            yield chunk
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError("download failed", request=None, response=None)
+
+
+class _StreamingClient:
+    def __init__(self, *responses):
+        self.responses = list(responses)
+
+    def stream(self, method, url):
+        return self.responses.pop(0)
 
 
 def _xlsx_bytes(rows):
@@ -470,3 +506,64 @@ def test_import_link_rejects_html_download(client, auth_headers, monkeypatch):
 
     assert resp.status_code == 400
     assert "web page instead of spreadsheet data" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_import_download_rejects_redirect_to_private_address(monkeypatch):
+    from app.routers import inventory as inventory_router
+
+    async def validate_without_external_dns(url):
+        inventory_router._public_url_parts(url)
+
+    monkeypatch.setattr(inventory_router, "_assert_public_dns", validate_without_external_dns)
+    client = _StreamingClient(
+        _StreamingResponse(status_code=302, headers={"location": "http://127.0.0.1/secrets"})
+    )
+
+    with pytest.raises(HTTPException, match="publicly reachable"):
+        await inventory_router._download_public_content(client, "https://example.com/inventory.csv")
+
+
+@pytest.mark.asyncio
+async def test_import_download_rejects_oversized_stream(monkeypatch):
+    from app.routers import inventory as inventory_router
+
+    async def allow_public_dns(url):
+        return None
+
+    monkeypatch.setattr(inventory_router, "_assert_public_dns", allow_public_dns)
+    client = _StreamingClient(
+        _StreamingResponse([b"1234", b"5678"], headers={"content-type": "text/csv"})
+    )
+
+    with pytest.raises(HTTPException, match="too large") as exc:
+        await inventory_router._download_public_content(
+            client, "https://example.com/inventory.csv", max_bytes=5
+        )
+    assert exc.value.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_import_dns_rejects_hostname_resolving_private(monkeypatch):
+    from app.routers import inventory as inventory_router
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.4", 443))],
+    )
+
+    with pytest.raises(HTTPException, match="public addresses"):
+        await inventory_router._assert_public_dns("https://files.example.com/inventory.csv")
+
+
+def test_import_upload_rejects_file_above_csv_limit(client, auth_headers):
+    oversized = b"x" * (8 * 1024 * 1024 + 1)
+    response = client.post(
+        "/api/v1/inventory/import/file",
+        files={"file": ("inventory.csv", oversized, "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Spreadsheet upload is too large."

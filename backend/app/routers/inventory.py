@@ -4,13 +4,16 @@ Soft-delete 404 rule: All GET/PUT/PATCH filter WHERE deleted_at IS NULL.
 Soft-deleted records return 404, never exposed.
 """
 import csv
+import asyncio
 import io
 import ipaddress
 import math
+import socket
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -50,6 +53,8 @@ from app.services.spreadsheet_import import (
     google_sheet_csv_url,
     parse_inventory_rows,
     rows_from_bytes,
+    MAX_CSV_IMPORT_BYTES,
+    MAX_XLSX_IMPORT_BYTES,
 )
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -110,32 +115,127 @@ def _get_active_item(item_id: str, user_id, db: Session) -> InventoryItem:
     return item
 
 
-def _validate_import_host(url: str) -> list[str]:
+def _public_url_parts(url: str):
     parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Import link must be a public http(s) spreadsheet URL.",
         )
 
-    host = parsed.hostname.lower()
+    host = parsed.hostname.lower().rstrip(".")
     try:
         ip = ipaddress.ip_address(host)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+        if not ip.is_global:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Import link must be publicly reachable.",
             )
     except ValueError:
-        blocked_hosts = {"localhost", "127.0.0.1", "0.0.0.0"}
-        if host in blocked_hosts or host.endswith(".local"):
+        blocked_hosts = {"localhost", "localhost.localdomain", "0.0.0.0"}
+        if host in blocked_hosts or host.endswith((".local", ".internal", ".localhost")):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Import link must be publicly reachable.",
             )
-    if host in {"docs.google.com", "www.docs.google.com"}:
+    if parsed.port not in {None, 80, 443}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Import links may only use standard HTTP or HTTPS ports.",
+        )
+    return parsed
+
+
+def _validate_import_host(url: str) -> list[str]:
+    parsed = _public_url_parts(url)
+    if parsed.hostname.lower().rstrip(".") in {"docs.google.com", "www.docs.google.com"}:
         return google_sheet_export_urls(url)
     return [google_sheet_csv_url(url)]
+
+
+async def _assert_public_dns(url: str) -> None:
+    parsed = _public_url_parts(url)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        addresses = await asyncio.to_thread(
+            socket.getaddrinfo,
+            parsed.hostname,
+            port,
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=400, detail="Import link host could not be resolved.") from exc
+    resolved = {entry[4][0] for entry in addresses}
+    if not resolved or any(not ipaddress.ip_address(address).is_global for address in resolved):
+        raise HTTPException(status_code=400, detail="Import link must resolve only to public addresses.")
+
+
+def _assert_public_peer(response: httpx.Response) -> None:
+    stream = getattr(response, "extensions", {}).get("network_stream")
+    if stream is None:
+        return
+    peer = stream.get_extra_info("server_addr")
+    if peer and not ipaddress.ip_address(peer[0]).is_global:
+        raise HTTPException(status_code=400, detail="Import link connected to a non-public address.")
+
+
+async def _download_public_content(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    max_bytes: int = MAX_XLSX_IMPORT_BYTES,
+) -> tuple[bytes, str | None, str]:
+    @asynccontextmanager
+    async def response_context(request_url: str):
+        # The compatibility branch keeps lightweight test doubles useful; the
+        # production httpx client always takes the streaming branch.
+        if hasattr(client, "stream"):
+            async with client.stream("GET", request_url) as streamed_response:
+                yield streamed_response
+        else:
+            yield await client.get(request_url)
+
+    current_url = url
+    for _ in range(6):
+        await _assert_public_dns(current_url)
+        async with response_context(current_url) as response:
+            _assert_public_peer(response)
+            if getattr(response, "is_redirect", False):
+                location = response.headers.get("location")
+                if not location:
+                    raise HTTPException(status_code=400, detail="Spreadsheet link returned an invalid redirect.")
+                current_url = urljoin(current_url, location)
+                continue
+            response.raise_for_status()
+            content_length = response.headers.get("content-length")
+            if content_length and int(content_length) > max_bytes:
+                raise HTTPException(status_code=413, detail="Spreadsheet download is too large.")
+            content = bytearray()
+            if hasattr(response, "aiter_bytes"):
+                async for chunk in response.aiter_bytes():
+                    content.extend(chunk)
+                    if len(content) > max_bytes:
+                        raise HTTPException(status_code=413, detail="Spreadsheet download is too large.")
+            else:
+                content.extend(response.content)
+                if len(content) > max_bytes:
+                    raise HTTPException(status_code=413, detail="Spreadsheet download is too large.")
+            return bytes(content), response.headers.get("content-type"), current_url
+    raise HTTPException(status_code=400, detail="Spreadsheet link redirected too many times.")
+
+
+async def _read_upload_limited(file: UploadFile, max_bytes: int) -> bytes:
+    content = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        content.extend(chunk)
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail="Spreadsheet upload is too large.")
+    return bytes(content)
 
 
 def _find_import_match(
@@ -361,11 +461,10 @@ async def import_inventory_from_link(
         "User-Agent": "VendoraSpreadsheetImport/1.0",
     }
 
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, headers=headers) as client:
         for import_url in import_urls:
             try:
-                response = await client.get(import_url)
-                response.raise_for_status()
+                content, content_type, final_url = await _download_public_content(client, import_url)
             except httpx.HTTPStatusError as exc:
                 last_error = HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -381,9 +480,9 @@ async def import_inventory_from_link(
 
             try:
                 return _import_inventory_content(
-                    filename=urlparse(import_url).path,
-                    content_type=response.headers.get("content-type"),
-                    content=response.content,
+                    filename=urlparse(final_url).path,
+                    content_type=content_type,
+                    content=content,
                     dry_run=payload.dry_run,
                     source_name=payload.source_name,
                     db=db,
@@ -394,12 +493,13 @@ async def import_inventory_from_link(
                 if "web page instead of spreadsheet data" in str(exc.detail):
                     continue
                 if "Could not find an inventory header row" in str(exc.detail):
-                    discovery_text = response.text
+                    discovery_text = content.decode("utf-8", errors="replace")
                     try:
-                        discovery_response = await client.get(payload.url)
-                        if discovery_response.status_code < 400:
-                            discovery_text = discovery_response.text
-                    except httpx.HTTPError:
+                        discovery_content, _, _ = await _download_public_content(
+                            client, payload.url, max_bytes=MAX_CSV_IMPORT_BYTES
+                        )
+                        discovery_text = discovery_content.decode("utf-8", errors="replace")
+                    except (httpx.HTTPError, HTTPException):
                         pass
                     extra_urls = google_sheet_candidate_csv_urls(payload.url, discovery_text)
                     for extra_url in extra_urls:
@@ -425,9 +525,11 @@ async def import_inventory_file(
     current_user: User = Depends(get_current_user),
 ):
     """Import inventory from an uploaded CSV or XLSX spreadsheet."""
-    content = await file.read()
+    filename = file.filename or "inventory.csv"
+    max_bytes = MAX_XLSX_IMPORT_BYTES if filename.lower().endswith(".xlsx") else MAX_CSV_IMPORT_BYTES
+    content = await _read_upload_limited(file, max_bytes)
     return _import_inventory_content(
-        filename=file.filename or "inventory.csv",
+        filename=filename,
         content_type=file.content_type,
         content=content,
         dry_run=dry_run,
@@ -445,7 +547,13 @@ async def get_market_price(
     current_user: User = Depends(get_current_user),
 ):
     """Market price lookup. Queries UPC database + internal Vendora history."""
-    result: dict = {"query": query, "upc": upc, "product_info": None, "sources": []}
+    result: dict = {
+        "query": query,
+        "upc": upc,
+        "product_info": None,
+        "sources": [],
+        "internal_history": {"avg_sold_price": None, "sample_count": 0},
+    }
 
     # 1. UPC item lookup via free upcitemdb trial (no API key required)
     if upc:
@@ -461,10 +569,15 @@ async def get_market_price(
                 if items:
                     i = items[0]
                     result["product_info"] = {
+                        "title": i.get("title"),
                         "name": i.get("title"),
                         "brand": i.get("brand"),
+                        "description": i.get("description"),
+                        "image_url": (i.get("images") or [None])[0],
                         "category": i.get("category"),
                         "images": (i.get("images") or [])[:2],
+                        "lowest_price": None,
+                        "highest_price": None,
                     }
                     prices = [
                         float(o["price"])
@@ -472,9 +585,12 @@ async def get_market_price(
                         if o.get("price") and float(o.get("price", 0)) > 0
                     ]
                     if prices:
+                        result["product_info"]["lowest_price"] = round(min(prices), 2)
+                        result["product_info"]["highest_price"] = round(max(prices), 2)
                         result["sources"].append({
                             "source": "retail",
                             "label": "Retail prices",
+                            "price": round(sum(prices) / len(prices), 2),
                             "low": round(min(prices), 2),
                             "high": round(max(prices), 2),
                             "avg": round(sum(prices) / len(prices), 2),
@@ -494,9 +610,24 @@ async def get_market_price(
         .scalar()
     )
     if name_avg:
+        sample_count = (
+            db.query(func.count(InventoryItem.id))
+            .filter(
+                InventoryItem.user_id == current_user.id,
+                InventoryItem.actual_sell_price.isnot(None),
+                InventoryItem.name.ilike(f"%{query[:20]}%"),
+            )
+            .scalar()
+            or 0
+        )
+        result["internal_history"] = {
+            "avg_sold_price": round(float(name_avg), 2),
+            "sample_count": sample_count,
+        }
         result["sources"].append({
             "source": "vendora_history",
             "label": "Your avg sell price",
+            "price": round(float(name_avg), 2),
             "avg": round(float(name_avg), 2),
         })
 
@@ -539,21 +670,31 @@ def get_pricing_suggestion(
     if name_avg:
         suggested = round(float(name_avg), 2)
         reason = "Based on your historical sales for similar items"
+        confidence = "high"
+        basis = "similar_items"
     elif category_avg:
         suggested = round(float(category_avg), 2)
         reason = f"Based on your {item.category} category average"
+        confidence = "medium"
+        basis = "category_average"
     elif margin_30:
         suggested = margin_30
         reason = "30% margin over your buy price"
+        confidence = "low"
+        basis = "cost_margin"
     else:
         suggested = None
         reason = "Add more sales data to unlock smart suggestions"
+        confidence = "low"
+        basis = "insufficient_data"
 
     return {
         "item_id": str(item.id),
         "current_expected": float(item.expected_sell_price) if item.expected_sell_price else None,
         "suggested_price": suggested,
         "reason": reason,
+        "confidence": confidence,
+        "basis": basis,
         "category_avg": round(float(category_avg), 2) if category_avg else None,
         "name_avg": round(float(name_avg), 2) if name_avg else None,
         "margin_30_percent": margin_30,
@@ -722,9 +863,7 @@ async def preview_import(
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Only .csv files are accepted.")
 
-    content = await file.read()
-    if len(content) > 5 * 1024 * 1024:  # 5 MB cap
-        raise HTTPException(status_code=400, detail="CSV file must be smaller than 5 MB.")
+    content = await _read_upload_limited(file, 5 * 1024 * 1024)
 
     headers, raw_rows = _parse_csv_bytes(content)
     detected_mapping = _detect_mapping(headers)

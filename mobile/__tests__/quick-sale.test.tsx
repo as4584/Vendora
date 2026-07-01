@@ -1,3 +1,9 @@
+import React from 'react';
+import { Alert } from 'react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as apiMock from '../services/api';
+import QuickSaleScreen from '../app/(tabs)/inventory/sale';
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: {
@@ -17,12 +23,6 @@ jest.mock('../services/api', () => ({
   listItems: jest.fn(),
   createTransaction: jest.fn(),
 }));
-
-import React from 'react';
-import { Alert } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import * as apiMock from '../services/api';
-import QuickSaleScreen from '../app/(tabs)/inventory/sale';
 
 const ITEM = {
   id: 'item-1',
@@ -119,5 +119,91 @@ describe('QuickSaleScreen', () => {
         }),
       );
     });
+  });
+
+  it('reports inventory loading failures and filters by name, sku, or category', async () => {
+    (apiMock.listItems as jest.Mock).mockRejectedValueOnce(new Error('offline'));
+    const failed = render(<QuickSaleScreen />);
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Quick sale unavailable',
+        'Could not load sellable inventory.',
+      ),
+    );
+    failed.unmount();
+
+    (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [ITEM] });
+    const screen = render(<QuickSaleScreen />);
+    await screen.findByText('Jordan 1 Retro High');
+    fireEvent.changeText(screen.getByLabelText('Search sale inventory'), 'aj1');
+    expect(screen.getByText('Jordan 1 Retro High')).toBeTruthy();
+    fireEvent.changeText(screen.getByLabelText('Search sale inventory'), 'no-match');
+    expect(screen.queryByText('Jordan 1 Retro High')).toBeNull();
+  });
+
+  it('requires an amount and a size for variant inventory', async () => {
+    const screen = render(<QuickSaleScreen />);
+    await screen.findByText('Jordan 1 Retro High');
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.changeText(screen.getByLabelText('Sale amount'), '');
+    fireEvent.press(screen.getByText('Log Sale'));
+    expect(Alert.alert).toHaveBeenLastCalledWith(
+      'Sale amount required',
+      'Enter the amount collected from the sale.',
+    );
+    fireEvent.changeText(screen.getByLabelText('Sale amount'), '340');
+    fireEvent.press(screen.getByText('Log Sale'));
+    expect(Alert.alert).toHaveBeenLastCalledWith(
+      'Size required',
+      'Choose the size that was sold before continuing.',
+    );
+    expect(apiMock.createTransaction).not.toHaveBeenCalled();
+  });
+
+  it('logs a standalone payment with method, fees, and notes', async () => {
+    const screen = render(<QuickSaleScreen />);
+    await screen.findByText(/Skip/);
+    fireEvent.press(screen.getByText(/Skip/));
+    fireEvent.press(screen.getByText('PAYPAL'));
+    fireEvent.changeText(screen.getByLabelText('Sale amount'), '50');
+    fireEvent.changeText(screen.getByLabelText('Fee amount'), '2');
+    fireEvent.changeText(screen.getByLabelText('Sale notes'), 'Meetup sale');
+    fireEvent.press(screen.getByText('Log Sale'));
+    await waitFor(() =>
+      expect(apiMock.createTransaction).toHaveBeenCalledWith({
+        item_id: undefined,
+        method: 'paypal',
+        gross_amount: '50',
+        fee_amount: '2',
+        quantity: 1,
+        notes: 'Meetup sale',
+      }),
+    );
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/dashboard');
+  });
+
+  it('auto-selects a single size, normalizes quantity, and reports transaction failures', async () => {
+    const single = {
+      ...ITEM,
+      custom_attributes: { variants: [{ size: 'US 8', quantity: 2 }] },
+    };
+    (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [single] });
+    (apiMock.createTransaction as jest.Mock).mockRejectedValueOnce(new Error('payment down'));
+    const screen = render(<QuickSaleScreen />);
+    await screen.findByText('Jordan 1 Retro High');
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.changeText(screen.getByLabelText('Sale quantity'), '0');
+    fireEvent.changeText(screen.getByLabelText('Fee amount'), '');
+    fireEvent.press(screen.getByText('Log Sale'));
+    await waitFor(() =>
+      expect(apiMock.createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantity: 1,
+          fee_amount: '0.00',
+          notes: 'Size sold: US 8',
+        }),
+      ),
+    );
+    expect(Alert.alert).toHaveBeenCalledWith('Sale failed', 'payment down');
   });
 });

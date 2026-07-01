@@ -2,12 +2,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+RUN groupadd --system vendora && useradd --system --gid vendora --home-dir /app vendora
+
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY --chown=vendora:vendora . .
+
+USER vendora
 
 # Run the API server. Reload belongs in local development, not the production image.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

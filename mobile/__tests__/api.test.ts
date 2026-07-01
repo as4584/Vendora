@@ -10,6 +10,10 @@
  */
 
 // Must mock AsyncStorage before importing api (it imports on module load)
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+import * as api from '../services/api';
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: {
@@ -20,9 +24,6 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
     getAllKeys: jest.fn(async () => []),
   },
 }));
-
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as api from '../services/api';
 
 // Cast AsyncStorage methods to jest.Mock for easy assertion.
 const asyncStorageMock = AsyncStorage as jest.Mocked<typeof AsyncStorage>;
@@ -43,6 +44,7 @@ function makeFetchResponse({
     status,
     headers,
     text: jest.fn().mockResolvedValue(body),
+    json: jest.fn(async () => (body ? JSON.parse(body) : {})),
   } as unknown as Response;
 }
 
@@ -54,6 +56,7 @@ describe('api.ts — request()', () => {
     // Reset async storage between tests
     (asyncStorageMock.getItem as jest.Mock).mockResolvedValue(null);
     (asyncStorageMock.removeItem as jest.Mock).mockResolvedValue(undefined);
+    (SecureStore as any).__reset();
   });
 
   afterEach(() => {
@@ -148,6 +151,41 @@ describe('api.ts — request()', () => {
     expect(second).toHaveBeenCalledTimes(1);
   });
 
+  it('rotates a refresh token and retries one protected request after a 401', async () => {
+    await api.setSession('expired-access', 'refresh-one');
+    expect(await api.getRefreshToken()).toBe('refresh-one');
+    const handler = jest.fn();
+    api.onUnauthorized(handler);
+    fetchSpy
+      .mockResolvedValueOnce(
+        makeFetchResponse({ status: 401, body: JSON.stringify({ detail: 'Expired' }) }),
+      )
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          status: 200,
+          body: JSON.stringify({
+            access_token: 'fresh-access',
+            refresh_token: 'refresh-two',
+            token_type: 'bearer',
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          status: 200,
+          body: JSON.stringify({ id: 'user-1', email: 'test@vendora.test' }),
+        }),
+      );
+
+    const result = await api.getMe();
+
+    expect(result.email).toBe('test@vendora.test');
+    expect(await api.getToken()).toBe('fresh-access');
+    expect(await api.getRefreshToken()).toBe('refresh-two');
+    expect(handler).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
   it('retries spreadsheet link import once after a gateway error', async () => {
     jest.useFakeTimers();
     try {
@@ -191,4 +229,109 @@ describe('api.ts — request()', () => {
       jest.useRealTimers();
     }
   });
+
+  it('rejects malformed JSON responses with a transport-safe error', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    fetchSpy.mockResolvedValueOnce(
+      makeFetchResponse({ status: 200, contentType: 'application/json', body: '{bad-json' }),
+    );
+    await expect(api.getMe()).rejects.toThrow('Invalid JSON response from server');
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it('returns an empty object for an empty JSON response', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeFetchResponse({ status: 200, contentType: 'application/json', body: '' }),
+    );
+    await expect(api.getMe()).resolves.toEqual({});
+  });
+
+  it('throws an ApiError for non-JSON failures with and without a response body', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeFetchResponse({ status: 500, contentType: 'text/html', body: 'Gateway failed' }),
+    );
+    await expect(api.healthCheck()).rejects.toMatchObject({
+      message: 'Gateway failed',
+      status: 500,
+    });
+    fetchSpy.mockResolvedValueOnce(
+      makeFetchResponse({ status: 502, contentType: 'text/plain', body: '' }),
+    );
+    await expect(api.healthCheck()).rejects.toMatchObject({
+      message: 'Request failed (502)',
+      status: 502,
+    });
+  });
+
+  it('clears the session when refresh transport or refresh status fails', async () => {
+    await api.setSession('expired', 'refresh');
+    const handler = jest.fn();
+    api.onUnauthorized(handler);
+    fetchSpy
+      .mockResolvedValueOnce(
+        makeFetchResponse({ status: 401, body: JSON.stringify({ detail: 'Expired' }) }),
+      )
+      .mockRejectedValueOnce(new Error('refresh network down'));
+    await expect(api.getMe()).rejects.toMatchObject({ status: 401 });
+    expect(handler).toHaveBeenCalled();
+
+    await api.setSession('expired-again', 'refresh-again');
+    fetchSpy
+      .mockResolvedValueOnce(
+        makeFetchResponse({ status: 401, body: JSON.stringify({ detail: 'Expired' }) }),
+      )
+      .mockResolvedValueOnce(
+        makeFetchResponse({ status: 401, body: JSON.stringify({ detail: 'Bad refresh' }) }),
+      );
+    await expect(api.getMe()).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('shares one refresh request across concurrent protected calls', async () => {
+    await api.setSession('expired-concurrent', 'refresh-concurrent');
+    let resolveRefresh!: (value: Response) => void;
+    const refreshResponse = new Promise<Response>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    fetchSpy
+      .mockResolvedValueOnce(
+        makeFetchResponse({ status: 401, body: JSON.stringify({ detail: 'Expired' }) }),
+      )
+      .mockReturnValueOnce(refreshResponse)
+      .mockResolvedValueOnce(
+        makeFetchResponse({ status: 401, body: JSON.stringify({ detail: 'Expired' }) }),
+      )
+      .mockResolvedValue(
+        makeFetchResponse({ status: 200, body: JSON.stringify({ id: 'user-1' }) }),
+      );
+
+    const first = api.getMe();
+    await waitForFetchCalls(fetchSpy, 2);
+    const second = api.getMe();
+    await waitForFetchCalls(fetchSpy, 3);
+    resolveRefresh(
+      makeFetchResponse({
+        status: 200,
+        body: JSON.stringify({
+          access_token: 'fresh-concurrent',
+          refresh_token: 'refresh-rotated',
+          token_type: 'bearer',
+        }),
+      }),
+    );
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { id: 'user-1' },
+      { id: 'user-1' },
+    ]);
+    expect(
+      fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh')),
+    ).toHaveLength(1);
+  });
 });
+
+async function waitForFetchCalls(fetchSpy: jest.SpyInstance, count: number) {
+  for (let attempt = 0; attempt < 50 && fetchSpy.mock.calls.length < count; attempt += 1) {
+    await Promise.resolve();
+  }
+  expect(fetchSpy).toHaveBeenCalledTimes(count);
+}

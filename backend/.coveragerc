@@ -1,4 +1,7 @@
 [run]
-omit =
-    app/services/lightspeed.py
-    app/services/invoice_pdf.py
+branch = True
+source = app
+
+[report]
+fail_under = 100
+show_missing = True

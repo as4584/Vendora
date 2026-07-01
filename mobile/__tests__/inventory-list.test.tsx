@@ -9,13 +9,20 @@
  *  5. Quantity displays safely when item has null quantity
  */
 
+import React from 'react';
+import { Alert } from 'react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as apiMock from '../services/api';
+import * as fileActions from '../utils/fileActions';
+import InventoryListScreen from '../app/(tabs)/inventory/index';
+
+const mockPush = jest.fn();
+
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('../__mocks__/async-storage'),
 );
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn() }),
-}));
-jest.mock('@react-navigation/native', () => ({
+  useRouter: () => ({ push: mockPush }),
   useFocusEffect: (cb: () => void) => {
     // Fire once like useEffect in tests
     const React = require('react');
@@ -25,15 +32,11 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('../services/api', () => ({
   listItems: jest.fn(),
   exportInventoryCSV: jest.fn(),
+  exportInventoryWarehouseCSV: jest.fn(),
 }));
 jest.mock('../utils/fileActions', () => ({
   downloadTextFile: jest.fn(),
 }));
-
-import React from 'react';
-import { render, waitFor, act, fireEvent } from '@testing-library/react-native';
-import * as apiMock from '../services/api';
-import InventoryListScreen from '../app/(tabs)/inventory/index';
 
 function makeItem(overrides: Partial<apiMock.InventoryItem> = {}): apiMock.InventoryItem {
   return {
@@ -72,7 +75,10 @@ const PAGINATED_EMPTY: apiMock.PaginatedItems = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 });
+
+afterEach(() => jest.restoreAllMocks());
 
 describe('InventoryListScreen', () => {
   it('shows loading indicator on mount', () => {
@@ -101,6 +107,7 @@ describe('InventoryListScreen', () => {
     await waitFor(() => {
       expect(queryByTestId('inventory-loading')).toBeNull();
     });
+    expect(Alert.alert).toHaveBeenCalledWith('Inventory unavailable', 'Network error');
     // No crash — component stays mounted.
   });
 
@@ -125,5 +132,125 @@ describe('InventoryListScreen', () => {
       expect(getByText('Zero Qty Item')).toBeTruthy();
     });
     expect(getByText('Stock 0')).toBeTruthy();
+  });
+
+  it('renders photo, low-stock, unknown source, and unknown status branches', async () => {
+    const item = makeItem({
+      name: 'Photo Item',
+      quantity: 3,
+      source: 'custom-pos',
+      status: 'custom_status',
+      photo_front_url: 'https://example.com/front.jpg',
+      photo_back_url: 'https://example.com/back.jpg',
+    });
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [item], total: 1 });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Photo Item');
+    expect(screen.getByText('Low stock 3')).toBeTruthy();
+    expect(screen.getAllByText('custom-pos').length).toBeGreaterThan(0);
+    expect(screen.getByText('custom_status')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Open Photo Item'));
+    expect(mockPush).toHaveBeenCalledWith('/inventory/item-1');
+  });
+
+  it('debounces search and replaces a pending search timer', async () => {
+    jest.useFakeTimers();
+    try {
+      (apiMock.listItems as jest.Mock).mockResolvedValue(PAGINATED_EMPTY);
+      const screen = render(<InventoryListScreen />);
+      await act(async () => jest.runOnlyPendingTimersAsync());
+      fireEvent.changeText(screen.getByLabelText('Search inventory'), 'jord');
+      fireEvent.changeText(screen.getByLabelText('Search inventory'), 'jordan');
+      await act(async () => jest.advanceTimersByTimeAsync(250));
+      expect(apiMock.listItems).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, q: 'jordan' }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('refreshes and appends the next page on end reached', async () => {
+    (apiMock.listItems as jest.Mock)
+      .mockResolvedValueOnce({
+        ...PAGINATED_EMPTY,
+        items: [makeItem({ id: 'item-1', name: 'First Item' })],
+        total: 2,
+        page: 1,
+        pages: 2,
+      })
+      .mockResolvedValueOnce({
+        ...PAGINATED_EMPTY,
+        items: [makeItem({ id: 'item-2', name: 'Second Item' })],
+        total: 2,
+        page: 2,
+        pages: 2,
+      })
+      .mockResolvedValueOnce({
+        ...PAGINATED_EMPTY,
+        items: [makeItem({ id: 'item-1', name: 'First Item' })],
+        total: 2,
+        page: 1,
+        pages: 2,
+      });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('First Item');
+    const FlatList = require('react-native').FlatList;
+    let list = screen.UNSAFE_getByType(FlatList);
+    fireEvent(list, 'endReached');
+    await screen.findByText('Second Item');
+    expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+
+    list = screen.UNSAFE_getByType(FlatList);
+    await act(async () => list.props.refreshControl.props.onRefresh());
+    await waitFor(() => expect(apiMock.listItems).toHaveBeenCalledTimes(3));
+  });
+
+  it('filters by status and discovered source, including toggle-off behavior', async () => {
+    const item = makeItem({ source: 'lightspeed' });
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [item], total: 1 });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Jordan 1 Chicago');
+    fireEvent.press(screen.getAllByText('In Stock')[0]);
+    await waitFor(() =>
+      expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'in_stock' })),
+    );
+    fireEvent.press(screen.getAllByText('In Stock')[0]);
+    await waitFor(() =>
+      expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ status: undefined })),
+    );
+    fireEvent.press(screen.getAllByText('Lightspeed')[0]);
+    await waitFor(() =>
+      expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ source: 'lightspeed' })),
+    );
+    fireEvent.press(screen.getAllByText('Lightspeed')[0]);
+    await waitFor(() =>
+      expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ source: undefined })),
+    );
+  });
+
+  it('exports warehouse CSV, reports export errors, and routes header actions', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue(PAGINATED_EMPTY);
+    (apiMock.exportInventoryWarehouseCSV as jest.Mock).mockResolvedValueOnce('Product Name,,');
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('No inventory matches this view.');
+    fireEvent.press(screen.getByText('Export'));
+    await waitFor(() =>
+      expect(fileActions.downloadTextFile).toHaveBeenCalledWith(
+        'Product Name,,',
+        'vendora-inventory-warehouse.csv',
+      ),
+    );
+
+    (apiMock.exportInventoryWarehouseCSV as jest.Mock).mockRejectedValueOnce(
+      new Error('export down'),
+    );
+    fireEvent.press(screen.getByText('Export'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Export failed', 'export down'));
+    fireEvent.press(screen.getByText('Import'));
+    fireEvent.press(screen.getByText('Add Stock'));
+    expect(mockPush.mock.calls).toEqual(
+      expect.arrayContaining([['/inventory/import'], ['/inventory/add']]),
+    );
   });
 });

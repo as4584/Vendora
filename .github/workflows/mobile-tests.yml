@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'mobile/**'
+      - '.github/workflows/mobile-tests.yml'
   pull_request:
     branches: [main]
     paths:
       - 'mobile/**'
+      - '.github/workflows/mobile-tests.yml'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -32,14 +34,21 @@ jobs:
         working-directory: mobile
         run: npm ci --legacy-peer-deps
 
+      - name: Typecheck application
+        working-directory: mobile
+        run: npm run typecheck
+
+      - name: Run unit tests
+        working-directory: mobile
+        run: npm run test:ci
+
       - name: Build Expo web
         working-directory: mobile
-        run: npx expo export --platform web
+        run: npm run build:web
 
       - name: Install Playwright + browser
         working-directory: mobile
         run: |
-          npm install --save-dev @playwright/test serve
           npx playwright install --with-deps chromium
 
       - name: Run iPhone smoke tests

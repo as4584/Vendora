@@ -34,7 +34,7 @@ class TestCreateItem:
 
     def test_create_item_unauthenticated(self, client):
         resp = client.post("/api/v1/inventory", json=SAMPLE_ITEM)
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 class TestListItems:

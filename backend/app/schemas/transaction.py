@@ -4,7 +4,7 @@ from decimal import Decimal
 from uuid import UUID
 from typing import Optional, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 PAYMENT_METHODS = Literal["stripe", "cashapp", "paypal", "zelle", "venmo", "cash", "other"]
@@ -34,6 +34,8 @@ class RefundCreate(BaseModel):
 
 
 class TransactionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     user_id: UUID
     item_id: Optional[UUID] = None
@@ -50,10 +52,6 @@ class TransactionResponse(BaseModel):
     original_transaction_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class TransactionListResponse(BaseModel):
     items: list[TransactionResponse]

@@ -29,6 +29,7 @@ FEATURES = {
     # Partner-only features
     "seller_page": {"tiers": ["pro"], "requires_partner": True, "description": "Public seller profile page"},
     "verified_badge": {"tiers": ["pro"], "requires_partner": True, "description": "Verified seller badge"},
+    "priority_support": {"tiers": ["pro"], "requires_partner": True, "description": "Priority in-app support"},
 }
 
 

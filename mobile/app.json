@@ -6,13 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "scheme": "vendora",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0A0A1A"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vendora.app"
@@ -22,13 +16,9 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A1A"
       },
-      "edgeToEdgeEnabled": true,
       "package": "com.vendora.app",
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -49,7 +39,16 @@
           "photosPermission": "Vendora needs photo access to attach images to inventory items."
         }
       ],
-      "expo-document-picker"
+      "expo-document-picker",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0A0A1A"
+        }
+      ]
     ],
     "extra": {
       "router": {},

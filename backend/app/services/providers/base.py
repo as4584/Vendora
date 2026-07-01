@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from typing import ClassVar, Optional
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.models.provider import ProviderSyncRun, ReconciliationIssue
 
@@ -259,13 +260,30 @@ def record_webhook_event(
     """
     from app.models.provider import ProviderWebhookEvent  # local import avoids circular ref at module level
 
+    event, _ = claim_webhook_event(
+        db, provider, event_id, event_type, raw_payload, user_id
+    )
+    return event
+
+
+def claim_webhook_event(
+    db: Session,
+    provider: str,
+    event_id: str,
+    event_type: str,
+    raw_payload: str,
+    user_id: Optional[uuid.UUID] = None,
+) -> tuple["ProviderWebhookEvent", bool]:
+    """Return the event plus whether this caller won the unique insert claim."""
+    from app.models.provider import ProviderWebhookEvent
+
     existing = (
         db.query(ProviderWebhookEvent)
         .filter_by(provider=provider, event_id=event_id)
         .first()
     )
     if existing:
-        return existing
+        return existing, False
 
     event = ProviderWebhookEvent(
         provider=provider,
@@ -276,9 +294,18 @@ def record_webhook_event(
         received_at=datetime.now(timezone.utc),
         processed=False,
     )
-    db.add(event)
-    db.flush()
-    return event
+    try:
+        with db.begin_nested():
+            db.add(event)
+            db.flush()
+        return event, True
+    except IntegrityError:
+        existing = (
+            db.query(ProviderWebhookEvent)
+            .filter_by(provider=provider, event_id=event_id)
+            .one()
+        )
+        return existing, False
 
 
 def is_duplicate_event(db: Session, provider: str, event_id: str) -> bool:

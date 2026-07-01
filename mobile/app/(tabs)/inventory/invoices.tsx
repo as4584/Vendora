@@ -244,6 +244,7 @@ export default function InvoicesScreen() {
           <Card style={{ gap: SPACING.md }}>
             <SectionLabel>Customer</SectionLabel>
             <TextInput
+              accessibilityLabel="Customer Name"
               style={styles.input}
               placeholder="Customer Name"
               placeholderTextColor={COLORS.textSoft}
@@ -251,6 +252,7 @@ export default function InvoicesScreen() {
               onChangeText={setCustomerName}
             />
             <TextInput
+              accessibilityLabel="Customer Email"
               style={styles.input}
               placeholder="Email (optional)"
               placeholderTextColor={COLORS.textSoft}
@@ -263,6 +265,7 @@ export default function InvoicesScreen() {
           <Card style={{ gap: SPACING.md }}>
             <SectionLabel>From Inventory</SectionLabel>
             <TextInput
+              accessibilityLabel="Search invoice inventory"
               style={styles.input}
               placeholder="Search by item name, SKU, or category"
               placeholderTextColor={COLORS.textSoft}
@@ -289,6 +292,8 @@ export default function InvoicesScreen() {
                         <View style={styles.sizeChoiceRow}>
                           {variants.map((variant) => (
                             <TouchableOpacity
+                              accessibilityLabel={`Add ${item.name} size ${variant.size}`}
+                              accessibilityRole="button"
                               key={`${item.id}-${variant.size}`}
                               activeOpacity={0.84}
                               onPress={() => addFromInventory(item, variant)}
@@ -303,7 +308,7 @@ export default function InvoicesScreen() {
                       ) : null}
                     </View>
                     {variants.length === 0 ? (
-                      <TouchableOpacity activeOpacity={0.84} onPress={() => addFromInventory(item)}>
+                      <TouchableOpacity accessibilityLabel={`Add ${item.name}`} accessibilityRole="button" activeOpacity={0.84} onPress={() => addFromInventory(item)}>
                         <View style={styles.inlineAction}>
                           <Text style={styles.inlineActionText}>Add</Text>
                         </View>
@@ -339,6 +344,7 @@ export default function InvoicesScreen() {
                     </View>
                   ) : null}
                   <TextInput
+                    accessibilityLabel={`Line item ${index + 1} description`}
                     style={styles.input}
                     placeholder="Description"
                     placeholderTextColor={COLORS.textSoft}
@@ -347,6 +353,7 @@ export default function InvoicesScreen() {
                   />
                   <View style={[styles.dualRow, compactLineItemLayout && styles.dualRowStack]}>
                     <TextInput
+                      accessibilityLabel={`Line item ${index + 1} quantity`}
                       style={[styles.input, styles.flexInput]}
                       placeholder="Qty"
                       placeholderTextColor={COLORS.textSoft}
@@ -355,6 +362,7 @@ export default function InvoicesScreen() {
                       onChangeText={(value) => updateLineItem(index, "quantity", value)}
                     />
                     <TextInput
+                      accessibilityLabel={`Line item ${index + 1} unit price`}
                       style={[styles.input, styles.flexInput]}
                       placeholder="Unit price"
                       placeholderTextColor={COLORS.textSoft}
@@ -385,6 +393,7 @@ export default function InvoicesScreen() {
               <View style={styles.adjustmentField}>
                 <Text style={styles.fieldLabel}>Sales tax</Text>
                 <TextInput
+                  accessibilityLabel="Sales tax"
                   style={styles.input}
                   placeholder="0.00"
                   placeholderTextColor={COLORS.textSoft}
@@ -396,6 +405,7 @@ export default function InvoicesScreen() {
               <View style={styles.adjustmentField}>
                 <Text style={styles.fieldLabel}>Shipping charged</Text>
                 <TextInput
+                  accessibilityLabel="Shipping charged"
                   style={styles.input}
                   placeholder="0.00"
                   placeholderTextColor={COLORS.textSoft}
@@ -408,6 +418,7 @@ export default function InvoicesScreen() {
             <View style={styles.adjustmentField}>
               <Text style={styles.fieldLabel}>Discount or credit</Text>
               <TextInput
+                accessibilityLabel="Discount or credit"
                 style={styles.input}
                 placeholder="0.00"
                 placeholderTextColor={COLORS.textSoft}
@@ -417,6 +428,7 @@ export default function InvoicesScreen() {
               />
             </View>
             <TextInput
+              accessibilityLabel="Invoice notes"
               style={[styles.input, styles.notesInput]}
               placeholder="Notes"
               placeholderTextColor={COLORS.textSoft}

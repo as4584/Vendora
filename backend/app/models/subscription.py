@@ -35,6 +35,7 @@ class Subscription(Base, TimestampMixin):
         nullable=False,
     )
     stripe_subscription_id = Column(String(255), nullable=True, unique=True)
+    stripe_customer_id = Column(String(255), nullable=True, index=True)
     tier = Column(String(20), nullable=False, server_default="free")
     is_partner = Column(Boolean, nullable=False, server_default="false")
     price_monthly = Column(Numeric(10, 2), nullable=False, server_default="0.00")

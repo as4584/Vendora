@@ -3,6 +3,7 @@
 Coverage: Quick Sale, manual payment log, listing, refund flow, double-refund guard.
 """
 import pytest
+from fastapi import HTTPException
 
 
 SAMPLE_ITEM = {
@@ -14,6 +15,30 @@ SAMPLE_ITEM = {
 
 
 class TestCreateTransaction:
+    def test_missing_item_returns_404(self, client, auth_headers):
+        resp = client.post("/api/v1/transactions", json={
+            "item_id": "00000000-0000-0000-0000-000000000000",
+            "method": "cash",
+            "gross_amount": "10.00",
+        }, headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_stock_service_failure_uses_status_fallback(self, client, auth_headers, monkeypatch):
+        from app.routers import transactions
+
+        item = client.post("/api/v1/inventory", json={"name": "Fallback Item", "quantity": 2}, headers=auth_headers).json()
+
+        def fail(*args, **kwargs):
+            raise HTTPException(status_code=409, detail="ledger unavailable")
+
+        monkeypatch.setattr(transactions, "deduct_stock", fail)
+        resp = client.post("/api/v1/transactions", json={
+            "item_id": item["id"], "method": "cash", "gross_amount": "10.00",
+        }, headers=auth_headers)
+        assert resp.status_code == 201
+        updated = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
+        assert updated["status"] == "sold"
+
     def test_quick_sale_with_item(self, client, auth_headers):
         """Quick Sale: create item → log transaction → item auto-transitions to sold."""
         # Create item
@@ -85,7 +110,7 @@ class TestCreateTransaction:
             "method": "cash",
             "gross_amount": "50.00",
         })
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 class TestListTransactions:
@@ -146,7 +171,67 @@ class TestListTransactions:
         assert data["items"][0]["item_id"] == item_a["id"]
 
 
+class TestGetTransaction:
+    def test_get_existing_and_missing(self, client, auth_headers):
+        txn = client.post("/api/v1/transactions", json={
+            "method": "cash", "gross_amount": "12.00",
+        }, headers=auth_headers).json()
+        assert client.get(f"/api/v1/transactions/{txn['id']}", headers=auth_headers).status_code == 200
+        missing = client.get("/api/v1/transactions/00000000-0000-0000-0000-000000000000", headers=auth_headers)
+        assert missing.status_code == 404
+
+
 class TestRefund:
+    def test_missing_transaction_returns_404(self, client, auth_headers):
+        resp = client.post(
+            "/api/v1/transactions/00000000-0000-0000-0000-000000000000/refund",
+            json={}, headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_restore_service_failure_uses_status_fallback(self, client, auth_headers, monkeypatch):
+        from app.routers import transactions
+
+        item = client.post("/api/v1/inventory", json={"name": "Refund Fallback", "quantity": 1}, headers=auth_headers).json()
+        txn = client.post("/api/v1/transactions", json={
+            "item_id": item["id"], "method": "cash", "gross_amount": "15.00",
+        }, headers=auth_headers).json()
+
+        def fail(*args, **kwargs):
+            raise HTTPException(status_code=409, detail="ledger unavailable")
+
+        monkeypatch.setattr(transactions, "restore_stock", fail)
+        resp = client.post(f"/api/v1/transactions/{txn['id']}/refund", json={}, headers=auth_headers)
+        assert resp.status_code == 201
+        updated = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
+        assert updated["status"] == "in_stock"
+        assert updated["actual_sell_price"] is None
+
+    def test_refund_skips_deleted_item_and_non_sold_fallback(self, client, auth_headers, db, monkeypatch):
+        from app.routers import transactions
+        from app.models.inventory import InventoryItem
+        from datetime import datetime, timezone
+        import uuid
+
+        item = client.post("/api/v1/inventory", json={"name": "Partial", "quantity": 2}, headers=auth_headers).json()
+        txn = client.post("/api/v1/transactions", json={
+            "item_id": item["id"], "method": "cash", "gross_amount": "10.00", "quantity": 1,
+        }, headers=auth_headers).json()
+        monkeypatch.setattr(
+            transactions,
+            "restore_stock",
+            lambda *args, **kwargs: (_ for _ in ()).throw(HTTPException(status_code=409)),
+        )
+        assert client.post(f"/api/v1/transactions/{txn['id']}/refund", json={}, headers=auth_headers).status_code == 201
+
+        deleted = client.post("/api/v1/inventory", json={"name": "Deleted after sale", "quantity": 1}, headers=auth_headers).json()
+        deleted_txn = client.post("/api/v1/transactions", json={
+            "item_id": deleted["id"], "method": "cash", "gross_amount": "11.00",
+        }, headers=auth_headers).json()
+        model = db.get(InventoryItem, uuid.UUID(deleted["id"]))
+        model.deleted_at = datetime.now(timezone.utc)
+        db.commit()
+        assert client.post(f"/api/v1/transactions/{deleted_txn['id']}/refund", json={}, headers=auth_headers).status_code == 201
     def test_refund_creates_negative_entry(self, client, auth_headers):
         """Per STATE_MACHINES.md: Refund creates negative transaction entry."""
         # Create sale

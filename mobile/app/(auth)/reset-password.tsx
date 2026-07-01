@@ -22,10 +22,6 @@ export default function ResetPasswordScreen() {
     const [loading, setLoading] = useState(false);
 
     const handleReset = async () => {
-        if (!token) {
-            Alert.alert("Invalid link", "Request a new password reset email.");
-            return;
-        }
         if (password.length < 8) {
             Alert.alert("Weak password", "Your password must be at least 8 characters.");
             return;
@@ -37,7 +33,7 @@ export default function ResetPasswordScreen() {
 
         setLoading(true);
         try {
-            await resetPassword(token, password);
+            await resetPassword(token!, password);
             Alert.alert("Password reset", "You can now sign in with your new password.", [
                 { text: "Sign In", onPress: () => router.replace("/(auth)/login") },
             ]);
@@ -59,7 +55,7 @@ export default function ResetPasswordScreen() {
                     This link is missing its secure token. Request a new email and try again.
                 </Text>
                 <Link href="/(auth)/forgot-password" asChild>
-                    <TouchableOpacity style={styles.button}>
+                    <TouchableOpacity accessibilityRole="link" style={styles.button}>
                         <Text style={styles.buttonText}>Request New Link</Text>
                     </TouchableOpacity>
                 </Link>
@@ -78,6 +74,7 @@ export default function ResetPasswordScreen() {
 
                 <Text style={styles.label}>New Password</Text>
                 <TextInput
+                    accessibilityLabel="New Password"
                     style={styles.input}
                     placeholder="New password"
                     placeholderTextColor="#555"
@@ -89,6 +86,7 @@ export default function ResetPasswordScreen() {
 
                 <Text style={styles.label}>Confirm Password</Text>
                 <TextInput
+                    accessibilityLabel="Confirm Password"
                     style={styles.input}
                     placeholder="Re-enter new password"
                     placeholderTextColor="#555"
@@ -99,6 +97,7 @@ export default function ResetPasswordScreen() {
                 />
 
                 <TouchableOpacity
+                    accessibilityRole="button"
                     style={[styles.button, loading && styles.buttonDisabled]}
                     onPress={handleReset}
                     disabled={loading}

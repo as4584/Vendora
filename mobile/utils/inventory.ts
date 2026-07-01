@@ -46,14 +46,16 @@ export function sizeBreakdown(item: api.InventoryItem): string {
   return "No size data";
 }
 
-export function formatCurrency(value?: string | null) {
+export function formatCurrency(value?: string | number | null) {
   if (!value) return "—";
-  const parsed = parseFloat(value);
+  const parsed = parseFloat(String(value));
   if (Number.isNaN(parsed)) return "—";
   return `$${parsed.toFixed(2)}`;
 }
 
 export function formatCompactDate(value?: string | null) {
   if (!value) return "Never";
-  return new Date(value).toLocaleString();
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Unknown";
+  return parsed.toLocaleString();
 }

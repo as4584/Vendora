@@ -2,13 +2,17 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Uuid
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Uuid
 
 from app.models.base import Base, TimestampMixin
 
 
 class LightspeedToken(Base, TimestampMixin):
     __tablename__ = "lightspeed_tokens"
+    __table_args__ = (
+        Index("ix_lightspeed_tokens_user_id", "user_id", unique=True),
+        Index("ix_lightspeed_tokens_account_id", "account_id"),
+    )
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id = Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)

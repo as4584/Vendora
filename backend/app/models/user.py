@@ -2,8 +2,6 @@
 import uuid
 
 from sqlalchemy import Column, String, Boolean, CheckConstraint, Uuid, Text, DateTime
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID # Keep just in case or remove? Remove.
-
 from app.models.base import Base, TimestampMixin, SoftDeleteMixin
 
 
@@ -17,7 +15,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     )
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     business_name = Column(String(255), nullable=True)
     subscription_tier = Column(String(20), nullable=False, server_default="free")

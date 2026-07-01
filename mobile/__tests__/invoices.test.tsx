@@ -1,3 +1,10 @@
+import React from 'react';
+import { Alert } from 'react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as apiMock from '../services/api';
+import * as fileActionsMock from '../utils/fileActions';
+import InvoicesScreen from '../app/(tabs)/inventory/invoices';
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: {
@@ -24,13 +31,6 @@ jest.mock('../utils/fileActions', () => ({
   previewPdfFile: jest.fn(),
   downloadPdfFile: jest.fn(),
 }));
-
-import React from 'react';
-import { Alert } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import * as apiMock from '../services/api';
-import * as fileActionsMock from '../utils/fileActions';
-import InvoicesScreen from '../app/(tabs)/inventory/invoices';
 
 const INVENTORY_ITEM = {
   id: 'item-1',
@@ -228,6 +228,9 @@ describe('InvoicesScreen', () => {
       expect(apiMock.exportInvoicePdf).toHaveBeenCalledWith('inv-1');
       expect(fileActionsMock.downloadPdfFile).toHaveBeenCalledWith('JVBERi0xLjQK', 'invoice-0001.pdf');
     });
+
+    fireEvent.press(screen.getByText('Create Invoice'));
+    expect(screen.getByText('Customer')).toBeTruthy();
   });
 
   it('lets users leave the invoice screen with the close button', async () => {
@@ -242,5 +245,168 @@ describe('InvoicesScreen', () => {
     });
 
     expect(mockReplace).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('reports initial load and server-side inventory search failures', async () => {
+    (apiMock.listInvoices as jest.Mock).mockRejectedValueOnce(new Error('offline'));
+    const failed = render(<InvoicesScreen />);
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Invoices unavailable',
+        'Could not load invoices or inventory.',
+      ),
+    );
+    failed.unmount();
+
+    (apiMock.listInvoices as jest.Mock).mockResolvedValueOnce({ items: [] });
+    (apiMock.listItems as jest.Mock)
+      .mockResolvedValueOnce({ items: [INVENTORY_ITEM] })
+      .mockRejectedValueOnce(new Error('search down'));
+    const screen = render(<InvoicesScreen />);
+    await screen.findByText('From Inventory');
+    fireEvent.changeText(screen.getByLabelText('Search invoice inventory'), 'missing');
+    await waitFor(
+      () =>
+        expect(Alert.alert).toHaveBeenCalledWith(
+          'Inventory search failed',
+          'Could not search your inventory.',
+        ),
+      { timeout: 1500 },
+    );
+  });
+
+  it('validates customer and line-item requirements', async () => {
+    const screen = render(<InvoicesScreen />);
+    await screen.findByText('From Inventory');
+    fireEvent.press(screen.getAllByText('Create Invoice').slice(-1)[0]);
+    expect(Alert.alert).toHaveBeenLastCalledWith(
+      'Customer required',
+      'Add a customer name before creating the invoice.',
+    );
+    fireEvent.changeText(screen.getByLabelText('Customer Name'), 'Alex');
+    fireEvent.press(screen.getAllByText('Create Invoice').slice(-1)[0]);
+    expect(Alert.alert).toHaveBeenLastCalledWith(
+      'Line items required',
+      'Each invoice row needs a description and a unit price.',
+    );
+  });
+
+  it('creates a multi-line custom invoice with adjustments and normalized quantities', async () => {
+    const customInvoice = {
+      ...CREATED_INVOICE,
+      id: 'inv-custom',
+      customer_name: '  Taylor  ',
+      total: '34.00',
+    };
+    (apiMock.createInvoice as jest.Mock).mockResolvedValueOnce(customInvoice);
+    const screen = render(<InvoicesScreen />);
+    await screen.findByText('From Inventory');
+    fireEvent.changeText(screen.getByLabelText('Customer Name'), '  Taylor  ');
+    fireEvent.changeText(screen.getByLabelText('Customer Email'), ' taylor@example.com ');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 description'), ' Service ');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 quantity'), '0');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 unit price'), ' 20 ');
+    fireEvent.press(screen.getByText('Add Custom Item'));
+    fireEvent.changeText(screen.getByLabelText('Line item 2 description'), 'Shipping Box');
+    fireEvent.changeText(screen.getByLabelText('Line item 2 quantity'), '2');
+    fireEvent.changeText(screen.getByLabelText('Line item 2 unit price'), '5');
+    fireEvent.changeText(screen.getByLabelText('Sales tax'), '2');
+    fireEvent.changeText(screen.getByLabelText('Shipping charged'), '3');
+    fireEvent.changeText(screen.getByLabelText('Discount or credit'), '1');
+    fireEvent.changeText(screen.getByLabelText('Invoice notes'), ' Thank you ');
+
+    const View = require('react-native').View;
+    const anchor = screen.UNSAFE_getAllByType(View).find((node) => node.props.onLayout);
+    act(() => anchor?.props.onLayout({ nativeEvent: { layout: { y: 200 } } }));
+    fireEvent.press(screen.getAllByText('Create Invoice').slice(-1)[0]);
+    await waitFor(() => expect(apiMock.createInvoice).toHaveBeenCalledTimes(1));
+    expect(apiMock.createInvoice).toHaveBeenCalledWith({
+      customer_name: 'Taylor',
+      customer_email: 'taylor@example.com',
+      tax: '2',
+      shipping: '3',
+      discount: '1',
+      notes: 'Thank you',
+      items: [
+        {
+          description: 'Service',
+          quantity: 1,
+          unit_price: '20',
+          inventory_item_id: undefined,
+          size_label: undefined,
+        },
+        {
+          description: 'Shipping Box',
+          quantity: 2,
+          unit_price: '5',
+          inventory_item_id: undefined,
+          size_label: undefined,
+        },
+      ],
+    });
+    expect(screen.getAllByText('Open Invoice').length).toBeGreaterThan(0);
+  });
+
+  it('adds a non-variant inventory item and appends it after a custom row', async () => {
+    const simpleItem = {
+      ...INVENTORY_ITEM,
+      id: 'simple-1',
+      name: 'Simple Item',
+      size: null,
+      custom_attributes: null,
+      expected_sell_price: null,
+      buy_price: '25.00',
+    };
+    (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [simpleItem] });
+    const screen = render(<InvoicesScreen />);
+    await screen.findByText('Simple Item');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 description'), 'Existing');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 unit price'), '5');
+    fireEvent.press(screen.getByLabelText('Add Simple Item'));
+    await waitFor(() => expect(screen.getByDisplayValue('Simple Item')).toBeTruthy());
+    expect(screen.getByDisplayValue('25.00')).toBeTruthy();
+    expect(screen.getByText('Simple Item was added to the invoice below.')).toBeTruthy();
+  });
+
+  it('reports invoice creation and PDF preparation failures', async () => {
+    (apiMock.createInvoice as jest.Mock).mockRejectedValueOnce(new Error('invoice down'));
+    const screen = render(<InvoicesScreen />);
+    await screen.findByText('From Inventory');
+    fireEvent.changeText(screen.getByLabelText('Customer Name'), 'Alex');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 description'), 'Service');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 unit price'), '20');
+    fireEvent.press(screen.getAllByText('Create Invoice').slice(-1)[0]);
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Invoice failed', 'invoice down'));
+
+    fireEvent.press(screen.getByText('Recent Invoices'));
+    fireEvent.press(screen.getByText('Open Invoice'));
+    (apiMock.exportInvoicePdf as jest.Mock).mockRejectedValueOnce(new Error('PDF down'));
+    fireEvent.press(screen.getByText('Preview PDF'));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith('Invoice unavailable', 'PDF down'),
+    );
+    fireEvent.press(screen.getByText('Close Preview'));
+    expect(screen.queryByText('Preview PDF')).toBeNull();
+  });
+
+  it('renders empty, paid, and sent invoice history states', async () => {
+    (apiMock.listInvoices as jest.Mock).mockResolvedValueOnce({ items: [] });
+    const empty = render(<InvoicesScreen />);
+    await empty.findByText('Recent Invoices');
+    fireEvent.press(empty.getByText('Recent Invoices'));
+    expect(empty.getByText('No invoices have been created yet.')).toBeTruthy();
+    empty.unmount();
+
+    (apiMock.listInvoices as jest.Mock).mockResolvedValueOnce({
+      items: [
+        { ...CREATED_INVOICE, id: 'paid', status: 'paid', customer_email: null },
+        { ...CREATED_INVOICE, id: 'sent', status: 'sent' },
+      ],
+    });
+    const history = render(<InvoicesScreen />);
+    await history.findByText('Recent Invoices');
+    fireEvent.press(history.getByText('Recent Invoices'));
+    expect(history.getByText('PAID')).toBeTruthy();
+    expect(history.getByText('SENT')).toBeTruthy();
   });
 });

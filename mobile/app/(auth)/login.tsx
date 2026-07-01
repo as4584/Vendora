@@ -55,6 +55,7 @@ export default function LoginScreen() {
                 <View style={styles.form}>
                     <Text style={styles.label}>Email</Text>
                     <TextInput
+                        accessibilityLabel="Email"
                         style={styles.input}
                         placeholder="you@example.com"
                         placeholderTextColor="#555"
@@ -68,6 +69,7 @@ export default function LoginScreen() {
                     <Text style={styles.label}>Password</Text>
                     <View style={styles.passwordRow}>
                         <TextInput
+                            accessibilityLabel="Password"
                             style={[styles.input, { flex: 1, marginBottom: 0 }]}
                             placeholder="••••••••"
                             placeholderTextColor="#555"
@@ -76,6 +78,8 @@ export default function LoginScreen() {
                             secureTextEntry={!showPassword}
                         />
                         <TouchableOpacity
+                            accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+                            accessibilityRole="button"
                             style={styles.eyeBtn}
                             onPress={() => setShowPassword((v) => !v)}
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -86,6 +90,7 @@ export default function LoginScreen() {
 
                     <Link href="/(auth)/forgot-password" asChild>
                         <TouchableOpacity
+                            accessibilityRole="link"
                             testID="forgot-password-link"
                             style={styles.forgotPasswordLink}
                         >
@@ -94,6 +99,7 @@ export default function LoginScreen() {
                     </Link>
 
                     <TouchableOpacity
+                        accessibilityRole="button"
                         style={[styles.button, loading && styles.buttonDisabled]}
                         onPress={handleLogin}
                         disabled={loading}
@@ -106,9 +112,9 @@ export default function LoginScreen() {
                     </TouchableOpacity>
 
                     <Link href="/(auth)/register" asChild>
-                        <TouchableOpacity style={styles.linkContainer}>
+                        <TouchableOpacity accessibilityRole="link" style={styles.linkContainer}>
                             <Text style={styles.linkText}>
-                                Don't have an account?{" "}
+                                Don&apos;t have an account?{" "}
                                 <Text style={styles.linkHighlight}>Sign Up</Text>
                             </Text>
                         </TouchableOpacity>

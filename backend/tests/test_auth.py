@@ -2,12 +2,17 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.models.user import User
+from app.models.auth_session import AuthSession
 from app.services.auth import (
     create_access_token,
     hash_password,
     hash_password_reset_token,
 )
+from app.services.email import EmailDeliveryError
+from app.schemas.user import _validate_profile_picture
 
 
 class TestRegister:
@@ -30,6 +35,26 @@ class TestRegister:
         client.post("/api/v1/auth/register", json=payload)
         resp = client.post("/api/v1/auth/register", json=payload)
         assert resp.status_code == 409
+
+    def test_register_normalizes_email_and_blocks_case_variant(self, client):
+        payload = {"email": "  MixedCase@Vendora.Test ", "password": "SecurePass1"}
+        created = client.post("/api/v1/auth/register", json=payload)
+        duplicate = client.post(
+            "/api/v1/auth/register",
+            json={"email": "mixedcase@vendora.test", "password": "SecurePass1"},
+        )
+
+        assert created.status_code == 201
+        assert created.json()["email"] == "mixedcase@vendora.test"
+        assert duplicate.status_code == 409
+
+    def test_register_rejects_invalid_email(self, client):
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={"email": "not-an-email", "password": "SecurePass1"},
+        )
+        assert resp.status_code == 422
+
 
     def test_register_missing_fields(self, client):
         resp = client.post("/api/v1/auth/register", json={"email": "x@y.com"})
@@ -68,6 +93,18 @@ class TestLogin:
         data = resp.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
+
+    def test_login_normalizes_email(self, client):
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": "normalized@vendora.test", "password": "SecurePass1"},
+        )
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"email": " NORMALIZED@VENDORA.TEST ", "password": "SecurePass1"},
+        )
+        assert resp.status_code == 200
+
 
     def test_login_wrong_password(self, client):
         client.post("/api/v1/auth/register", json={
@@ -109,6 +146,18 @@ class TestLogin:
 
 
 class TestPasswordReset:
+    def test_forgot_password_masks_email_delivery_failure(self, client, db, monkeypatch):
+        user = User(email="delivery@vendora.test", password_hash=hash_password("OldPassword1"))
+        db.add(user)
+        db.commit()
+
+        def fail(*args):
+            raise EmailDeliveryError("provider unavailable")
+
+        monkeypatch.setattr("app.routers.auth.send_password_reset_email", fail)
+        response = client.post("/api/v1/auth/forgot-password", json={"email": user.email})
+        assert response.status_code == 202
+        assert response.json()["message"].startswith("If an account exists")
     def test_forgot_password_is_generic_and_stores_only_hash(
         self, client, db, monkeypatch
     ):
@@ -234,7 +283,7 @@ class TestMe:
 
     def test_get_me_no_token(self, client):
         resp = client.get("/api/v1/auth/me")
-        assert resp.status_code == 403  # HTTPBearer returns 403 when missing
+        assert resp.status_code == 401
 
     def test_get_me_upgrades_existing_allowlisted_tester(self, client, db):
         user = User(
@@ -255,3 +304,132 @@ class TestMe:
         data = resp.json()
         assert data["subscription_tier"] == "pro"
         assert data["is_partner"] is True
+
+
+class TestProfileValidation:
+    def test_profile_business_name_only_and_none_helper(self, client, auth_headers):
+        response = client.patch(
+            "/api/v1/auth/profile",
+            json={"business_name": "Updated Shop"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["business_name"] == "Updated Shop"
+        assert _validate_profile_picture(None) is None
+
+    def test_profile_picture_rejects_bad_padding(self, client, auth_headers):
+        response = client.patch(
+            "/api/v1/auth/profile",
+            json={"profile_picture": "data:image/png;base64,a"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+    def test_profile_picture_accepts_supported_data_url(self, client, auth_headers):
+        response = client.patch(
+            "/api/v1/auth/profile",
+            json={"profile_picture": "data:image/png;base64,aGVsbG8="},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["profile_picture"].startswith("data:image/png;base64,")
+
+    @pytest.mark.parametrize(
+        "picture",
+        [
+            "https://example.com/avatar.png",
+            "data:image/svg+xml;base64,PHN2Zz4=",
+            "data:image/png;base64,not-valid!",
+        ],
+    )
+    def test_profile_picture_rejects_unsafe_or_invalid_data(self, client, auth_headers, picture):
+        response = client.patch(
+            "/api/v1/auth/profile",
+            json={"profile_picture": picture},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+
+class TestSessionsAndAccountLifecycle:
+    def test_login_issues_refresh_token_and_refresh_rotates_it(self, client, test_user, db):
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"email": test_user.email, "password": "TestPass123"},
+        )
+        assert login.status_code == 200
+        original = login.json()
+        assert original["refresh_token"]
+        assert db.query(AuthSession).filter(AuthSession.user_id == test_user.id).count() == 1
+
+        refreshed = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": original["refresh_token"]},
+        )
+        assert refreshed.status_code == 200
+        replacement = refreshed.json()
+        assert replacement["refresh_token"] != original["refresh_token"]
+        assert client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {replacement['access_token']}"},
+        ).status_code == 200
+        assert client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": original["refresh_token"]},
+        ).status_code == 401
+
+    def test_logout_revokes_the_access_session(self, client, test_user):
+        session = client.post(
+            "/api/v1/auth/login",
+            json={"email": test_user.email, "password": "TestPass123"},
+        ).json()
+        assert client.post(
+            "/api/v1/auth/logout",
+            json={"refresh_token": session["refresh_token"]},
+        ).status_code == 200
+        response = client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {session['access_token']}"},
+        )
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Session has expired or been revoked."
+        assert client.post(
+            "/api/v1/auth/logout",
+            json={"refresh_token": session["refresh_token"]},
+        ).status_code == 200
+
+    def test_account_deletion_requires_password_and_confirmation(self, client, auth_headers):
+        assert client.request(
+            "DELETE",
+            "/api/v1/auth/account",
+            json={"password": "wrong-password", "confirmation": "DELETE"},
+            headers=auth_headers,
+        ).status_code == 401
+        assert client.request(
+            "DELETE",
+            "/api/v1/auth/account",
+            json={"password": "TestPass123", "confirmation": "delete"},
+            headers=auth_headers,
+        ).status_code == 422
+
+    def test_account_deletion_removes_user(self, client, auth_headers, test_user, db):
+        user_id = test_user.id
+        response = client.request(
+            "DELETE",
+            "/api/v1/auth/account",
+            json={"password": "TestPass123", "confirmation": "DELETE"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        db.expire_all()
+        assert db.get(User, user_id) is None
+
+    def test_profile_picture_rejects_more_than_five_megabytes(self, client, auth_headers):
+        import base64
+
+        picture = "data:image/jpeg;base64," + base64.b64encode(b"x" * (5 * 1024 * 1024 + 1)).decode()
+        response = client.patch(
+            "/api/v1/auth/profile",
+            json={"profile_picture": picture},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422

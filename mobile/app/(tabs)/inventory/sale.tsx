@@ -52,11 +52,12 @@ export default function QuickSaleScreen() {
     return Array.isArray(raw) ? raw : [];
   }, [selectedItem]);
 
-  useEffect(() => {
-    if (!selectedItem) return;
-    if (selectedItem.expected_sell_price) setGrossAmount(selectedItem.expected_sell_price);
-    if (variants.length === 1) setSelectedSize(variants[0].size);
-  }, [selectedItem, variants]);
+  const selectItem = (item: api.InventoryItem | null) => {
+    setSelectedItem(item);
+    setGrossAmount(item?.expected_sell_price || "");
+    const itemVariants = item?.custom_attributes?.variants;
+    setSelectedSize(Array.isArray(itemVariants) && itemVariants.length === 1 ? itemVariants[0].size : null);
+  };
 
   const parsedQty = Math.max(1, parseInt(quantity || "1", 10) || 1);
   const availableAfter = selectedItem ? Math.max(0, resolveQty(selectedItem) - parsedQty) : 0;
@@ -106,6 +107,7 @@ export default function QuickSaleScreen() {
       <Card style={{ gap: SPACING.md }}>
         <SectionLabel>Step 1 · Select Item</SectionLabel>
         <TextInput
+          accessibilityLabel="Search sale inventory"
           style={styles.input}
           placeholder="Search inventory or scan a sku"
           placeholderTextColor={COLORS.textSoft}
@@ -117,9 +119,9 @@ export default function QuickSaleScreen() {
           <ActivityIndicator color={COLORS.primary} />
         ) : (
           <View style={{ gap: SPACING.sm }}>
-            <ActionButton label="Skip — Log Without Item" onPress={() => setSelectedItem(null)} tone="ghost" />
+            <ActionButton label="Skip — Log Without Item" onPress={() => selectItem(null)} tone="ghost" />
             {filtered.slice(0, 8).map((item) => (
-              <TouchableOpacity key={item.id} activeOpacity={0.84} onPress={() => setSelectedItem(item)}>
+              <TouchableOpacity key={item.id} activeOpacity={0.84} onPress={() => selectItem(item)}>
                 <View style={[styles.itemOption, selectedItem?.id === item.id && styles.itemOptionActive]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.itemName}>{item.name}</Text>
@@ -158,6 +160,7 @@ export default function QuickSaleScreen() {
             <View style={styles.qtyRow}>
               <Text style={styles.qtyLabel}>Quantity</Text>
               <TextInput
+                accessibilityLabel="Sale quantity"
                 style={[styles.input, styles.qtyInput]}
                 value={quantity}
                 onChangeText={setQuantity}
@@ -184,6 +187,7 @@ export default function QuickSaleScreen() {
           ))}
         </View>
         <TextInput
+          accessibilityLabel="Sale amount"
           style={styles.input}
           placeholder="Sale amount"
           placeholderTextColor={COLORS.textSoft}
@@ -192,6 +196,7 @@ export default function QuickSaleScreen() {
           keyboardType="decimal-pad"
         />
         <TextInput
+          accessibilityLabel="Fee amount"
           style={styles.input}
           placeholder="Fee amount (optional)"
           placeholderTextColor={COLORS.textSoft}
@@ -200,6 +205,7 @@ export default function QuickSaleScreen() {
           keyboardType="decimal-pad"
         />
         <TextInput
+          accessibilityLabel="Sale notes"
           style={[styles.input, styles.notesInput]}
           placeholder="Notes"
           placeholderTextColor={COLORS.textSoft}

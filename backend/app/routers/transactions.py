@@ -107,9 +107,8 @@ def create_transaction(
                 "deduct_stock failed for item %s on txn %s — status-only transition.",
                 item.id, txn.id,
             )
-            if item.status in ("in_stock", "listed"):
-                item.status = "sold"
-                db.add(item)
+            item.status = "sold"
+            db.add(item)
 
     db.commit()
     db.refresh(txn)

@@ -1,5 +1,7 @@
 import { Platform } from "react-native";
-import * as FileSystem from "expo-file-system";
+// Expo 54's top-level module uses the new File/Directory API. This helper
+// intentionally uses the stable async URI API, which now lives under legacy.
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 
 function webDownloadBlob(blob: Blob, filename: string, openInNewTab = false) {

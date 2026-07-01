@@ -21,7 +21,7 @@ export function Card({
 }
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <Text style={styles.sectionLabel}>{children}</Text>;
+  return <Text accessibilityRole="header" style={styles.sectionLabel}>{children}</Text>;
 }
 
 export function HeaderTitle({
@@ -36,7 +36,7 @@ export function HeaderTitle({
   return (
     <View style={styles.headerRow}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.headerTitle}>{title}</Text>
+        <Text accessibilityRole="header" style={styles.headerTitle}>{title}</Text>
         {subtitle ? <Text style={styles.headerSubtitle}>{subtitle}</Text> : null}
       </View>
       {right}
@@ -93,6 +93,9 @@ export function ActionButton({
 
   return (
     <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
       onPress={onPress}
       activeOpacity={0.82}
       disabled={disabled}
@@ -145,7 +148,13 @@ export function ActionTile({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity style={styles.actionTile} onPress={onPress} activeOpacity={0.82}>
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={helper ? `${label}. ${helper}` : label}
+      style={styles.actionTile}
+      onPress={onPress}
+      activeOpacity={0.82}
+    >
       <View style={styles.glyphWrap}>
         <Text style={styles.glyphText}>{glyph}</Text>
       </View>

@@ -10,6 +10,20 @@
  *  5. Provider cards show "Connected" when status returns connected:true
  */
 
+import React from 'react';
+import { Alert } from 'react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as ImagePicker from 'expo-image-picker';
+import * as apiMock from '../services/api';
+import * as backgroundSync from '../tasks/backgroundSync';
+import SettingsScreen from '../app/(tabs)/settings';
+
+const mockPush = jest.fn();
+const mockSignOut = jest.fn();
+const mockRefreshUser = jest.fn();
+let mockIsPartner = false;
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: {
@@ -20,11 +34,15 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: jest.fn(), back: jest.fn() }),
 }));
 
 jest.mock('expo-web-browser', () => ({
-  openBrowserAsync: jest.fn(async () => ({ type: 'cancel' })),
+  openAuthSessionAsync: jest.fn(async () => ({ type: 'cancel' })),
+}));
+
+jest.mock('expo-linking', () => ({
+  createURL: jest.fn(() => 'vendora://settings'),
 }));
 
 jest.mock('expo-image-picker', () => ({
@@ -45,12 +63,12 @@ jest.mock('../context/auth', () => ({
       business_name: 'Test Shop',
       profile_picture: null,
       subscription_tier: 'pro',
-      is_partner: false,
+      is_partner: mockIsPartner,
       created_at: '2025-01-01T00:00:00Z',
       updated_at: '2025-01-01T00:00:00Z',
     },
-    signOut: jest.fn(),
-    refreshUser: jest.fn(async () => undefined),
+    signOut: mockSignOut,
+    refreshUser: mockRefreshUser,
   }),
 }));
 
@@ -61,17 +79,15 @@ jest.mock('../services/api', () => ({
   getProviderHealth: jest.fn(),
   getLightspeedConnectUrl: jest.fn(),
   triggerLightspeedSync: jest.fn(),
+  pushLightspeedInventory: jest.fn(),
+  disconnectLightspeed: jest.fn(),
   triggerSquareSync: jest.fn(),
   triggerCloverSync: jest.fn(),
   connectSquare: jest.fn(),
   connectClover: jest.fn(),
   updateProfile: jest.fn(),
+  deleteAccount: jest.fn(),
 }));
-
-import React from 'react';
-import { render, waitFor } from '@testing-library/react-native';
-import * as apiMock from '../services/api';
-import SettingsScreen from '../app/(tabs)/settings';
 
 const NOT_CONNECTED_LS = { connected: false, account_id: null, expires_at: null, last_synced_at: null };
 const NOT_CONNECTED_SQ = { connected: false, merchant_id: null, location_id: null, last_synced_at: null };
@@ -92,9 +108,72 @@ function setupAllErrors() {
   (apiMock.getProviderHealth as jest.Mock).mockRejectedValue(new Error('404'));
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  mockSignOut.mockResolvedValue(undefined);
+  mockRefreshUser.mockResolvedValue(undefined);
+  mockIsPartner = false;
+});
+
+afterEach(async () => {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  jest.restoreAllMocks();
+});
 
 describe('SettingsScreen', () => {
+  it('opens the partner public storefront', async () => {
+    mockIsPartner = true;
+    setupAllDisconnected();
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('View Public Storefront');
+    fireEvent.press(screen.getByText('View Public Storefront'));
+    expect(mockPush).toHaveBeenCalledWith('/seller/user-1');
+  });
+  it('opens the completed product routes', async () => {
+    setupAllDisconnected();
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('Plans & Billing');
+    fireEvent.press(screen.getByText('Plans & Billing'));
+    fireEvent.press(screen.getByText('Advanced Analytics'));
+    fireEvent.press(screen.getByText('Support'));
+    expect(mockPush).toHaveBeenCalledWith('/settings/subscription');
+    expect(mockPush).toHaveBeenCalledWith('/settings/analytics');
+    expect(mockPush).toHaveBeenCalledWith('/settings/support');
+  });
+
+  it('pushes linked Lightspeed inventory and disconnects safely', async () => {
+    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue({ connected: true, account_id: 'acc', expires_at: '2030-01-01', last_synced_at: null });
+    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_SQ);
+    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_CV);
+    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue(EMPTY_HEALTH);
+    (apiMock.pushLightspeedInventory as jest.Mock).mockResolvedValue({ items_updated: 2, errors_count: 1 });
+    (apiMock.disconnectLightspeed as jest.Mock).mockResolvedValue({ disconnected: true, links_retained: 2 });
+    (backgroundSync.unregisterBackgroundSync as jest.Mock).mockRejectedValueOnce(new Error('not registered'));
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('Push to POS');
+    fireEvent.press(screen.getByText('Push to POS'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Lightspeed updated', '2 linked items pushed to the POS. 1 failed.'));
+    (Alert.alert as jest.Mock).mockImplementation((_title, _message, buttons) => buttons?.[1]?.onPress?.());
+    fireEvent.press(screen.getByText('Disconnect'));
+    await waitFor(() => expect(apiMock.disconnectLightspeed).toHaveBeenCalled());
+  });
+
+  it('reports Lightspeed push and disconnect failures', async () => {
+    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue({ connected: true, account_id: 'acc', expires_at: '2030-01-01', last_synced_at: null });
+    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_SQ);
+    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_CV);
+    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue(EMPTY_HEALTH);
+    (apiMock.pushLightspeedInventory as jest.Mock).mockRejectedValue(new Error('push down'));
+    (apiMock.disconnectLightspeed as jest.Mock).mockRejectedValue(new Error('disconnect down'));
+    const screen = render(<SettingsScreen />); await screen.findByText('Push to POS'); fireEvent.press(screen.getByText('Push to POS'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Lightspeed push failed', 'push down'));
+    (Alert.alert as jest.Mock).mockImplementation((_title, _message, buttons) => buttons?.[1]?.onPress?.());
+    fireEvent.press(screen.getByText('Disconnect'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Disconnect failed', 'disconnect down'));
+  });
   it('renders provider cards and exits loading when all APIs return disconnected', async () => {
     setupAllDisconnected();
     const { getByTestId, getAllByText } = render(<SettingsScreen />);
@@ -111,11 +190,12 @@ describe('SettingsScreen', () => {
 
   it('does not hang or crash when all provider endpoints throw errors', async () => {
     setupAllErrors();
-    const { getByTestId } = render(<SettingsScreen />);
+    const { getByTestId, getAllByText } = render(<SettingsScreen />);
 
     // The screen must settle (not hang forever) even when every API fails.
     await waitFor(() => {
       expect(getByTestId('settings-content')).toBeTruthy();
+      expect(getAllByText('Not connected')).toHaveLength(3);
     }, { timeout: 5000 });
   });
 
@@ -157,5 +237,289 @@ describe('SettingsScreen', () => {
       expect(getByText('test@vendora.test')).toBeTruthy();
       expect(getByText('PRO')).toBeTruthy();
     });
+  });
+
+  it('connects Square from the visible provider form', async () => {
+    setupAllDisconnected();
+    (apiMock.connectSquare as jest.Mock).mockResolvedValue({
+      message: 'connected',
+      merchant_id: 'merchant-1',
+      location_id: null,
+    });
+    const { getByText, getByPlaceholderText } = render(<SettingsScreen />);
+
+    await waitFor(() => expect(getByText('Connect Square')).toBeTruthy());
+    fireEvent.press(getByText('Connect Square'));
+    fireEvent.changeText(getByPlaceholderText('Paste access token'), 'token-123');
+    fireEvent.changeText(getByPlaceholderText('Merchant ID'), 'merchant-1');
+    fireEvent.press(getByText('Connect'));
+
+    await waitFor(() => {
+      expect(apiMock.connectSquare).toHaveBeenCalledWith({
+        access_token: 'token-123',
+        merchant_id: 'merchant-1',
+        location_id: undefined,
+      });
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Connected',
+        'Square is connected. You can sync inventory now.',
+      );
+    });
+  });
+
+  it('requires explicit credentials before permanently deleting an account', async () => {
+    setupAllDisconnected();
+    (apiMock.deleteAccount as jest.Mock).mockResolvedValue({ message: 'deleted' });
+    const screen = render(<SettingsScreen />);
+
+    await waitFor(() => expect(screen.getByText('Delete Account')).toBeTruthy());
+    fireEvent.press(screen.getByText('Delete Account'));
+    fireEvent.changeText(screen.getByLabelText('Account password'), 'TestPass123');
+    fireEvent.changeText(screen.getByLabelText('Delete confirmation'), 'DELETE');
+    fireEvent.press(screen.getByText('Delete Permanently'));
+
+    await waitFor(() => {
+      expect(apiMock.deleteAccount).toHaveBeenCalledWith('TestPass123');
+    });
+  });
+
+  it('handles profile-photo permission, success, and upload failures', async () => {
+    setupAllDisconnected();
+    const picker = ImagePicker as jest.Mocked<typeof ImagePicker>;
+    const screen = render(<SettingsScreen />);
+    await screen.findByTestId('settings-content');
+
+    fireEvent.press(screen.getByLabelText('Change profile photo'));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Permission required',
+        'Allow photo library access to update your profile photo.',
+      ),
+    );
+
+    picker.requestMediaLibraryPermissionsAsync.mockResolvedValue({ status: 'granted' } as any);
+    picker.launchImageLibraryAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ base64: 'avatar-bytes' }],
+    } as any);
+    (apiMock.updateProfile as jest.Mock).mockResolvedValueOnce({});
+    fireEvent.press(screen.getByLabelText('Change profile photo'));
+    await waitFor(() =>
+      expect(apiMock.updateProfile).toHaveBeenCalledWith(
+        'Test Shop',
+        'data:image/jpeg;base64,avatar-bytes',
+      ),
+    );
+    expect(mockRefreshUser).toHaveBeenCalled();
+
+    picker.launchImageLibraryAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ base64: 'bad-avatar' }],
+    } as any);
+    (apiMock.updateProfile as jest.Mock).mockRejectedValueOnce(new Error('image too large'));
+    fireEvent.press(screen.getByLabelText('Change profile photo'));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith('Photo update failed', 'image too large'),
+    );
+  });
+
+  it('opens the Lightspeed OAuth flow and reports launch failures', async () => {
+    setupAllDisconnected();
+    (apiMock.getLightspeedConnectUrl as jest.Mock).mockResolvedValueOnce({
+      authorization_url: 'https://lightspeed.example/authorize',
+    });
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('Connect Lightspeed');
+    fireEvent.press(screen.getByText('Connect Lightspeed'));
+    await waitFor(() =>
+      expect(WebBrowser.openAuthSessionAsync).toHaveBeenCalledWith(
+        'https://lightspeed.example/authorize',
+        'vendora://settings',
+      ),
+    );
+    expect(backgroundSync.registerBackgroundSync).toHaveBeenCalled();
+    await waitFor(() => expect(apiMock.getLightspeedStatus).toHaveBeenCalledTimes(2));
+
+    (apiMock.getLightspeedConnectUrl as jest.Mock).mockRejectedValueOnce(new Error('OAuth down'));
+    fireEvent.press(screen.getByText('Connect Lightspeed'));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith('Lightspeed unavailable', 'OAuth down'),
+    );
+  });
+
+  it('continues the Lightspeed flow when background registration is unavailable', async () => {
+    setupAllDisconnected();
+    (apiMock.getLightspeedConnectUrl as jest.Mock).mockResolvedValueOnce({
+      authorization_url: 'https://lightspeed.example/authorize',
+    });
+    (backgroundSync.registerBackgroundSync as jest.Mock).mockRejectedValueOnce(
+      new Error('native unavailable'),
+    );
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('Connect Lightspeed');
+    fireEvent.press(screen.getByText('Connect Lightspeed'));
+    await waitFor(() => expect(apiMock.getLightspeedStatus).toHaveBeenCalledTimes(2));
+    expect(Alert.alert).not.toHaveBeenCalledWith(
+      'Lightspeed unavailable',
+      expect.any(String),
+    );
+  });
+
+  it('syncs each connected provider and routes to the sync center', async () => {
+    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue({
+      ...NOT_CONNECTED_LS,
+      connected: true,
+    });
+    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_SQ, connected: true });
+    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_CV, connected: true });
+    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue({
+      providers: [
+        { last_run_status: 'completed', open_issues_count: 1 },
+        { last_run_status: 'partial', open_issues_count: 2 },
+      ],
+    });
+    (apiMock.triggerLightspeedSync as jest.Mock).mockResolvedValue({});
+    (apiMock.triggerSquareSync as jest.Mock).mockResolvedValue({});
+    (apiMock.triggerCloverSync as jest.Mock).mockResolvedValue({});
+    const screen = render(<SettingsScreen />);
+    await waitFor(() => expect(screen.getAllByText('Sync Now')).toHaveLength(3));
+    const buttons = screen.getAllByText('Sync Now');
+    fireEvent.press(buttons[0]);
+    fireEvent.press(buttons[1]);
+    fireEvent.press(buttons[2]);
+    await waitFor(() => {
+      expect(apiMock.triggerLightspeedSync).toHaveBeenCalled();
+      expect(apiMock.triggerSquareSync).toHaveBeenCalled();
+      expect(apiMock.triggerCloverSync).toHaveBeenCalled();
+      expect(apiMock.getLightspeedStatus).toHaveBeenCalledTimes(4);
+    });
+    expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
+    expect(screen.getByText('3')).toBeTruthy();
+  });
+
+  it('reports provider sync failures', async () => {
+    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_LS, connected: true });
+    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_SQ);
+    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_CV);
+    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue(EMPTY_HEALTH);
+    (apiMock.triggerLightspeedSync as jest.Mock).mockRejectedValueOnce(new Error('sync down'));
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('Sync Now');
+    fireEvent.press(screen.getByText('Sync Now'));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith('Lightspeed sync failed', 'sync down'),
+    );
+  });
+
+  it('reports Square and Clover sync failures', async () => {
+    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_LS);
+    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_SQ, connected: true });
+    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_CV, connected: true });
+    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue(EMPTY_HEALTH);
+    (apiMock.triggerSquareSync as jest.Mock).mockRejectedValueOnce(new Error('square down'));
+    (apiMock.triggerCloverSync as jest.Mock).mockRejectedValueOnce(new Error('clover down'));
+    const screen = render(<SettingsScreen />);
+    await waitFor(() => expect(screen.getAllByText('Sync Now')).toHaveLength(2));
+    const buttons = screen.getAllByText('Sync Now');
+    fireEvent.press(buttons[0]);
+    fireEvent.press(buttons[1]);
+    await waitFor(() => {
+      expect(Alert.alert).toHaveBeenCalledWith('Square sync failed', 'square down');
+      expect(Alert.alert).toHaveBeenCalledWith('Clover sync failed', 'clover down');
+    });
+  });
+
+  it('validates and connects Clover credentials', async () => {
+    setupAllDisconnected();
+    (apiMock.connectClover as jest.Mock).mockResolvedValue({ message: 'connected' });
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('Connect Clover');
+    fireEvent.press(screen.getByText('Connect Clover'));
+    fireEvent.press(screen.getByText('Connect'));
+    expect(Alert.alert).toHaveBeenLastCalledWith('Missing token', 'Enter the provider access token.');
+    fireEvent.changeText(screen.getByLabelText('Provider access token'), ' clover-token ');
+    fireEvent.press(screen.getByText('Connect'));
+    expect(Alert.alert).toHaveBeenLastCalledWith(
+      'Missing merchant ID',
+      'Clover requires a merchant ID.',
+    );
+    fireEvent.changeText(screen.getByLabelText('Merchant ID'), ' merchant-2 ');
+    fireEvent.press(screen.getByText('Connect'));
+    await waitFor(() =>
+      expect(apiMock.connectClover).toHaveBeenCalledWith({
+        access_token: 'clover-token',
+        merchant_id: 'merchant-2',
+      }),
+    );
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Connected',
+        'Clover is connected. You can sync inventory now.',
+      ),
+    );
+  });
+
+  it('connects Square with location metadata and reports connection failures', async () => {
+    setupAllDisconnected();
+    (apiMock.connectSquare as jest.Mock).mockRejectedValueOnce(new Error('bad credentials'));
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('Connect Square');
+    fireEvent.press(screen.getByText('Connect Square'));
+    fireEvent.changeText(screen.getByLabelText('Provider access token'), 'token');
+    fireEvent.changeText(screen.getByLabelText('Merchant ID'), 'merchant');
+    fireEvent.changeText(screen.getByLabelText('Location ID'), 'location');
+    fireEvent.press(screen.getByText('Connect'));
+    await waitFor(() =>
+      expect(apiMock.connectSquare).toHaveBeenCalledWith({
+        access_token: 'token',
+        merchant_id: 'merchant',
+        location_id: 'location',
+      }),
+    );
+    expect(Alert.alert).toHaveBeenCalledWith('Connection failed', 'bad credentials');
+    fireEvent.press(screen.getByText('Cancel'));
+  });
+
+  it('validates, cancels, and reports account deletion failures', async () => {
+    setupAllDisconnected();
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('Delete Account');
+    fireEvent.press(screen.getByText('Delete Account'));
+    const Modal = require('react-native').Modal;
+    const deleteModal = screen
+      .UNSAFE_getAllByType(Modal)
+      .find((node) => node.props.visible && node.props.onRequestClose);
+    fireEvent(deleteModal!, 'requestClose');
+
+    fireEvent.press(screen.getByText('Delete Account'));
+    fireEvent.press(screen.getByText('Delete Permanently'));
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Confirmation required',
+      'Enter your password and type "DELETE" exactly.',
+    );
+    fireEvent.press(screen.getByText('Cancel'));
+
+    fireEvent.press(screen.getByText('Delete Account'));
+    fireEvent.changeText(screen.getByLabelText('Account password'), 'password');
+    fireEvent.changeText(screen.getByLabelText('Delete confirmation'), 'DELETE');
+    (apiMock.deleteAccount as jest.Mock).mockRejectedValueOnce(new Error('wrong password'));
+    fireEvent.press(screen.getByText('Delete Permanently'));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith('Account deletion failed', 'wrong password'),
+    );
+  });
+
+  it('opens Sync Center and unregisters background sync on sign out', async () => {
+    setupAllDisconnected();
+    (backgroundSync.unregisterBackgroundSync as jest.Mock).mockRejectedValueOnce(
+      new Error('native unavailable'),
+    );
+    const screen = render(<SettingsScreen />);
+    await screen.findByText('Open Sync Center');
+    fireEvent.press(screen.getByText('Open Sync Center'));
+    fireEvent.press(screen.getByText('Sign Out'));
+    expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
+    expect(backgroundSync.unregisterBackgroundSync).toHaveBeenCalled();
+    expect(mockSignOut).toHaveBeenCalled();
   });
 });

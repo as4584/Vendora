@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const localExecutablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+const launchOptions = localExecutablePath ? { executablePath: localExecutablePath } : undefined;
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -16,11 +19,11 @@ export default defineConfig({
   projects: [
     {
       name: 'iPhone 12',
-      use: { ...devices['iPhone 12'], defaultBrowserType: 'chromium' },
+      use: { ...devices['iPhone 12'], defaultBrowserType: 'chromium', launchOptions },
     },
     {
       name: 'iPhone SE',
-      use: { ...devices['iPhone SE'], defaultBrowserType: 'chromium' },
+      use: { ...devices['iPhone SE'], defaultBrowserType: 'chromium', launchOptions },
     },
   ],
   webServer: {

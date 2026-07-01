@@ -33,6 +33,18 @@ class LightspeedSyncResponse(BaseModel):
     errors_count: int = 0
 
 
+class LightspeedPushResponse(BaseModel):
+    status: str = "completed"
+    items_created: int = 0
+    items_updated: int = 0
+    errors_count: int = 0
+
+
+class LightspeedDisconnectResponse(BaseModel):
+    disconnected: bool
+    links_retained: int
+
+
 class ProviderSyncRunResponse(BaseModel):
     """Response for GET /integrations/sync-runs and GET /integrations/sync-runs/{run_id}."""
 

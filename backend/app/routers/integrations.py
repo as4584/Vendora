@@ -7,6 +7,7 @@ from typing import Optional
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -19,8 +20,9 @@ from app.models.square import SquareCredential
 from app.models.user import User
 from app.schemas.integration import (
     LightspeedAuthURLResponse,
-    LightspeedConnectResponse,
     LightspeedSyncResponse,
+    LightspeedPushResponse,
+    LightspeedDisconnectResponse,
     ProviderSyncRunResponse,
     ReconciliationIssueResponse,
     ReconciliationIssueUpdateRequest,
@@ -39,7 +41,7 @@ from app.schemas.integration import (
 from app.services.lightspeed import lightspeed_service
 from app.services.square import square_service
 from app.services.clover import clover_service
-from app.services.providers.base import record_webhook_event, is_duplicate_event
+from app.services.providers.base import claim_webhook_event, is_duplicate_event
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
@@ -81,14 +83,15 @@ async def lightspeed_connect(current_user: User = Depends(get_current_user)):
     return LightspeedAuthURLResponse(authorization_url=lightspeed_service.authorization_url(state))
 
 
-@router.get("/lightspeed/callback", response_model=LightspeedConnectResponse)
+@router.get("/lightspeed/callback")
 async def lightspeed_callback(code: str, state: str, db: Session = Depends(get_db)):
     """Handle Lightspeed OAuth callback and persist tokens."""
     user_id = lightspeed_service.parse_state(state)
     token_payload = await lightspeed_service.exchange_authorization_code(code)
-    account_id = str(token_payload.get("account_id"))
-    if not account_id:
+    raw_account_id = token_payload.get("account_id")
+    if raw_account_id in (None, ""):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lightspeed response missing account_id")
+    account_id = str(raw_account_id)
 
     lightspeed_service.upsert_token(
         db,
@@ -99,7 +102,7 @@ async def lightspeed_callback(code: str, state: str, db: Session = Depends(get_d
         expires_at=token_payload["expires_at"],
         scopes=token_payload.get("scope"),
     )
-    return LightspeedConnectResponse(message="Lightspeed account connected.")
+    return RedirectResponse(settings.INTEGRATION_SUCCESS_URL, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/lightspeed/sync", response_model=LightspeedSyncResponse)
@@ -119,6 +122,38 @@ async def lightspeed_sync(
         transactions_updated=result.transactions_updated,
         errors_count=result.errors_count,
     )
+
+
+@router.post("/lightspeed/push", response_model=LightspeedPushResponse)
+async def lightspeed_push_linked(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await lightspeed_service.push_linked_items(db, current_user.id)
+    return LightspeedPushResponse(
+        status="completed" if result["errors_count"] == 0 else "partial",
+        items_updated=result["items_updated"],
+        errors_count=result["errors_count"],
+    )
+
+
+@router.post("/lightspeed/items/{item_id}/push", response_model=LightspeedPushResponse)
+async def lightspeed_push_item(
+    item_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    created = await lightspeed_service.push_item(db, current_user.id, item_id)
+    return LightspeedPushResponse(items_created=1 if created else 0, items_updated=0 if created else 1)
+
+
+@router.delete("/lightspeed", response_model=LightspeedDisconnectResponse)
+def lightspeed_disconnect(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    links = lightspeed_service.disconnect(db, current_user.id)
+    return LightspeedDisconnectResponse(disconnected=True, links_retained=links)
 
 
 # ─── Square ───────────────────────────────────────────────────────────────────
@@ -397,10 +432,16 @@ async def square_webhook(request: Request, db: Session = Depends(get_db)):
 
     # ── HMAC-SHA256 signature verification ────────────────────────────────
     signature_key = settings.SQUARE_WEBHOOK_SIGNATURE_KEY
+    if settings.ENVIRONMENT == "production" and not signature_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Square webhook verification is not configured.",
+        )
+
     if signature_key:
         sig_header = request.headers.get("x-square-hmacsha256-signature", "")
         # Square computes HMAC-SHA256 of (notification_url + raw_body)
-        url = str(request.url)
+        url = settings.SQUARE_WEBHOOK_URL or str(request.url)
         mac = hmac.new(
             signature_key.encode("utf-8"),
             (url + body_str).encode("utf-8"),
@@ -419,6 +460,9 @@ async def square_webhook(request: Request, db: Session = Depends(get_db)):
     event_type = payload.get("type", "")
     event_id = payload.get("event_id") or payload.get("id", "")
     merchant_id = payload.get("merchant_id", "")
+    actionable = {"inventory.count.updated", "catalog.version.updated"}
+    if event_type in actionable and not event_id:
+        raise HTTPException(status_code=400, detail="Webhook event is missing an id.")
 
     # Idempotency — if we've seen this event_id before, return 200 immediately
     if event_id and is_duplicate_event(db, "square", event_id):
@@ -433,7 +477,7 @@ async def square_webhook(request: Request, db: Session = Depends(get_db)):
 
     # Record the event (idempotent)
     if event_id:
-        evt = record_webhook_event(
+        evt, created = claim_webhook_event(
             db,
             provider="square",
             event_id=event_id,
@@ -441,30 +485,29 @@ async def square_webhook(request: Request, db: Session = Depends(get_db)):
             raw_payload=body_str,
             user_id=user_id,
         )
+        if not created:
+            return {"status": "duplicate", "event_id": event_id}
         db.commit()
     else:
         evt = None
 
     # Only act on supported event types when we can resolve a user
-    actionable = {"inventory.count.updated", "catalog.version.updated"}
     if event_type in actionable and user_id:
         try:
             result = await square_service.sync(
                 db,
                 user_id,
                 trigger_type="webhook",
-                triggered_by_event_id=evt.id if evt else None,
+                triggered_by_event_id=evt.id,
             )
-            if evt:
-                evt.processed = True
-                evt.sync_run_id = result.run_id
-                db.add(evt)
-                db.commit()
+            evt.processed = True
+            evt.sync_run_id = result.run_id
+            db.add(evt)
+            db.commit()
         except Exception as exc:
-            if evt:
-                evt.error = str(exc)[:2000]
-                db.add(evt)
-                db.commit()
+            evt.error = str(exc)[:2000]
+            db.add(evt)
+            db.commit()
             # Return 200 — Square re-delivers on non-2xx; we've already logged it
     return {"status": "ok", "event_id": event_id}
 

@@ -28,7 +28,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
+  const { back, push, replace } = useRouter();
   const [item, setItem] = useState<api.InventoryItem | null>(null);
   const [activity, setActivity] = useState<api.InventoryActivityEntry[]>([]);
   const [transactions, setTransactions] = useState<api.Transaction[]>([]);
@@ -36,12 +36,23 @@ export default function ItemDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [activePhoto, setActivePhoto] = useState<"front" | "back">("front");
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [market, setMarket] = useState<api.MarketPriceResult | null>(null);
+  const [suggestion, setSuggestion] = useState<api.PricingSuggestion | null>(null);
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
+      if (!id) {
+        Alert.alert("Error", "This item link is missing an inventory ID.", [
+          { text: "OK", onPress: back },
+        ]);
+        setLoading(false);
+        return;
+      }
       try {
-        const nextItem = await api.getItem(id!);
+        const nextItem = await api.getItem(id);
         if (cancelled) return;
         setItem(nextItem);
 
@@ -56,7 +67,7 @@ export default function ItemDetailScreen() {
         if (nextInvoices.status === "fulfilled") setInvoices(nextInvoices.value.items);
       } catch (err: any) {
         Alert.alert("Error", err?.message || "Item not found.", [
-          { text: "OK", onPress: () => router.back() },
+          { text: "OK", onPress: back },
         ]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -67,14 +78,13 @@ export default function ItemDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [back, id]);
 
   const uploadPhoto = async (side: "front" | "back", uri: string) => {
-    if (!item) return;
     setPhotoUploading(true);
     try {
       const updated = await api.uploadItemPhotos(
-        item.id,
+        item!.id,
         side === "front" ? uri : undefined,
         side === "back" ? uri : undefined
       );
@@ -107,9 +117,8 @@ export default function ItemDetailScreen() {
   };
 
   const handleTransition = async (status: string) => {
-    if (!item) return;
     try {
-      const updated = await api.updateItemStatus(item.id, status);
+      const updated = await api.updateItemStatus(item!.id, status);
       setItem(updated);
     } catch (err: any) {
       Alert.alert("Status update failed", err?.message || "Could not update item status.");
@@ -117,18 +126,42 @@ export default function ItemDetailScreen() {
   };
 
   const handleDelete = async () => {
-    if (!item) return;
     Alert.alert("Delete item", "This will soft-delete the item from active inventory.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          await api.deleteItem(item.id);
-          router.replace("/(tabs)/inventory");
+          try {
+            await api.deleteItem(item!.id);
+            replace("/(tabs)/inventory");
+          } catch (err: any) {
+            Alert.alert("Delete failed", err?.message || "Could not delete this item.");
+          }
         },
       },
     ]);
+  };
+
+  const loadMarketPricing = async () => {
+    setPricingLoading(true);
+    try {
+      const [nextMarket, nextSuggestion] = await Promise.all([
+        api.getMarketPrice(item!.name, item!.upc || undefined),
+        api.getPricingSuggestion(item!.id),
+      ]);
+      setMarket(nextMarket); setSuggestion(nextSuggestion);
+    } catch (err: any) { Alert.alert("Market pricing unavailable", err?.message || "Could not compare current pricing."); }
+    finally { setPricingLoading(false); }
+  };
+
+  const publishToLightspeed = async () => {
+    setPublishing(true);
+    try {
+      const result = await api.pushItemToLightspeed(item!.id);
+      Alert.alert("Published to Lightspeed", result.items_created ? "A linked Lightspeed catalog item was created." : "The linked Lightspeed catalog item was updated.");
+    } catch (err: any) { Alert.alert("Publish failed", err?.message || "Connect Lightspeed in Settings first."); }
+    finally { setPublishing(false); }
   };
 
   const variants = useMemo(() => {
@@ -156,19 +189,19 @@ export default function ItemDetailScreen() {
       <HeaderTitle
         title={item.name}
         subtitle={`${item.category || "Inventory item"} • ${item.sku || "No SKU yet"}`}
-        right={<ActionButton label="Edit" onPress={() => router.push({ pathname: "/(tabs)/inventory/edit", params: { id: item.id } } as any)} tone="secondary" compact />}
+        right={<ActionButton label="Edit" onPress={() => push({ pathname: "/(tabs)/inventory/edit", params: { id: item.id } } as any)} tone="secondary" compact />}
       />
 
       <Card>
         <View style={styles.photoHeader}>
           <SectionLabel>Photos</SectionLabel>
           <View style={styles.photoSwitchRow}>
-            <TouchableOpacity onPress={() => setActivePhoto("front")}><Pill label="Front" tone={activePhoto === "front" ? "primary" : "neutral"} /></TouchableOpacity>
-            <TouchableOpacity onPress={() => setActivePhoto("back")}><Pill label="Back" tone={activePhoto === "back" ? "primary" : "neutral"} /></TouchableOpacity>
+            <TouchableOpacity accessibilityLabel="Show front photo" accessibilityRole="button" onPress={() => setActivePhoto("front")}><Pill label="Front" tone={activePhoto === "front" ? "primary" : "neutral"} /></TouchableOpacity>
+            <TouchableOpacity accessibilityLabel="Show back photo" accessibilityRole="button" onPress={() => setActivePhoto("back")}><Pill label="Back" tone={activePhoto === "back" ? "primary" : "neutral"} /></TouchableOpacity>
           </View>
         </View>
 
-        <TouchableOpacity activeOpacity={0.88} onPress={() => pickPhotoForSide(activePhoto)}>
+        <TouchableOpacity accessibilityLabel={`Update ${activePhoto} photo`} accessibilityRole="button" activeOpacity={0.88} onPress={() => pickPhotoForSide(activePhoto)}>
           {currentPhoto ? (
             <Image source={{ uri: currentPhoto }} style={styles.heroPhoto} resizeMode="cover" />
           ) : (
@@ -183,7 +216,7 @@ export default function ItemDetailScreen() {
 
         <View style={styles.photoThumbRow}>
           {[{ key: "front", uri: frontPhoto }, { key: "back", uri: backPhoto }].map((photo) => (
-            <TouchableOpacity key={photo.key} onPress={() => setActivePhoto(photo.key as "front" | "back")}>
+            <TouchableOpacity accessibilityLabel={`Show ${photo.key} thumbnail`} accessibilityRole="button" key={photo.key} onPress={() => setActivePhoto(photo.key as "front" | "back")}>
               {photo.uri ? (
                 <Image source={{ uri: photo.uri }} style={[styles.thumbPhoto, activePhoto === photo.key && styles.thumbPhotoActive]} />
               ) : (
@@ -267,6 +300,14 @@ export default function ItemDetailScreen() {
       </Card>
 
       <Card>
+        <SectionLabel>Market Pricing</SectionLabel>
+        <Text style={styles.emptyText}>Compare external listings and your own sold history before changing the asking price.</Text>
+        {suggestion ? <View style={styles.marketSummary}><Text style={styles.marketPrice}>{suggestion.suggested_price == null ? "More sales data needed" : formatCurrency(suggestion.suggested_price)}</Text><Pill label={`${suggestion.confidence.toUpperCase()} CONFIDENCE`} tone={suggestion.confidence === "high" ? "success" : "info"} /><Text style={styles.timelineMeta}>{suggestion.reason}</Text></View> : null}
+        {market?.sources.map((source) => <View key={`${source.source}-${source.label}`} style={styles.detailRow}><Text style={styles.detailLabel}>{source.label}</Text><Text style={styles.detailValue}>{source.price == null ? "No match" : formatCurrency(source.price)}</Text></View>)}
+        <View style={[styles.actionRow, { marginTop: SPACING.sm }]}><ActionButton label={pricingLoading ? "Checking..." : "Check Market Price"} onPress={loadMarketPricing} disabled={pricingLoading} tone="secondary" compact /><ActionButton label={publishing ? "Publishing..." : "Publish to Lightspeed"} onPress={publishToLightspeed} disabled={publishing} tone="secondary" compact /></View>
+      </Card>
+
+      <Card>
         <SectionLabel>Linked Invoices</SectionLabel>
         {invoices.length === 0 ? (
           <Text style={styles.emptyText}>No invoice line items are linked to this inventory item yet.</Text>
@@ -332,7 +373,11 @@ const styles = StyleSheet.create({
   photoSwitchRow: { flexDirection: "row", gap: SPACING.xs },
   heroPhoto: { width: "100%", height: 260, borderRadius: 18, backgroundColor: COLORS.cardAlt },
   photoOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    position: "absolute",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(7,11,22,0.35)",
@@ -387,4 +432,6 @@ const styles = StyleSheet.create({
   timelineTitle: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
   timelineMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
   actionRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm },
+  marketSummary: { gap: SPACING.xs, marginTop: SPACING.sm },
+  marketPrice: { color: COLORS.success, fontSize: 28, fontWeight: "800" },
 });

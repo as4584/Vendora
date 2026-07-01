@@ -15,8 +15,9 @@ Resellers (sneakers, electronics, clothing, etc.) use Vendora to run their busin
 - **Profit engine** — real-time P&L per item and across the portfolio
 - **Invoice generation** — create and send PDF invoices to buyers
 - **Payment processing** — Stripe-powered checkout, subscription billing
-- **Lightspeed integration** — sync inventory with Lightspeed X-Series POS
-- **Multi-tier access** — Free and Pro tiers with enforced feature gates
+- **Lightspeed integration** — pull sales/inventory, publish catalog changes, and disconnect Lightspeed R-Series safely
+- **Plans and partner tools** — Stripe upgrades, advanced analytics, verified public storefronts, and priority support
+- **Market pricing** — compare UPC retail offers and the seller's own sales history from an item page
 
 ---
 
@@ -24,12 +25,12 @@ Resellers (sneakers, electronics, clothing, etc.) use Vendora to run their busin
 
 | Layer | Technology |
 |---|---|
-| Mobile | React Native (Expo 54, Expo Router v6) |
+| Mobile | React Native (Expo 56, Expo Router) |
 | Backend | FastAPI (Python 3.12) |
 | Database | PostgreSQL + Alembic migrations |
 | Auth | JWT (access tokens) |
 | Payments | Stripe Connect + webhooks |
-| POS Integration | Lightspeed X-Series OAuth |
+| POS Integration | Lightspeed R-Series OAuth |
 | OTA Updates | EAS Update (Expo) |
 | CI/CD | GitHub Actions |
 | Containerization | Docker + docker-compose |
@@ -86,7 +87,7 @@ Push to feature branch
         ▼
    Pull Request → main
         │
-        ├── Backend tests (pytest, 80% coverage gate, real PostgreSQL)
+        ├── Backend tests (pytest, 100% coverage gate, real PostgreSQL)
         └── Mobile smoke tests (Playwright, iPhone 12 + SE viewport)
         │
         ▼ (merge to main)
@@ -135,9 +136,10 @@ vendora/
 **Backend**
 ```bash
 cd backend
-cp ../.env.example .env      # fill in secrets
-docker-compose up -d         # starts PostgreSQL
-pip install -r requirements.txt
+cp .env.example .env         # fill in secrets
+cd .. && docker compose up -d db test-db
+cd backend
+pip install -r requirements-dev.txt
 alembic upgrade head         # run migrations
 uvicorn app.main:app --reload --port 8000
 ```
@@ -148,6 +150,11 @@ cd mobile
 npm install
 npx expo start               # scan QR with Expo Go
 ```
+
+Production billing and Lightspeed activation require `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, `STRIPE_PARTNER_PRICE_ID`,
+`LIGHTSPEED_CLIENT_ID`, and `LIGHTSPEED_CLIENT_SECRET`. In-app support uses
+`SENDGRID_API` and optionally `SUPPORT_EMAIL`. Never commit these values.
 
 **Run tests**
 ```bash
@@ -168,7 +175,7 @@ npx playwright test
 
 **Stripe webhook idempotency** — payment events are deduplicated by `event_id` in the database. Re-delivered webhooks are a no-op, so billing state stays consistent even under network retries.
 
-**Tier enforcement middleware** — a FastAPI dependency (`tier_limiter`) checks the user's subscription tier on every protected route. Free tier is capped at 50 items; Pro is unlimited. Checked at the dependency layer so no router needs to know about it.
+**Tier enforcement middleware** — a FastAPI dependency (`tier_limiter`) checks the user's subscription tier before inventory creation. Free tier is capped at 25 items; Pro is unlimited.
 
 **OTA updates** — mobile updates ship to both `preview` (tester/internal builds) and `production` after smoke tests pass. Expo Go users should reopen the shared channel link to refresh a cached project.
 
@@ -179,7 +186,7 @@ npx playwright test
 The backend deploys to `https://vendora.lexmakesit.com` via Docker.
 
 ```bash
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 Mobile OTA updates publish automatically via GitHub Actions on merge to `main`.

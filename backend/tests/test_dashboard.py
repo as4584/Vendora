@@ -100,4 +100,4 @@ class TestDashboardWithRefunds:
 
     def test_unauthenticated(self, client):
         resp = client.get("/api/v1/dashboard")
-        assert resp.status_code == 403
+        assert resp.status_code == 401

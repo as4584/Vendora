@@ -19,6 +19,8 @@ from app.models.integration import LightspeedToken  # noqa: F401 — register mo
 from app.models.square import SquareCredential  # noqa: F401 — register model
 from app.models.clover import CloverCredential  # noqa: F401 — register model
 from app.models.provider import ProviderSyncRun, ReconciliationIssue, ProviderWebhookEvent  # noqa: F401
+from app.models.auth_session import AuthSession  # noqa: F401
+from app.models.support import SupportRequest  # noqa: F401
 from app.config import settings
 
 config = context.config

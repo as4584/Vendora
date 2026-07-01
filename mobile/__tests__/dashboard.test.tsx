@@ -9,6 +9,13 @@
  *  5. Sync sends seeded demo users to Sync Center instead of failing
  */
 
+import React from 'react';
+import { Alert } from 'react-native';
+import { render, waitFor, act, fireEvent } from '@testing-library/react-native';
+import * as apiMock from '../services/api';
+import * as fileActionsMock from '../utils/fileActions';
+import DashboardScreen from '../app/(tabs)/dashboard';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('../__mocks__/async-storage'),
 );
@@ -37,13 +44,6 @@ jest.mock('../services/api', () => ({
 jest.mock('../utils/fileActions', () => ({
   downloadTextFile: jest.fn(),
 }));
-
-import React from 'react';
-import { Alert } from 'react-native';
-import { render, waitFor, act, fireEvent } from '@testing-library/react-native';
-import * as apiMock from '../services/api';
-import * as fileActionsMock from '../utils/fileActions';
-import DashboardScreen from '../app/(tabs)/dashboard';
 
 const originalConsoleError = console.error;
 
@@ -140,7 +140,7 @@ describe('DashboardScreen', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByTestId('dashboard-content')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('dashboard-content')).toBeTruthy());
   });
 
   it('exits loading state and shows error view on API failure', async () => {
@@ -165,8 +165,23 @@ describe('DashboardScreen', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Could not load dashboard.')).toBeTruthy();
-    expect(screen.getByText('Retry')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('Could not load dashboard.')).toBeTruthy();
+      expect(screen.getByText('Retry')).toBeTruthy();
+    });
+  });
+
+  it('keeps the dashboard usable when optional health requests fail', async () => {
+    setupMocks();
+    (apiMock.getProviderHealth as jest.Mock).mockRejectedValue(new Error('health unavailable'));
+    (apiMock.listItems as jest.Mock).mockRejectedValue(new Error('inventory unavailable'));
+
+    const screen = render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dashboard-content')).toBeTruthy();
+      expect(screen.queryByText('Could not load dashboard.')).toBeNull();
+    });
   });
 
   it('downloads a warehouse CSV when Export is pressed', async () => {
@@ -186,6 +201,10 @@ describe('DashboardScreen', () => {
       inventory.resolve({ items: [], total: 0, page: 1, per_page: 100, pages: 0 });
       await Promise.all([dashboard.promise, providerHealth.promise, inventory.promise]);
       await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Export')).toBeTruthy();
     });
 
     await act(async () => {
@@ -212,5 +231,107 @@ describe('DashboardScreen', () => {
     });
 
     expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
+  });
+
+  it('refreshes through the native refresh control and retries a failed load', async () => {
+    setupMocks();
+    const screen = render(<DashboardScreen />);
+    await screen.findByTestId('dashboard-content');
+    const RefreshControl = require('react-native').RefreshControl;
+    const control = screen.UNSAFE_getByType(RefreshControl);
+    await act(async () => control.props.onRefresh());
+    await waitFor(() => expect(apiMock.getDashboard).toHaveBeenCalledTimes(2));
+
+    (apiMock.getDashboard as jest.Mock).mockRejectedValueOnce(new Error('offline'));
+    await act(async () => control.props.onRefresh());
+    await screen.findByTestId('dashboard-error');
+    (apiMock.getDashboard as jest.Mock).mockResolvedValueOnce(MOCK_DASHBOARD);
+    fireEvent.press(screen.getByText('Retry'));
+    await screen.findByTestId('dashboard-content');
+  });
+
+  it('renders low-stock and provider health states', async () => {
+    setupMocks();
+    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue({
+      providers: [
+        { provider: 'lightspeed', failed_runs_24h: 0, open_issues_count: 0 },
+        { provider: 'square', failed_runs_24h: 1, open_issues_count: 0 },
+        { provider: 'clover', failed_runs_24h: 0, open_issues_count: 2 },
+      ],
+    });
+    (apiMock.listItems as jest.Mock).mockResolvedValue({
+      items: [
+        { id: 'one', quantity: 1 },
+        { id: 'two', quantity: 3 },
+        { id: 'three', quantity: 0 },
+        { id: 'four', quantity: 8 },
+      ],
+      total: 4,
+      page: 1,
+      per_page: 100,
+      pages: 1,
+    });
+    const screen = render(<DashboardScreen />);
+    await screen.findByTestId('dashboard-content');
+    expect(screen.getByText('1/3 healthy')).toBeTruthy();
+    expect(screen.getByText('Healthy')).toBeTruthy();
+    expect(screen.getByText(/1 failed/)).toBeTruthy();
+    expect(screen.getByText(/2 issues/)).toBeTruthy();
+  });
+
+  it('starts all connected syncs and reports partial failures', async () => {
+    setupMocks();
+    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue({ connected: true });
+    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue({ connected: true });
+    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue({ connected: true });
+    (apiMock.triggerLightspeedSync as jest.Mock).mockResolvedValue({ status: 'started' });
+    (apiMock.triggerSquareSync as jest.Mock).mockRejectedValue(new Error('square offline'));
+    (apiMock.triggerCloverSync as jest.Mock).mockResolvedValue({ status: 'started' });
+    const screen = render(<DashboardScreen />);
+    await screen.findByTestId('dashboard-content');
+    fireEvent.press(screen.getByText('Sync'));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Partial sync',
+        '2 provider syncs started; 1 could not be started.',
+      ),
+    );
+    expect(apiMock.triggerLightspeedSync).toHaveBeenCalled();
+    expect(apiMock.triggerSquareSync).toHaveBeenCalled();
+    expect(apiMock.triggerCloverSync).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
+  });
+
+  it('reports export and provider-status failures', async () => {
+    setupMocks();
+    (apiMock.exportInventoryWarehouseCSV as jest.Mock).mockRejectedValueOnce(
+      new Error('export unavailable'),
+    );
+    const screen = render(<DashboardScreen />);
+    await screen.findByTestId('dashboard-content');
+    fireEvent.press(screen.getByText('Export'));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith('Export failed', 'export unavailable'),
+    );
+
+    (apiMock.getLightspeedStatus as jest.Mock).mockRejectedValueOnce(new Error('sync unavailable'));
+    fireEvent.press(screen.getByText('Sync'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Sync failed', 'sync unavailable'));
+  });
+
+  it('routes every dashboard navigation action', async () => {
+    setupMocks();
+    const screen = render(<DashboardScreen />);
+    await screen.findByTestId('dashboard-content');
+    fireEvent.press(screen.getByText('Import'));
+    fireEvent.press(screen.getByText('Invoice'));
+    fireEvent.press(screen.getByText('Open Inventory'));
+    expect(mockPush.mock.calls).toEqual(
+      expect.arrayContaining([
+        ['/inventory/import'],
+        ['/inventory/invoices'],
+        ['/inventory'],
+      ]),
+    );
   });
 });

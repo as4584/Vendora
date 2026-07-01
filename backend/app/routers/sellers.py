@@ -92,5 +92,5 @@ def get_public_seller_profile(
             }
             for item in active_items
         ],
-        "disclaimer": "This is a seller profile. Vendora does not guarantee any transactions. All payments are processed by Stripe.",
+        "disclaimer": "This is a seller profile. Vendora does not guarantee listings or transactions; confirm item and payment details directly with the seller.",
     }

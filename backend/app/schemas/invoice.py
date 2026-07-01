@@ -4,7 +4,7 @@ from decimal import Decimal
 from uuid import UUID
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class InvoiceItemCreate(BaseModel):
@@ -16,6 +16,8 @@ class InvoiceItemCreate(BaseModel):
 
 
 class InvoiceItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     invoice_id: UUID
     inventory_item_id: Optional[UUID] = None
@@ -24,10 +26,6 @@ class InvoiceItemResponse(BaseModel):
     quantity: int
     unit_price: Decimal
     line_total: Decimal
-
-    class Config:
-        from_attributes = True
-
 
 class InvoiceCreate(BaseModel):
     customer_name: str = Field(max_length=255)
@@ -50,6 +48,8 @@ class InvoiceUpdate(BaseModel):
 
 
 class InvoiceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     user_id: UUID
     customer_name: str
@@ -62,13 +62,9 @@ class InvoiceResponse(BaseModel):
     total: Decimal
     stripe_payment_intent_id: Optional[str] = None
     notes: Optional[str] = None
-    items: list[InvoiceItemResponse] = []
+    items: list[InvoiceItemResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class InvoiceListResponse(BaseModel):
     items: list[InvoiceResponse]

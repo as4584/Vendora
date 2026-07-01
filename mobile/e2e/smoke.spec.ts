@@ -86,3 +86,52 @@ test.describe('Login form interaction', () => {
     }
   });
 });
+
+test.describe('Completed product surfaces', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('vendora_access_token', 'e2e-access-token');
+      window.localStorage.setItem('vendora_refresh_token', 'e2e-refresh-token');
+    });
+    await page.route('**/api/v1/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const json = (body: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      if (path.endsWith('/auth/me')) return json({ id: 'user-1', email: 'seller@test.com', business_name: 'Test Store', profile_picture: null, subscription_tier: 'pro', is_partner: true, created_at: '2025-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' });
+      if (path.endsWith('/integrations/lightspeed/status')) return json({ connected: false, account_id: null, expires_at: null, last_synced_at: null });
+      if (path.endsWith('/integrations/square/status')) return json({ connected: false, merchant_id: null, location_id: null, last_synced_at: null });
+      if (path.endsWith('/integrations/clover/status')) return json({ connected: false, merchant_id: null, last_synced_at: null });
+      if (path.endsWith('/integrations/health')) return json({ providers: [] });
+      if (path.endsWith('/subscriptions/me')) return json({ tier: 'pro', is_partner: true, status: 'active', current_period_end: null, managed_billing: false });
+      if (path.endsWith('/dashboard/advanced')) return json({ period_days: 30, revenue: '100', net: '80', average_order_value: '50', sell_through_rate: '25', daily: [], categories: [] });
+      if (path.endsWith('/dashboard')) return json({ revenue_today: '0', revenue_week: '0', revenue_month: '0', net_profit_today: '0', net_profit_week: '0', net_profit_month: '0', net_profit_all_time: '0', total_inventory_value: '0', total_expected_value: '0', potential_profit: '0', total_items: 0, items_in_stock: 0, items_listed: 0, items_sold: 0, total_transactions: 0, total_refunds: 0 });
+      if (path.endsWith('/inventory')) return json({ items: [], total: 0, page: 1, per_page: 100, pages: 0 });
+      if (path.endsWith('/sellers/user-1')) return json({ seller: { id: 'user-1', business_name: 'Test Store', is_partner: true, verified: true, member_since: '2025-01-01T00:00:00Z' }, stats: { total_items: 4, items_sold: 2, total_transactions: 3 }, listings: [], disclaimer: 'Marketplace disclaimer.' });
+      return json({});
+    });
+  });
+
+  test('navigates billing, analytics, support, and public storefront', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+    const openSettings = async () => {
+      await page.goto('/');
+      await expect.poll(() => page.locator('body').innerText()).toContain('Settings');
+      await page.getByText('Settings', { exact: true }).click();
+      await expect(page.getByText('Vendora Plus')).toBeVisible();
+    };
+    await openSettings();
+    expect(errors).toEqual([]);
+    await page.getByText('Plans & Billing').click();
+    await expect(page.getByText('Current access')).toBeVisible();
+    await openSettings();
+    await page.getByText('Advanced Analytics', { exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Advanced Analytics' })).toBeVisible();
+    await openSettings();
+    await page.getByText('Support', { exact: true }).click();
+    await expect(page.getByText('Vendora Support')).toBeVisible();
+    await openSettings();
+    await page.getByText('View Public Storefront').click();
+    await expect(page.getByText('✓ VERIFIED')).toBeVisible();
+  });
+});

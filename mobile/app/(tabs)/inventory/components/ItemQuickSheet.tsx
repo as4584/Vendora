@@ -8,7 +8,7 @@
  * Clothing is detected by matching the item's category against CLOTHING_KEYWORDS.
  * Size inputs are free-text, supporting "S / M / L / XL", "32x32", "10.5", etc.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
     View,
     Text,
@@ -87,7 +87,11 @@ interface Props {
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export default function ItemQuickSheet({
+export default function ItemQuickSheet(props: Props) {
+    return <ItemQuickSheetContent key={props.item?.id ?? "empty"} {...props} />;
+}
+
+function ItemQuickSheetContent({
     item,
     visible,
     existingBrands,
@@ -96,31 +100,20 @@ export default function ItemQuickSheet({
     onItemDeleted,
 }: Props) {
     const router = useRouter();
-    const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
+    const [slideAnim] = useState(() => new Animated.Value(SCREEN_H));
 
     // Local editable state
-    const [variants, setVariants] = useState<api.SizeVariant[]>([]);
-    const [quantity, setQuantity] = useState(1);
+    const [variants, setVariants] = useState<api.SizeVariant[]>(() => item ? getVariants(item) : []);
+    const [quantity, setQuantity] = useState(item?.quantity ?? 1);
     const [newSize, setNewSize] = useState("");
-    const [nameDraft, setNameDraft] = useState("");
+    const [nameDraft, setNameDraft] = useState(item?.name ?? "");
     const [editingName, setEditingName] = useState(false);
-    const [brandDraft, setBrandDraft] = useState("");
+    const [brandDraft, setBrandDraft] = useState(
+        typeof item?.custom_attributes?.brand === "string" ? item.custom_attributes.brand : ""
+    );
     const [editingBrand, setEditingBrand] = useState(false);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
-
-    // Sync state when item changes
-    useEffect(() => {
-        if (item) {
-            setVariants(getVariants(item));
-            setQuantity(item.quantity ?? 1);
-            setNewSize("");
-            setNameDraft(item.name);
-            setEditingName(false);
-            setBrandDraft(typeof item.custom_attributes?.brand === "string" ? item.custom_attributes.brand : "");
-            setEditingBrand(false);
-        }
-    }, [item?.id]);
 
     // Slide animation
     useEffect(() => {
@@ -130,7 +123,7 @@ export default function ItemQuickSheet({
             tension: 68,
             friction: 12,
         }).start();
-    }, [visible]);
+    }, [slideAnim, visible]);
 
     if (!item) return null;
 
@@ -165,7 +158,6 @@ export default function ItemQuickSheet({
 
     // ── Save changes ─────────────────────────────────────────────────────────
     const saveChanges = async () => {
-        if (!item) return;
         const trimmedName = nameDraft.trim();
         const trimmedBrand = brandDraft.trim();
         if (!trimmedName) {
@@ -274,6 +266,7 @@ export default function ItemQuickSheet({
                         <View style={styles.titleBlock}>
                             {editingName ? (
                                 <TextInput
+                                    accessibilityLabel="Item Name"
                                     style={styles.itemNameInput}
                                     value={nameDraft}
                                     onChangeText={setNameDraft}
@@ -286,7 +279,12 @@ export default function ItemQuickSheet({
                                     placeholderTextColor="#666"
                                 />
                             ) : (
-                                <TouchableOpacity onPress={() => setEditingName(true)} activeOpacity={0.7}>
+                                <TouchableOpacity
+                                    accessibilityLabel="Edit item name"
+                                    accessibilityRole="button"
+                                    onPress={() => setEditingName(true)}
+                                    activeOpacity={0.7}
+                                >
                                     <Text style={styles.itemName} numberOfLines={3}>
                                         {nameDraft || item.name}
                                     </Text>
@@ -298,6 +296,7 @@ export default function ItemQuickSheet({
                             )}
                             {editingBrand ? (
                                 <TextInput
+                                    accessibilityLabel="Brand"
                                     style={styles.brandInput}
                                     value={brandDraft}
                                     onChangeText={setBrandDraft}
@@ -310,7 +309,12 @@ export default function ItemQuickSheet({
                                     placeholderTextColor="#666"
                                 />
                             ) : (
-                                <TouchableOpacity onPress={() => setEditingBrand(true)} activeOpacity={0.7}>
+                                <TouchableOpacity
+                                    accessibilityLabel="Edit brand"
+                                    accessibilityRole="button"
+                                    onPress={() => setEditingBrand(true)}
+                                    activeOpacity={0.7}
+                                >
                                     <Text style={styles.brandText}>
                                         {brandDraft ? `Brand: ${brandDraft}` : "Brand: Unbranded"}
                                     </Text>
@@ -319,6 +323,8 @@ export default function ItemQuickSheet({
                             )}
                             <View style={styles.brandChipRow}>
                                 <TouchableOpacity
+                                    accessibilityLabel="Set brand to unbranded"
+                                    accessibilityRole="button"
                                     style={[
                                         styles.brandChip,
                                         normalizedBrand === "" && styles.brandChipActive,
@@ -343,6 +349,8 @@ export default function ItemQuickSheet({
                                     const isActive = normalizedBrand === brand.trim().toLowerCase();
                                     return (
                                         <TouchableOpacity
+                                            accessibilityLabel={`Set brand to ${brand}`}
+                                            accessibilityRole="button"
                                             key={brand}
                                             style={[styles.brandChip, isActive && styles.brandChipActive]}
                                             onPress={() => {
@@ -426,6 +434,8 @@ export default function ItemQuickSheet({
                                     <Text style={styles.variantSize}>{v.size}</Text>
                                     <View style={styles.qtyControls}>
                                         <TouchableOpacity
+                                            accessibilityLabel={`Decrease quantity for ${v.size}`}
+                                            accessibilityRole="button"
                                             style={styles.qtyBtn}
                                             onPress={() => adjustVariantQty(idx, -1)}
                                         >
@@ -433,6 +443,8 @@ export default function ItemQuickSheet({
                                         </TouchableOpacity>
                                         <Text style={styles.qtyValue}>{v.quantity}</Text>
                                         <TouchableOpacity
+                                            accessibilityLabel={`Increase quantity for ${v.size}`}
+                                            accessibilityRole="button"
                                             style={styles.qtyBtn}
                                             onPress={() => adjustVariantQty(idx, 1)}
                                         >
@@ -440,6 +452,8 @@ export default function ItemQuickSheet({
                                         </TouchableOpacity>
                                     </View>
                                     <TouchableOpacity
+                                        accessibilityLabel={`Remove size ${v.size}`}
+                                        accessibilityRole="button"
                                         style={styles.removeBtn}
                                         onPress={() => removeVariant(idx)}
                                     >
@@ -451,6 +465,7 @@ export default function ItemQuickSheet({
                             {/* Add new size row */}
                             <View style={styles.addSizeRow}>
                                 <TextInput
+                                    accessibilityLabel="New Size"
                                     style={styles.sizeInput}
                                     placeholder='e.g. M, 32x32, 10.5'
                                     placeholderTextColor="#555"
@@ -460,6 +475,8 @@ export default function ItemQuickSheet({
                                     returnKeyType="done"
                                 />
                                 <TouchableOpacity
+                                    accessibilityLabel="Add Size"
+                                    accessibilityRole="button"
                                     style={styles.addSizeBtn}
                                     onPress={addVariant}
                                 >
@@ -473,6 +490,8 @@ export default function ItemQuickSheet({
                             <Text style={styles.sectionTitle}>Quantity</Text>
                             <View style={styles.qtyRow}>
                                 <TouchableOpacity
+                                    accessibilityLabel="Decrease quantity"
+                                    accessibilityRole="button"
                                     style={styles.qtyBtnLarge}
                                     onPress={() => setQuantity((q) => Math.max(0, q - 1))}
                                 >
@@ -480,6 +499,8 @@ export default function ItemQuickSheet({
                                 </TouchableOpacity>
                                 <Text style={styles.qtyValueLarge}>{quantity}</Text>
                                 <TouchableOpacity
+                                    accessibilityLabel="Increase quantity"
+                                    accessibilityRole="button"
                                     style={styles.qtyBtnLarge}
                                     onPress={() => setQuantity((q) => q + 1)}
                                 >
@@ -492,6 +513,7 @@ export default function ItemQuickSheet({
                     {/* ── Action Buttons ── */}
                     <View style={styles.actions}>
                         <TouchableOpacity
+                            accessibilityRole="button"
                             style={styles.saveBtn}
                             onPress={saveChanges}
                             disabled={saving}
@@ -504,6 +526,7 @@ export default function ItemQuickSheet({
                         </TouchableOpacity>
 
                         <TouchableOpacity
+                            accessibilityRole="button"
                             style={styles.editBtn}
                             onPress={() => {
                                 onClose();
@@ -514,6 +537,7 @@ export default function ItemQuickSheet({
                         </TouchableOpacity>
 
                         <TouchableOpacity
+                            accessibilityRole="button"
                             style={styles.deleteBtn}
                             onPress={handleDelete}
                             disabled={deleting}

@@ -30,15 +30,16 @@ export default function DashboardScreen() {
       setView((current) => ({ ...current, refreshing: true }));
     }
     try {
-      const [dashboard, providerHealth, inventoryPage] = await Promise.all([
+      const [dashboardResult, healthResult, inventoryResult] = await Promise.allSettled([
         api.getDashboard(),
         api.getProviderHealth(),
         api.listItems({ perPage: 100, availableOnly: true }),
       ]);
+      if (dashboardResult.status === "rejected") throw dashboardResult.reason;
       setView({
-        data: dashboard,
-        health: providerHealth.providers,
-        inventory: inventoryPage.items,
+        data: dashboardResult.value,
+        health: healthResult.status === "fulfilled" ? healthResult.value.providers : [],
+        inventory: inventoryResult.status === "fulfilled" ? inventoryResult.value.items : [],
         loading: false,
         refreshing: false,
         loadError: false,
@@ -54,7 +55,8 @@ export default function DashboardScreen() {
   }, []);
 
   useEffect(() => {
-    fetchAll();
+    const timer = setTimeout(() => void fetchAll(), 0);
+    return () => clearTimeout(timer);
   }, [fetchAll]);
 
   const onRefresh = () => {
@@ -79,7 +81,7 @@ export default function DashboardScreen() {
         api.getCloverStatus(),
       ]);
 
-      const jobs: Array<Promise<any>> = [];
+      const jobs: Promise<unknown>[] = [];
       if (lightspeed.connected) jobs.push(api.triggerLightspeedSync());
       if (square.connected) jobs.push(api.triggerSquareSync());
       if (clover.connected) jobs.push(api.triggerCloverSync());
@@ -92,6 +94,9 @@ export default function DashboardScreen() {
       const results = await Promise.allSettled(jobs);
       const completed = results.filter((result) => result.status === "fulfilled").length;
       const failed = results.length - completed;
+      if (failed > 0) {
+        Alert.alert("Partial sync", `${completed} provider syncs started; ${failed} could not be started.`);
+      }
       router.push("/settings/sync-center" as any);
       fetchAll();
     } catch (err: any) {

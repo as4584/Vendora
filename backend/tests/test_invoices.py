@@ -106,7 +106,7 @@ class TestCreateInvoice:
             "customer_name": "Test",
             "items": [{"description": "X", "quantity": 1, "unit_price": "10.00"}],
         })
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 class TestListInvoices:

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,8 +11,7 @@ import {
   Alert,
   Image,
 } from "react-native";
-import { useRouter } from "expo-router";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as api from "../../../services/api";
 import { ActionButton, Card, ChipRow, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
@@ -42,7 +41,7 @@ function InventoryCard({
   const backPhoto = resolvedPhoto(item, "back");
 
   return (
-    <TouchableOpacity activeOpacity={0.84} onPress={onPress}>
+    <TouchableOpacity accessibilityLabel={`Open ${item.name}`} accessibilityRole="button" activeOpacity={0.84} onPress={onPress}>
       <Card style={styles.itemCard}>
         <View style={styles.itemCardRow}>
           <View style={styles.photoColumn}>
@@ -101,13 +100,18 @@ export default function InventoryListScreen() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filtersRef = useRef<{
+    query: string;
+    status: string | null;
+    source: string | null;
+  }>({ query: "", status: null, source: null });
 
   const fetchItems = useCallback(
     async (options: { page?: number; refresh?: boolean; query?: string; status?: string | null; source?: string | null } = {}) => {
       const nextPage = options.page ?? 1;
-      const nextQuery = options.query ?? searchQuery;
-      const nextStatus = options.status !== undefined ? options.status : statusFilter;
-      const nextSource = options.source !== undefined ? options.source : sourceFilter;
+      const nextQuery = options.query ?? filtersRef.current.query;
+      const nextStatus = options.status !== undefined ? options.status : filtersRef.current.status;
+      const nextSource = options.source !== undefined ? options.source : filtersRef.current.source;
 
       try {
         const result = await api.listItems({
@@ -122,21 +126,15 @@ export default function InventoryListScreen() {
         setPage(result.page);
         setPages(result.pages);
       } catch (err: any) {
-        if (loading && items.length === 0) {
-          Alert.alert("Inventory unavailable", err?.message || "Could not load inventory.");
-        }
+        Alert.alert("Inventory unavailable", err?.message || "Could not load inventory.");
       } finally {
         setLoading(false);
         setRefreshing(false);
         setLoadingMore(false);
       }
     },
-    [items.length, loading, searchQuery, sourceFilter, statusFilter]
+    []
   );
-
-  useEffect(() => {
-    fetchItems();
-  }, [fetchItems]);
 
   useFocusEffect(
     useCallback(() => {
@@ -146,6 +144,7 @@ export default function InventoryListScreen() {
 
   const onSearchChange = (text: string) => {
     setSearchQuery(text);
+    filtersRef.current.query = text;
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setLoading(true);
@@ -216,6 +215,7 @@ export default function InventoryListScreen() {
             <Card>
               <SectionLabel>Search + Filter</SectionLabel>
               <TextInput
+                accessibilityLabel="Search inventory"
                 style={styles.searchInput}
                 placeholder="Search items, sku, upc"
                 placeholderTextColor={COLORS.textSoft}
@@ -227,6 +227,7 @@ export default function InventoryListScreen() {
                   <TouchableOpacity key={key} onPress={() => {
                     const next = statusFilter === key ? null : key;
                     setStatusFilter(next);
+                    filtersRef.current.status = next;
                     setLoading(true);
                     fetchItems({ page: 1, refresh: true, status: next });
                   }}>
@@ -237,6 +238,7 @@ export default function InventoryListScreen() {
                   <TouchableOpacity key={source} onPress={() => {
                     const next = sourceFilter === source ? null : source;
                     setSourceFilter(next);
+                    filtersRef.current.source = next;
                     setLoading(true);
                     fetchItems({ page: 1, refresh: true, source: next });
                   }}>

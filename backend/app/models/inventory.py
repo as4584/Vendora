@@ -34,8 +34,16 @@ class InventoryItem(Base, TimestampMixin, SoftDeleteMixin):
         Index(
             "ix_inventory_user_created",
             "user_id",
-            "created_at",
+            sa.desc("created_at"),
             postgresql_where="deleted_at IS NULL",
+        ),
+        Index(
+            "uq_inventory_user_source_external",
+            "user_id",
+            "source",
+            "external_id",
+            unique=True,
+            postgresql_where=sa.text("source IS NOT NULL AND external_id IS NOT NULL"),
         ),
     )
 
@@ -53,7 +61,7 @@ class InventoryItem(Base, TimestampMixin, SoftDeleteMixin):
     color = Column(String(50), nullable=True)
     condition = Column(String(50), nullable=True)
     serial_number = Column(String(100), nullable=True)
-    custom_attributes = Column(JSON, nullable=True, server_default=text("'{}'"))
+    custom_attributes = Column(JSONB, nullable=True, server_default=text("'{}'"))
     buy_price = Column(Numeric(10, 2), nullable=True)
     expected_sell_price = Column(Numeric(10, 2), nullable=True)
     actual_sell_price = Column(Numeric(10, 2), nullable=True)

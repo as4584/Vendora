@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.models.invoice import Invoice
 from app.models.subscription import Subscription, WebhookEvent
@@ -29,17 +30,42 @@ except ImportError:
 def is_event_processed(db: Session, event_id: str) -> bool:
     """Check if a webhook event has already been processed (deduplication)."""
     return db.query(WebhookEvent).filter(
-        WebhookEvent.event_id == event_id
+        WebhookEvent.event_id == event_id,
+        WebhookEvent.processed.is_(True),
     ).first() is not None
 
 
 def record_event(db: Session, event_id: str, event_type: str) -> None:
     """Record a processed webhook event."""
-    event = WebhookEvent(
-        event_id=event_id,
-        event_type=event_type,
-    )
+    event = db.query(WebhookEvent).filter(WebhookEvent.event_id == event_id).first()
+    if event is None:
+        event = WebhookEvent(event_id=event_id, event_type=event_type)
+    event.processed = True
     db.add(event)
+    db.commit()
+
+
+def claim_event(db: Session, event_id: str, event_type: str) -> WebhookEvent | None:
+    """Claim an event before side effects; a unique row serializes concurrent delivery."""
+    if db.query(WebhookEvent.id).filter(WebhookEvent.event_id == event_id).first():
+        return None
+    event = WebhookEvent(event_id=event_id, event_type=event_type, processed=False)
+    try:
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+        return event
+    except IntegrityError:
+        db.rollback()
+        return None
+
+
+def release_event_claim(db: Session, event_id: str) -> None:
+    """Release a failed claim so Stripe can safely retry the event."""
+    db.query(WebhookEvent).filter(
+        WebhookEvent.event_id == event_id,
+        WebhookEvent.processed.is_(False),
+    ).delete(synchronize_session=False)
     db.commit()
 
 
@@ -124,25 +150,51 @@ def handle_payment_intent_succeeded(db: Session, event_data: dict) -> None:
     process_invoice_payment(invoice, db)
 
 
-def create_subscription_checkout(db: Session, user: User) -> dict:
-    """Create a Stripe Checkout session for Pro subscription upgrade."""
+def create_subscription_checkout(db: Session, user: User, plan: str = "pro") -> dict:
+    """Create a hosted Checkout session for a Pro or Partner upgrade."""
     if not STRIPE_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Stripe is not configured.",
         )
 
+    if plan not in {"pro", "partner"}:
+        raise HTTPException(status_code=400, detail="plan must be 'pro' or 'partner'.")
+    if plan == "pro" and user.subscription_tier == "pro":
+        raise HTTPException(status_code=409, detail="This account already has Pro access.")
+
+    line_items = []
+    if user.subscription_tier != "pro":
+        if not settings.STRIPE_PRO_PRICE_ID:
+            raise HTTPException(status_code=503, detail="The Pro plan is not configured.")
+        line_items.append({"price": settings.STRIPE_PRO_PRICE_ID, "quantity": 1})
+    if plan == "partner":
+        if user.is_partner:
+            raise HTTPException(status_code=409, detail="This account already has Partner access.")
+        if not settings.STRIPE_PARTNER_PRICE_ID:
+            raise HTTPException(status_code=503, detail="The Partner add-on is not configured.")
+        line_items.append({"price": settings.STRIPE_PARTNER_PRICE_ID, "quantity": 1})
+
+    metadata = {"user_id": str(user.id), "plan": plan}
+    existing = db.query(Subscription).filter(
+        Subscription.user_id == user.id,
+        Subscription.stripe_customer_id.isnot(None),
+    ).first()
+    checkout_args = {
+        "mode": "subscription",
+        "line_items": line_items,
+        "metadata": metadata,
+        "subscription_data": {"metadata": metadata},
+        "success_url": "vendora://subscription/success?session_id={CHECKOUT_SESSION_ID}",
+        "cancel_url": "vendora://subscription/cancel",
+    }
+    if existing and existing.stripe_customer_id:
+        checkout_args["customer"] = existing.stripe_customer_id
+    else:
+        checkout_args["customer_email"] = user.email
+
     session = stripe.checkout.Session.create(
-        mode="subscription",
-        line_items=[{
-            "price": settings.STRIPE_PRO_PRICE_ID,
-            "quantity": 1,
-        }],
-        metadata={
-            "user_id": str(user.id),
-        },
-        success_url="vendora://subscription/success",
-        cancel_url="vendora://subscription/cancel",
+        **checkout_args,
     )
 
     return {
@@ -151,10 +203,31 @@ def create_subscription_checkout(db: Session, user: User) -> dict:
     }
 
 
+def create_billing_portal(db: Session, user: User) -> dict:
+    """Create a Stripe customer portal session for an existing subscriber."""
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe is not configured.")
+    subscription = db.query(Subscription).filter(
+        Subscription.user_id == user.id,
+        Subscription.stripe_customer_id.isnot(None),
+    ).first()
+    if not subscription or not subscription.stripe_customer_id:
+        raise HTTPException(status_code=404, detail="No managed subscription was found.")
+    session = stripe.billing_portal.Session.create(
+        customer=subscription.stripe_customer_id,
+        return_url="vendora://subscription",
+    )
+    return {"portal_url": session.url}
+
+
 def handle_subscription_event(db: Session, event_type: str, event_data: dict) -> None:
     """Process subscription-related webhook events."""
     subscription_data = event_data.get("object", {})
-    stripe_sub_id = subscription_data.get("id")
+    stripe_sub_id = (
+        subscription_data.get("subscription")
+        if event_type == "invoice.payment_failed"
+        else subscription_data.get("id")
+    )
     metadata = subscription_data.get("metadata", {})
     user_id = metadata.get("user_id")
 
@@ -170,16 +243,20 @@ def handle_subscription_event(db: Session, event_type: str, event_data: dict) ->
         return
 
     if event_type == "customer.subscription.created":
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return
         # Create or update subscription
         sub = db.query(Subscription).filter(
-            Subscription.user_id == user_id
+            Subscription.stripe_subscription_id == stripe_sub_id
         ).first()
         if not sub:
             sub = Subscription(user_id=user_id)
 
         sub.stripe_subscription_id = stripe_sub_id
+        sub.stripe_customer_id = subscription_data.get("customer")
         sub.tier = "pro"
-        sub.price_monthly = Decimal("20.00")
+        sub.price_monthly = Decimal("25.00" if metadata.get("plan") == "partner" and user.subscription_tier != "pro" else "5.00" if metadata.get("plan") == "partner" else "20.00")
         sub.status = "active"
         if subscription_data.get("current_period_end"):
             sub.current_period_end = datetime.fromtimestamp(
@@ -188,10 +265,11 @@ def handle_subscription_event(db: Session, event_type: str, event_data: dict) ->
         db.add(sub)
 
         # Upgrade user tier
-        user = db.query(User).filter(User.id == user_id).first()
-        if user:
-            user.subscription_tier = "pro"
-            db.add(user)
+        user.subscription_tier = "pro"
+        if metadata.get("plan") == "partner":
+            sub.is_partner = True
+            user.is_partner = True
+        db.add(user)
 
         db.commit()
 
@@ -203,10 +281,17 @@ def handle_subscription_event(db: Session, event_type: str, event_data: dict) ->
             sub.status = "cancelled"
             db.add(sub)
 
-        # Downgrade user tier
+        # Recompute entitlements from remaining active subscriptions. This keeps
+        # Pro active when a separate Partner add-on is cancelled.
+        db.flush()
         user = db.query(User).filter(User.id == user_id).first()
         if user:
-            user.subscription_tier = "free"
+            active = db.query(Subscription).filter(
+                Subscription.user_id == user.id,
+                Subscription.status == "active",
+            ).all()
+            user.subscription_tier = "pro" if active else "free"
+            user.is_partner = any(entry.is_partner for entry in active)
             db.add(user)
 
         db.commit()

@@ -12,8 +12,9 @@ Coverage:
 import io
 import csv
 import pytest
+from datetime import datetime, timezone
 
-from app.models.inventory import InventoryItem, InventoryStockLedger
+from app.models.inventory import InventoryItem, InventoryStockLedger, InventoryImportJob, InventoryImportRow
 from app.services.inventory import deduct_stock, restore_stock
 
 
@@ -324,6 +325,68 @@ class TestCSVImport:
         assert row["action"] == "update"
         assert row["match_key"] == "id"
         assert row["inventory_item_id"] == item_id
+
+
+class TestImportCommitEdgeCases:
+    def test_missing_commit_job_returns_404(self, client, auth_headers):
+        resp = client.post(
+            "/api/v1/inventory/imports/00000000-0000-0000-0000-000000000000/commit",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_commit_applies_update_and_skips_invalid_rows(self, client, auth_headers, db, test_user):
+        active = InventoryItem(user_id=test_user.id, name="Old", quantity=2, status="in_stock")
+        unchanged = InventoryItem(user_id=test_user.id, name="Stable", quantity=4, status="in_stock")
+        deleted = InventoryItem(
+            user_id=test_user.id,
+            name="Deleted",
+            quantity=1,
+            status="in_stock",
+            deleted_at=datetime.now(timezone.utc),
+        )
+        db.add_all([active, unchanged, deleted])
+        db.flush()
+        job = InventoryImportJob(
+            user_id=test_user.id,
+            status="previewed",
+            source="spreadsheet",
+            filename="edges.csv",
+            total_rows=4,
+        )
+        db.add(job)
+        db.flush()
+        db.add_all([
+            InventoryImportRow(
+                job_id=job.id, row_number=2, action="update", inventory_item_id=active.id,
+                raw_data={"name": "Updated"}, mapped_data={"name": "Updated", "quantity": 5, "_import_id": "ignored"},
+            ),
+            InventoryImportRow(
+                job_id=job.id, row_number=3, action="update", inventory_item_id=deleted.id,
+                raw_data={"name": "Gone"}, mapped_data={"name": "Gone", "quantity": 2},
+            ),
+            InventoryImportRow(
+                job_id=job.id, row_number=6, action="update", inventory_item_id=unchanged.id,
+                raw_data={"name": "Stable"}, mapped_data={"name": "Stable", "quantity": 4},
+            ),
+            InventoryImportRow(
+                job_id=job.id, row_number=4, action="error", raw_data={}, mapped_data=None,
+                error_message="bad row",
+            ),
+            InventoryImportRow(
+                job_id=job.id, row_number=5, action="skip", raw_data={"name": "Skip"}, mapped_data={"name": "Skip"},
+            ),
+        ])
+        db.commit()
+
+        resp = client.post(f"/api/v1/inventory/imports/{job.id}/commit", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["rows_updated"] == 2
+        assert resp.json()["rows_skipped"] == 3
+        db.refresh(active)
+        assert active.name == "Updated" and active.quantity == 5
+        ledger = db.query(InventoryStockLedger).filter_by(inventory_item_id=active.id).one()
+        assert ledger.delta_quantity == 3 and ledger.quantity_after == 5
 
 
 class TestCSVRoundTrip:

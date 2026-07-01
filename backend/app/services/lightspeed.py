@@ -12,6 +12,8 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import HTTPException, status
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -61,20 +63,31 @@ class LightspeedService(ProviderAdapter):
             )
 
     def build_state(self, user_id: uuid.UUID) -> str:
-        nonce = secrets.token_urlsafe(8)
-        return f"{user_id}:{nonce}"
+        payload = {
+            "sub": str(user_id),
+            "purpose": "lightspeed_oauth",
+            "nonce": secrets.token_urlsafe(16),
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+        }
+        return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
     def parse_state(self, state: str) -> uuid.UUID:
         try:
-            user_id_str = state.split(":", 1)[0]
-            return uuid.UUID(user_id_str)
-        except Exception as exc:
+            payload = jwt.decode(
+                state,
+                settings.SECRET_KEY,
+                algorithms=[settings.ALGORITHM],
+            )
+            if payload.get("purpose") != "lightspeed_oauth":
+                raise ValueError("invalid state purpose")
+            return uuid.UUID(payload["sub"])
+        except (JWTError, KeyError, TypeError, ValueError) as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid Lightspeed state parameter",
             ) from exc
 
-    def authorization_url(self, state: str, scope: str = "employee:all inventory:all") -> str:
+    def authorization_url(self, state: str, scope: str = "employee:inventory employee:reports") -> str:
         self._assert_configured()
         params = urlencode(
             {
@@ -233,6 +246,103 @@ class LightspeedService(ProviderAdapter):
                     break
                 await asyncio.sleep(_RATE_LIMIT_SLEEP)
         return results
+
+    async def _write_inventory_item(
+        self,
+        access_token: str,
+        url: str,
+        item: InventoryItem,
+        *,
+        create: bool,
+    ) -> dict[str, Any]:
+        """Create or update a Lightspeed catalog item using documented writable fields."""
+        payload = {
+            "description": item.name,
+            "defaultCost": str(item.buy_price or Decimal("0.00")),
+            "customSku": item.sku or "",
+            "upc": item.upc or "",
+        }
+        if item.expected_sell_price is not None:
+            payload["Prices"] = {
+                "ItemPrice": [{"useType": "Default", "amount": str(item.expected_sell_price)}]
+            }
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await (client.post(url, headers=headers, json=payload) if create else client.put(url, headers=headers, json=payload))
+        if response.status_code >= 400:
+            logger.error("Lightspeed write error %s: %s", response.status_code, response.text)
+            raise HTTPException(status_code=502, detail="Lightspeed rejected the inventory update.")
+        data = response.json()
+        record = data.get("Item", data)
+        if not isinstance(record, dict) or not record.get("itemID"):
+            raise HTTPException(status_code=502, detail="Lightspeed returned an invalid inventory response.")
+        return record
+
+    async def push_item(self, db: Session, user_id: uuid.UUID, item_id: uuid.UUID) -> bool:
+        """Publish one Vendora item to Lightspeed; return True when newly created."""
+        token = self.get_token(db, user_id)
+        if not token:
+            raise HTTPException(status_code=404, detail="Connect Lightspeed first.")
+        item = db.query(InventoryItem).filter(
+            InventoryItem.id == item_id,
+            InventoryItem.user_id == user_id,
+            InventoryItem.deleted_at.is_(None),
+        ).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Inventory item not found.")
+        token = await self._ensure_valid_token(db, token)
+        access_token = decrypt_token(token.access_token)
+        base = self._base_url(token.account_id)
+        link = db.query(InventoryExternalLink).filter(
+            InventoryExternalLink.inventory_item_id == item.id,
+            InventoryExternalLink.user_id == user_id,
+            InventoryExternalLink.provider == "lightspeed",
+        ).first()
+        created = link is None
+        url = f"{base}/Item.json" if created else f"{base}/Item/{link.external_id}.json"
+        record = await self._write_inventory_item(access_token, url, item, create=created)
+        if link is None:
+            link = InventoryExternalLink(
+                inventory_item_id=item.id,
+                user_id=user_id,
+                provider="lightspeed",
+                external_id=str(record["itemID"]),
+            )
+        link.external_sku = record.get("systemSku") or record.get("customSku") or item.sku
+        link.last_synced_at = datetime.now(timezone.utc)
+        item.source = item.source or "lightspeed"
+        item.external_id = item.external_id or str(record["itemID"])
+        db.add_all([item, link])
+        db.commit()
+        return created
+
+    async def push_linked_items(self, db: Session, user_id: uuid.UUID) -> dict[str, int]:
+        """Push all already-linked Vendora catalog records back to Lightspeed."""
+        links = db.query(InventoryExternalLink).filter(
+            InventoryExternalLink.user_id == user_id,
+            InventoryExternalLink.provider == "lightspeed",
+        ).all()
+        updated = 0
+        errors = 0
+        for link in links:
+            try:
+                await self.push_item(db, user_id, link.inventory_item_id)
+                updated += 1
+            except HTTPException:
+                db.rollback()
+                errors += 1
+        return {"items_updated": updated, "errors_count": errors}
+
+    def disconnect(self, db: Session, user_id: uuid.UUID) -> int:
+        """Delete OAuth credentials while retaining record links for safe reconnect."""
+        token = self.get_token(db, user_id)
+        if token:
+            db.delete(token)
+            db.commit()
+        return db.query(InventoryExternalLink).filter(
+            InventoryExternalLink.user_id == user_id,
+            InventoryExternalLink.provider == "lightspeed",
+        ).count()
 
     # ------------------------------------------------------------------ #
     # Sync logic

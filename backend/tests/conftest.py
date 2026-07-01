@@ -35,6 +35,7 @@ from app.models.integration import LightspeedToken  # noqa: F401
 from app.models.square import SquareCredential  # noqa: F401
 from app.models.clover import CloverCredential  # noqa: F401
 from app.models.provider import ProviderSyncRun, ReconciliationIssue, ProviderWebhookEvent  # noqa: F401
+from app.models.auth_session import AuthSession  # noqa: F401
 from app.services.auth import hash_password, create_access_token
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]

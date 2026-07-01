@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.config import settings
 from app.services.stripe_service import (
-    is_event_processed,
+    claim_event,
+    release_event_claim,
     record_event,
     handle_payment_intent_succeeded,
     handle_subscription_event,
@@ -49,6 +50,13 @@ async def stripe_webhook(
     body = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
 
+    if settings.ENVIRONMENT == "production" and (
+        not STRIPE_AVAILABLE or not settings.STRIPE_WEBHOOK_SECRET
+    ):
+        raise HTTPException(
+            status_code=503, detail="Stripe webhook verification is not configured."
+        )
+
     # Verify webhook signature if Stripe is available (skip in test environment)
     if STRIPE_AVAILABLE and settings.STRIPE_WEBHOOK_SECRET and settings.ENVIRONMENT != "testing":
         import stripe
@@ -73,23 +81,26 @@ async def stripe_webhook(
     if event_type not in HANDLED_EVENTS:
         return {"status": "ignored", "type": event_type}
 
-    # Deduplication: check if already processed
-    if is_event_processed(db, event_id):
+    if not event_id:
+        raise HTTPException(status_code=400, detail="Webhook event is missing an id.")
+
+    # Claim before side effects. The unique event-id index prevents concurrent
+    # deliveries from entering the handler at the same time.
+    if claim_event(db, event_id, event_type) is None:
         return {"status": "already_processed", "event_id": event_id}
 
     event_data = event.get("data", {})
 
     # Route to appropriate handler
-    if event_type == "payment_intent.succeeded":
-        handle_payment_intent_succeeded(db, event_data)
-    elif event_type in (
-        "customer.subscription.created",
-        "customer.subscription.deleted",
-        "invoice.payment_failed",
-    ):
-        handle_subscription_event(db, event_type, event_data)
-
-    # Record the event as processed
-    record_event(db, event_id, event_type)
+    try:
+        if event_type == "payment_intent.succeeded":
+            handle_payment_intent_succeeded(db, event_data)
+        else:
+            handle_subscription_event(db, event_type, event_data)
+        record_event(db, event_id, event_type)
+    except Exception:
+        db.rollback()
+        release_event_claim(db, event_id)
+        raise
 
     return {"status": "processed", "type": event_type}

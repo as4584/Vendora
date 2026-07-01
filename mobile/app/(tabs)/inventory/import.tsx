@@ -24,7 +24,11 @@ export default function InventoryImportScreen() {
 
   const handlePickFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({
-      type: "text/csv",
+      type: [
+        "text/csv",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ],
       multiple: false,
       copyToCacheDirectory: true,
     });
@@ -55,10 +59,9 @@ export default function InventoryImportScreen() {
   };
 
   const handleCommit = async () => {
-    if (!preview) return;
     setCommitting(true);
     try {
-      const result = await api.commitInventoryImport(preview.job_id);
+      const result = await api.commitInventoryImport(preview!.job_id);
       Alert.alert(
         "Import committed",
         `${result.rows_created} created, ${result.rows_updated} updated, ${result.rows_skipped} skipped.`
@@ -138,6 +141,7 @@ export default function InventoryImportScreen() {
       <Card style={{ gap: SPACING.md }}>
         <SectionLabel>Read-Only Link</SectionLabel>
         <TextInput
+          accessibilityLabel="Spreadsheet link"
           value={link}
           onChangeText={setLink}
           autoCapitalize="none"

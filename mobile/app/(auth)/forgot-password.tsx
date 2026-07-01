@@ -60,6 +60,7 @@ export default function ForgotPasswordScreen() {
                     <>
                         <Text style={styles.label}>Email</Text>
                         <TextInput
+                            accessibilityLabel="Email"
                             style={styles.input}
                             placeholder="you@example.com"
                             placeholderTextColor="#555"
@@ -70,6 +71,7 @@ export default function ForgotPasswordScreen() {
                             autoCorrect={false}
                         />
                         <TouchableOpacity
+                            accessibilityRole="button"
                             style={[styles.button, loading && styles.buttonDisabled]}
                             onPress={handleSubmit}
                             disabled={loading}
@@ -84,7 +86,7 @@ export default function ForgotPasswordScreen() {
                 )}
 
                 <Link href="/(auth)/login" asChild>
-                    <TouchableOpacity style={styles.backLink}>
+                    <TouchableOpacity accessibilityRole="link" style={styles.backLink}>
                         <Text style={styles.backText}>Back to sign in</Text>
                     </TouchableOpacity>
                 </Link>

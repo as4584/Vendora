@@ -92,11 +92,35 @@ class TestSquareWebhookEndpoint:
             "data": {"type": "inventory_count", "id": str(uuid.uuid4())},
         }
 
+    def test_production_rejects_unsigned_events_when_key_missing(
+        self, client, monkeypatch
+    ):
+        monkeypatch.setattr("app.routers.integrations.settings.ENVIRONMENT", "production")
+        monkeypatch.setattr(
+            "app.routers.integrations.settings.SQUARE_WEBHOOK_SIGNATURE_KEY", ""
+        )
+
+        resp = client.post(
+            "/api/v1/integrations/square/webhook",
+            json=self._make_payload("MERCHANT", "inventory.count.updated"),
+        )
+
+        assert resp.status_code == 503
+
+
     def test_unknown_event_type_returns_200_no_sync(self, client, db, test_user):
         payload = self._make_payload("MERCHANT_UNKNOWN", "order.created")
         resp = client.post("/api/v1/integrations/square/webhook", json=payload)
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+    def test_unknown_event_without_id_or_merchant_is_accepted(self, client):
+        resp = client.post(
+            "/api/v1/integrations/square/webhook",
+            json={"type": "order.created", "data": {}},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok", "event_id": ""}
 
     def test_duplicate_event_id_returns_200_duplicate(self, client, db, test_user):
         event_id = str(uuid.uuid4())
@@ -108,6 +132,17 @@ class TestSquareWebhookEndpoint:
         assert resp.status_code == 200
         assert resp.json()["status"] == "duplicate"
 
+    def test_concurrent_claim_loser_returns_duplicate(self, client, monkeypatch):
+        monkeypatch.setattr("app.routers.integrations.is_duplicate_event", lambda *args: False)
+        monkeypatch.setattr(
+            "app.routers.integrations.claim_webhook_event",
+            lambda *args, **kwargs: (object(), False),
+        )
+        payload = self._make_payload("MERCHANT", "order.created")
+        response = client.post("/api/v1/integrations/square/webhook", json=payload)
+        assert response.status_code == 200
+        assert response.json()["status"] == "duplicate"
+
     def test_invalid_json_returns_400(self, client):
         resp = client.post(
             "/api/v1/integrations/square/webhook",
@@ -115,6 +150,13 @@ class TestSquareWebhookEndpoint:
             headers={"Content-Type": "application/json"},
         )
         assert resp.status_code == 400
+
+    def test_actionable_event_requires_event_id(self, client):
+        payload = self._make_payload("MERCHANT", "inventory.count.updated")
+        payload.pop("event_id")
+        response = client.post("/api/v1/integrations/square/webhook", json=payload)
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Webhook event is missing an id."
 
     def test_invalid_hmac_returns_403_when_key_set(self, client, monkeypatch):
         monkeypatch.setattr("app.config.settings.SQUARE_WEBHOOK_SIGNATURE_KEY", "test-key-123")
@@ -132,6 +174,10 @@ class TestSquareWebhookEndpoint:
     def test_valid_hmac_passes_when_key_set(self, client, db, test_user, monkeypatch):
         sig_key = "test-key-123"
         monkeypatch.setattr("app.config.settings.SQUARE_WEBHOOK_SIGNATURE_KEY", sig_key)
+        monkeypatch.setattr(
+            "app.config.settings.SQUARE_WEBHOOK_URL",
+            "https://vendora.example/api/v1/integrations/square/webhook",
+        )
 
         cred = SquareCredential(
             user_id=test_user.id,
@@ -144,7 +190,7 @@ class TestSquareWebhookEndpoint:
         payload_dict = self._make_payload("MERCHANT_HMAC_TEST", "catalog.version.updated")
         payload_str = json.dumps(payload_dict)
 
-        url = "http://testserver/api/v1/integrations/square/webhook"
+        url = "https://vendora.example/api/v1/integrations/square/webhook"
         mac = hmac.new(
             sig_key.encode(),
             (url + payload_str).encode(),
@@ -201,6 +247,22 @@ class TestSquareWebhookEndpoint:
         assert evt is not None
         assert evt.processed is False
 
+    def test_sync_failure_is_recorded_and_acknowledged(self, client, db, test_user):
+        cred = SquareCredential(
+            user_id=test_user.id,
+            merchant_id="MERCHANT_FAILED_SYNC",
+            access_token=encrypt_token("tok"),
+        )
+        db.add(cred)
+        db.commit()
+        payload = self._make_payload("MERCHANT_FAILED_SYNC", "inventory.count.updated")
+        with patch.object(SquareService, "sync", new=AsyncMock(side_effect=RuntimeError("sync failed"))):
+            resp = client.post("/api/v1/integrations/square/webhook", json=payload)
+        assert resp.status_code == 200
+        evt = db.query(ProviderWebhookEvent).filter_by(event_id=payload["event_id"]).one()
+        assert evt.processed is False
+        assert evt.error == "sync failed"
+
 
 # ─── Sync retry endpoint ──────────────────────────────────────────────────────
 
@@ -254,7 +316,7 @@ class TestSyncRetry:
 
     def test_retry_requires_auth(self, client):
         resp = client.post(f"/api/v1/integrations/sync-runs/{uuid.uuid4()}/retry")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 # ─── Reconciliation resolution improvements ───────────────────────────────────
@@ -391,7 +453,7 @@ class TestProviderHealth:
 
     def test_health_requires_auth(self, client):
         resp = client.get("/api/v1/integrations/health")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 # ─── Square payment import ────────────────────────────────────────────────────

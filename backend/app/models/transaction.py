@@ -28,6 +28,14 @@ class Transaction(Base, TimestampMixin):
         Index("ix_transactions_item_id", "item_id"),
         Index("ix_transactions_created_at", "created_at"),
         Index("ix_transactions_invoice_id", "invoice_id"),
+        Index(
+            "uq_transactions_user_source_external",
+            "user_id",
+            "source",
+            "external_reference_id",
+            unique=True,
+            postgresql_where=sa.text("source IS NOT NULL AND external_reference_id IS NOT NULL"),
+        ),
     )
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)

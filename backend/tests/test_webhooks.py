@@ -5,6 +5,8 @@ No actual Stripe API calls — tests the processing logic.
 """
 import json
 import uuid
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +21,37 @@ def _make_event(event_type: str, data: dict) -> dict:
 
 
 class TestWebhookDeduplication:
+    def test_invalid_json_is_rejected(self, client):
+        response = client.post("/api/v1/webhooks/stripe", content=b"not-json")
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid JSON payload"
+
+    def test_signature_verification_success_and_failure(self, client, monkeypatch):
+        class SignatureVerificationError(Exception):
+            pass
+
+        event = _make_event("some.random.event", {})
+        webhook = SimpleNamespace(construct_event=lambda *args: event)
+        fake_stripe = SimpleNamespace(
+            Webhook=webhook,
+            error=SimpleNamespace(SignatureVerificationError=SignatureVerificationError),
+        )
+        monkeypatch.setitem(sys.modules, "stripe", fake_stripe)
+        monkeypatch.setattr("app.routers.webhooks.STRIPE_AVAILABLE", True)
+        monkeypatch.setattr("app.routers.webhooks.settings.STRIPE_WEBHOOK_SECRET", "secret")
+        monkeypatch.setattr("app.routers.webhooks.settings.ENVIRONMENT", "development")
+        response = client.post("/api/v1/webhooks/stripe", content=b"signed", headers={"stripe-signature": "sig"})
+        assert response.status_code == 200
+        assert response.json()["status"] == "ignored"
+
+        def reject(*args):
+            raise SignatureVerificationError()
+
+        webhook.construct_event = reject
+        response = client.post("/api/v1/webhooks/stripe", content=b"signed", headers={"stripe-signature": "bad"})
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid signature"
+
     def test_event_processed_once(self, client):
         """Same event ID cannot be processed twice."""
         event = _make_event("payment_intent.succeeded", {
@@ -44,6 +77,41 @@ class TestWebhookDeduplication:
                            content=json.dumps(event))
         assert resp.status_code == 200
         assert resp.json()["status"] == "ignored"
+
+    def test_production_rejects_unsigned_events_when_secret_missing(
+        self, client, monkeypatch
+    ):
+        monkeypatch.setattr("app.routers.webhooks.settings.ENVIRONMENT", "production")
+        monkeypatch.setattr("app.routers.webhooks.settings.STRIPE_WEBHOOK_SECRET", "")
+        monkeypatch.setattr("app.routers.webhooks.STRIPE_AVAILABLE", False)
+        event = _make_event("payment_intent.succeeded", {"object": {}})
+
+        resp = client.post("/api/v1/webhooks/stripe", content=json.dumps(event))
+
+        assert resp.status_code == 503
+
+    def test_handled_event_requires_provider_event_id(self, client):
+        response = client.post(
+            "/api/v1/webhooks/stripe",
+            content=json.dumps({"type": "payment_intent.succeeded", "data": {"object": {}}}),
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Webhook event is missing an id."
+
+    def test_failed_handler_releases_claim_for_stripe_retry(self, client, db, monkeypatch):
+        from app.models.subscription import WebhookEvent
+
+        event = _make_event("payment_intent.succeeded", {"object": {}})
+        monkeypatch.setattr(
+            "app.routers.webhooks.handle_payment_intent_succeeded",
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+
+        with pytest.raises(RuntimeError, match="boom"):
+            client.post("/api/v1/webhooks/stripe", content=json.dumps(event))
+
+        assert db.query(WebhookEvent).filter_by(event_id=event["id"]).first() is None
+
 
 
 class TestPaymentIntentWebhook:
@@ -312,3 +380,42 @@ class TestSubscriptionWebhook:
         # User should be free again
         me = client.get("/api/v1/auth/me", headers=auth_headers).json()
         assert me["subscription_tier"] == "free"
+
+    def test_payment_failed_uses_invoice_subscription_id(
+        self, client, db, test_user
+    ):
+        from app.models.subscription import Subscription
+
+        sub_id = f"sub_{uuid.uuid4().hex}"
+        create_event = _make_event(
+            "customer.subscription.created",
+            {
+                "object": {
+                    "id": sub_id,
+                    "metadata": {"user_id": str(test_user.id)},
+                }
+            },
+        )
+        client.post("/api/v1/webhooks/stripe", content=json.dumps(create_event))
+
+        failed_event = _make_event(
+            "invoice.payment_failed",
+            {
+                "object": {
+                    "id": f"in_{uuid.uuid4().hex}",
+                    "subscription": sub_id,
+                    "metadata": {},
+                }
+            },
+        )
+        resp = client.post(
+            "/api/v1/webhooks/stripe", content=json.dumps(failed_event)
+        )
+
+        subscription = (
+            db.query(Subscription)
+            .filter(Subscription.stripe_subscription_id == sub_id)
+            .one()
+        )
+        assert resp.status_code == 200
+        assert subscription.status == "past_due"

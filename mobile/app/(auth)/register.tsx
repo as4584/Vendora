@@ -69,6 +69,7 @@ export default function RegisterScreen() {
                 <View style={styles.form}>
                     <Text style={styles.label}>Business Name (optional)</Text>
                     <TextInput
+                        accessibilityLabel="Business Name"
                         style={styles.input}
                         placeholder="My Resale Shop"
                         placeholderTextColor="#555"
@@ -78,6 +79,7 @@ export default function RegisterScreen() {
 
                     <Text style={styles.label}>Email</Text>
                     <TextInput
+                        accessibilityLabel="Email"
                         style={styles.input}
                         placeholder="you@example.com"
                         placeholderTextColor="#555"
@@ -90,6 +92,7 @@ export default function RegisterScreen() {
 
                     <Text style={styles.label}>Password</Text>
                     <TextInput
+                        accessibilityLabel="Password"
                         style={styles.input}
                         placeholder="Min 8 characters"
                         placeholderTextColor="#555"
@@ -100,6 +103,7 @@ export default function RegisterScreen() {
 
                     <Text style={styles.label}>Confirm Password</Text>
                     <TextInput
+                        accessibilityLabel="Confirm Password"
                         style={styles.input}
                         placeholder="Re-enter password"
                         placeholderTextColor="#555"
@@ -109,6 +113,7 @@ export default function RegisterScreen() {
                     />
 
                     <TouchableOpacity
+                        accessibilityRole="button"
                         style={[styles.button, loading && styles.buttonDisabled]}
                         onPress={handleRegister}
                         disabled={loading}
@@ -126,7 +131,7 @@ export default function RegisterScreen() {
                     </View>
 
                     <Link href="/(auth)/login" asChild>
-                        <TouchableOpacity style={styles.linkContainer}>
+                        <TouchableOpacity accessibilityRole="link" style={styles.linkContainer}>
                             <Text style={styles.linkText}>
                                 Already have an account?{" "}
                                 <Text style={styles.linkHighlight}>Sign In</Text>

@@ -32,3 +32,26 @@ class DashboardResponse(BaseModel):
     # Transactions
     total_transactions: int
     total_refunds: int
+
+
+class AnalyticsPoint(BaseModel):
+    date: str
+    revenue: Decimal
+    net: Decimal
+    transactions: int
+
+
+class CategoryPerformance(BaseModel):
+    category: str
+    revenue: Decimal
+    units_sold: int
+
+
+class AdvancedAnalyticsResponse(BaseModel):
+    period_days: int
+    revenue: Decimal
+    net: Decimal
+    average_order_value: Decimal
+    sell_through_rate: Decimal
+    daily: list[AnalyticsPoint]
+    categories: list[CategoryPerformance]

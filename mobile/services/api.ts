@@ -5,11 +5,39 @@
  * All endpoints go through /api/v1/.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://vendora.lexmakesit.com/api/v1";
 
 const TOKEN_KEY = "vendora_access_token";
+const REFRESH_TOKEN_KEY = "vendora_refresh_token";
+
+async function secureStorageAvailable(): Promise<boolean> {
+  return Platform.OS !== "web" && (await SecureStore.isAvailableAsync());
+}
+
+async function readSecret(key: string): Promise<string | null> {
+  if (await secureStorageAvailable()) return SecureStore.getItemAsync(key);
+  return AsyncStorage.getItem(key);
+}
+
+async function writeSecret(key: string, value: string): Promise<void> {
+  if (await secureStorageAvailable()) {
+    await SecureStore.setItemAsync(key, value, {
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    });
+    await AsyncStorage.removeItem(key);
+    return;
+  }
+  await AsyncStorage.setItem(key, value);
+}
+
+async function deleteSecret(key: string): Promise<void> {
+  if (await secureStorageAvailable()) await SecureStore.deleteItemAsync(key);
+  await AsyncStorage.removeItem(key);
+}
 
 // ─── Global 401 handler ─────────────────────────────
 // Set by AuthProvider so any expired-token API call auto-signs out.
@@ -23,22 +51,62 @@ export function onUnauthorized(handler: UnauthorizedHandler): void {
 // ─── Token Management ────────────────────────────────
 
 export async function getToken(): Promise<string | null> {
-  return AsyncStorage.getItem(TOKEN_KEY);
+  return readSecret(TOKEN_KEY);
+}
+
+export async function getRefreshToken(): Promise<string | null> {
+  return readSecret(REFRESH_TOKEN_KEY);
 }
 
 export async function setToken(token: string): Promise<void> {
-  await AsyncStorage.setItem(TOKEN_KEY, token);
+  await writeSecret(TOKEN_KEY, token);
+}
+
+export async function setSession(accessToken: string, refreshToken: string): Promise<void> {
+  await Promise.all([
+    writeSecret(TOKEN_KEY, accessToken),
+    writeSecret(REFRESH_TOKEN_KEY, refreshToken),
+  ]);
 }
 
 export async function clearToken(): Promise<void> {
-  await AsyncStorage.removeItem(TOKEN_KEY);
+  await Promise.all([deleteSecret(TOKEN_KEY), deleteSecret(REFRESH_TOKEN_KEY)]);
 }
 
 // ─── HTTP Helpers ────────────────────────────────────
 
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const refreshToken = await getRefreshToken();
+    if (!refreshToken) return false;
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!response.ok) return false;
+      const session = (await response.json()) as TokenResponse;
+      await setSession(session.access_token, session.refresh_token);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
+}
+
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  allowRefresh = true,
 ): Promise<T> {
   const token = await getToken();
   const isFormData =
@@ -88,7 +156,11 @@ async function request<T>(
         : data?.detail?.message || `Request failed (${response.status})`;
     if (response.status === 401) {
       // Token expired or invalid — clear storage and notify auth context.
-      clearToken().catch(() => {});
+      if (allowRefresh && (!path.startsWith("/auth/") || path === "/auth/me")) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) return request<T>(path, options, false);
+      }
+      await clearToken();
       _unauthorizedHandler?.();
     }
     throw new ApiError(message, response.status, data?.detail);
@@ -123,6 +195,7 @@ export interface User {
 
 export interface TokenResponse {
   access_token: string;
+  refresh_token: string;
   token_type: string;
 }
 
@@ -148,6 +221,28 @@ export async function login(
   return request<TokenResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function logoutSession(): Promise<void> {
+  const refreshToken = await getRefreshToken();
+  if (refreshToken) {
+    try {
+      await request<{ message: string }>("/auth/logout", {
+        method: "POST",
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    } catch {
+      // Local credential removal remains authoritative when offline.
+    }
+  }
+  await clearToken();
+}
+
+export async function deleteAccount(password: string): Promise<{ message: string }> {
+  return request<{ message: string }>("/auth/account", {
+    method: "DELETE",
+    body: JSON.stringify({ password, confirmation: "DELETE" }),
   });
 }
 
@@ -764,6 +859,35 @@ export async function getTiers(): Promise<TiersResponse> {
   return request<TiersResponse>("/features/tiers");
 }
 
+export interface SubscriptionStatus {
+  tier: string;
+  is_partner: boolean;
+  status: string;
+  current_period_end: string | null;
+  managed_billing: boolean;
+}
+
+export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
+  return request<SubscriptionStatus>("/subscriptions/me");
+}
+
+export async function createSubscriptionCheckout(plan: "pro" | "partner"): Promise<{ checkout_url: string; session_id: string }> {
+  return request("/subscriptions/checkout", { method: "POST", body: JSON.stringify({ plan }) });
+}
+
+export async function createBillingPortal(): Promise<{ portal_url: string }> {
+  return request("/subscriptions/portal", { method: "POST" });
+}
+
+export async function submitSupportRequest(subject: string, message: string): Promise<{
+  id: string;
+  status: string;
+  priority: string;
+  email_queued: boolean;
+}> {
+  return request("/support", { method: "POST", body: JSON.stringify({ subject, message }) });
+}
+
 // ─── Export ──────────────────────────────────────────
 
 export async function exportInventoryCSV(): Promise<string> {
@@ -818,6 +942,10 @@ export interface MarketPriceSource {
   source: string;
   price: number | null;
   label: string;
+  low?: number;
+  high?: number;
+  avg?: number;
+  count?: number;
 }
 
 export interface MarketPriceResult {
@@ -840,7 +968,7 @@ export interface MarketPriceResult {
 
 export interface PricingSuggestion {
   item_id: string;
-  suggested_price: number;
+  suggested_price: number | null;
   reason: string;
   confidence: "high" | "medium" | "low";
   basis: string;
@@ -859,6 +987,20 @@ export async function getPricingSuggestion(
   itemId: string
 ): Promise<PricingSuggestion> {
   return request<PricingSuggestion>(`/inventory/${itemId}/pricing-suggestion`);
+}
+
+export interface AdvancedAnalytics {
+  period_days: number;
+  revenue: string;
+  net: string;
+  average_order_value: string;
+  sell_through_rate: string;
+  daily: { date: string; revenue: string; net: string; transactions: number }[];
+  categories: { category: string; revenue: string; units_sold: number }[];
+}
+
+export async function getAdvancedAnalytics(days = 30): Promise<AdvancedAnalytics> {
+  return request<AdvancedAnalytics>(`/dashboard/advanced?days=${days}`);
 }
 
 // ─── Lightspeed Integration ──────────────────────────
@@ -889,6 +1031,18 @@ export async function triggerLightspeedSync(): Promise<{
   errors_count: number;
 }> {
   return request("/integrations/lightspeed/sync", { method: "POST" });
+}
+
+export async function pushLightspeedInventory(): Promise<{ status: string; items_created: number; items_updated: number; errors_count: number }> {
+  return request("/integrations/lightspeed/push", { method: "POST" });
+}
+
+export async function pushItemToLightspeed(itemId: string): Promise<{ status: string; items_created: number; items_updated: number; errors_count: number }> {
+  return request(`/integrations/lightspeed/items/${itemId}/push`, { method: "POST" });
+}
+
+export async function disconnectLightspeed(): Promise<{ disconnected: boolean; links_retained: number }> {
+  return request("/integrations/lightspeed", { method: "DELETE" });
 }
 
 // ─── Square Integration ───────────────────────────────

@@ -6,13 +6,15 @@ Provides aggregated business metrics per ROADMAP Sprint 2:
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.user import User
-from app.schemas.dashboard import DashboardResponse
+from app.schemas.dashboard import DashboardResponse, AdvancedAnalyticsResponse
+from app.models.inventory import InventoryItem
+from app.models.transaction import Transaction
 from app.services.profit import (
     get_revenue,
     get_refund_total,
@@ -71,4 +73,70 @@ def get_dashboard(
         items_sold=counts["items_sold"],
         total_transactions=txn_counts["total_transactions"],
         total_refunds=txn_counts["total_refunds"],
+    )
+
+
+@router.get("/advanced", response_model=AdvancedAnalyticsResponse)
+def get_advanced_analytics(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return Pro analytics with daily trends and category performance."""
+    if current_user.subscription_tier != "pro":
+        raise HTTPException(status_code=403, detail="Advanced analytics requires Pro.")
+    days = max(7, min(days, 90))
+    start = datetime.now(timezone.utc) - timedelta(days=days - 1)
+    transactions = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.created_at >= start,
+        Transaction.status.in_(["completed", "refunded"]),
+    ).all()
+
+    daily_map: dict[str, dict] = {}
+    category_map: dict[str, dict] = {}
+    sale_revenue = Decimal("0")
+    sale_net = Decimal("0")
+    sale_count = 0
+    item_ids = {txn.item_id for txn in transactions if txn.item_id}
+    items = db.query(InventoryItem).filter(InventoryItem.id.in_(item_ids)).all() if item_ids else []
+    item_categories = {item.id: item.category or "Uncategorized" for item in items}
+
+    for transaction in transactions:
+        date_key = transaction.created_at.date().isoformat()
+        bucket = daily_map.setdefault(date_key, {"revenue": Decimal("0"), "net": Decimal("0"), "transactions": 0})
+        sign = Decimal("-1") if transaction.is_refund else Decimal("1")
+        bucket["revenue"] += sign * transaction.gross_amount
+        bucket["net"] += transaction.net_amount
+        bucket["transactions"] += 1
+        if not transaction.is_refund:
+            sale_revenue += transaction.gross_amount
+            sale_net += transaction.net_amount
+            sale_count += 1
+            category = item_categories.get(transaction.item_id, "Uncategorized")
+            cat = category_map.setdefault(category, {"revenue": Decimal("0"), "units_sold": 0})
+            cat["revenue"] += transaction.gross_amount
+            cat["units_sold"] += transaction.quantity
+
+    daily = []
+    for offset in range(days):
+        date_key = (start + timedelta(days=offset)).date().isoformat()
+        bucket = daily_map.get(date_key, {"revenue": Decimal("0"), "net": Decimal("0"), "transactions": 0})
+        daily.append({"date": date_key, **bucket})
+
+    counts = get_item_counts(db, current_user.id)
+    total_items = counts["total_items"]
+    sell_through = (Decimal(counts["items_sold"]) / Decimal(total_items) * 100) if total_items else Decimal("0")
+    categories = [
+        {"category": category, **metrics}
+        for category, metrics in sorted(category_map.items(), key=lambda entry: entry[1]["revenue"], reverse=True)
+    ]
+    return AdvancedAnalyticsResponse(
+        period_days=days,
+        revenue=sale_revenue,
+        net=sale_net,
+        average_order_value=sale_revenue / sale_count if sale_count else Decimal("0"),
+        sell_through_rate=sell_through,
+        daily=daily,
+        categories=categories,
     )

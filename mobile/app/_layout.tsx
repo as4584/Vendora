@@ -11,19 +11,20 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 function RootLayoutNav() {
     const { isAuthenticated, isLoading } = useAuth();
     const segments = useSegments();
-    const router = useRouter();
+    const { replace } = useRouter();
 
     useEffect(() => {
         if (isLoading) return;
 
         const inAuthGroup = segments[0] === "(auth)";
+        const inPublicSeller = segments[0] === "seller";
 
-        if (!isAuthenticated && !inAuthGroup) {
-            router.replace("/(auth)/login");
+        if (!isAuthenticated && !inAuthGroup && !inPublicSeller) {
+            replace("/(auth)/login");
         } else if (isAuthenticated && inAuthGroup) {
-            router.replace("/(tabs)/dashboard");
+            replace("/(tabs)/dashboard");
         }
-    }, [isAuthenticated, isLoading, segments]);
+    }, [isAuthenticated, isLoading, replace, segments]);
 
     if (isLoading) {
         return (

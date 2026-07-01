@@ -51,10 +51,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     const signIn = async (email: string, password: string) => {
-        const { access_token } = await api.login(email, password);
-        await api.setToken(access_token);
-        const user = await api.getMe();
-        setState({ user, token: access_token, isLoading: false, isAuthenticated: true });
+        const { access_token, refresh_token } = await api.login(email, password);
+        await api.setSession(access_token, refresh_token);
+        try {
+            const user = await api.getMe();
+            setState({ user, token: access_token, isLoading: false, isAuthenticated: true });
+        } catch (error) {
+            // Do not leave a partially established session in storage when the
+            // follow-up profile request fails.
+            await api.clearToken();
+            throw error;
+        }
     };
 
     const signUp = async (email: string, password: string, businessName?: string) => {
@@ -63,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signOut = async () => {
-        await api.clearToken();
+        await api.logoutSession();
         setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
     };
 

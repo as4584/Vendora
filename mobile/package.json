@@ -8,55 +8,86 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "jest",
+    "test:ci": "jest --runInBand --coverage",
+    "typecheck": "tsc --noEmit",
+    "build:web": "expo export --platform web",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "lint": "expo lint"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "~54.0.33",
-    "expo-background-fetch": "~14.0.9",
-    "expo-camera": "~17.0.10",
-    "expo-constants": "~18.0.13",
-    "expo-document-picker": "~14.0.8",
-    "expo-file-system": "^19.0.21",
-    "expo-image-picker": "~17.0.10",
-    "expo-linking": "~8.0.11",
-    "expo-router": "~6.0.23",
-    "expo-sharing": "^14.0.8",
-    "expo-status-bar": "~3.0.9",
-    "expo-task-manager": "~14.0.9",
-    "expo-updates": "~29.0.16",
-    "expo-web-browser": "~15.0.10",
-    "react": "19.1.0",
-    "react-dom": "^19.1.0",
-    "react-native": "0.81.5",
-    "react-native-gesture-handler": "~2.28.0",
-    "react-native-reanimated": "~4.1.1",
-    "react-native-safe-area-context": "~5.6.0",
-    "react-native-screens": "~4.16.0",
+    "expo": "~56.0.12",
+    "expo-background-fetch": "~56.0.19",
+    "expo-camera": "~56.0.8",
+    "expo-constants": "~56.0.18",
+    "expo-document-picker": "~56.0.4",
+    "expo-file-system": "~56.0.8",
+    "expo-image-picker": "~56.0.18",
+    "expo-linking": "~56.0.14",
+    "expo-router": "~56.2.11",
+    "expo-secure-store": "~56.0.4",
+    "expo-sharing": "~56.0.18",
+    "expo-splash-screen": "~56.0.10",
+    "expo-status-bar": "~56.0.4",
+    "expo-task-manager": "~56.0.19",
+    "expo-updates": "~56.0.19",
+    "expo-web-browser": "~56.0.5",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-gesture-handler": "~2.31.1",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
     "react-native-web": "^0.21.0",
-    "react-native-worklets": "^0.5.1"
+    "react-native-worklets": "0.8.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "@testing-library/react-native": "~13.0.0",
-    "@types/react": "~19.1.0",
+    "@testing-library/react-native": "^13.3.3",
+    "@types/react": "~19.2.14",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~56.0.4",
     "jest": "^29.7.0",
-    "jest-expo": "~54.0.0",
+    "jest-expo": "~56.0.5",
+    "react-test-renderer": "^19.2.3",
     "serve": "^14.2.6",
-    "typescript": "~5.9.2"
+    "typescript": "~6.0.3"
   },
   "jest": {
     "preset": "jest-expo",
     "testMatch": [
       "**/__tests__/**/*.test.[jt]s?(x)"
     ],
+    "collectCoverageFrom": [
+      "app/**/*.{ts,tsx}",
+      "components/**/*.{ts,tsx}",
+      "context/**/*.{ts,tsx}",
+      "services/**/*.{ts,tsx}",
+      "tasks/**/*.{ts,tsx}",
+      "theme/**/*.{ts,tsx}",
+      "utils/**/*.{ts,tsx}",
+      "!**/*.d.ts"
+    ],
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)"
     ],
     "moduleNameMapper": {
-      "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/async-storage.js"
+      "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/async-storage.js",
+      "^expo-secure-store$": "<rootDir>/__mocks__/secure-store.js"
+    },
+    "coverageThreshold": {
+      "global": {
+        "statements": 100,
+        "lines": 100,
+        "functions": 100,
+        "branches": 87
+      }
     }
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   },
   "private": true
 }

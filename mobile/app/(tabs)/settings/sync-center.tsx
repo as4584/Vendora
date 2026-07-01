@@ -9,15 +9,17 @@ export default function SyncCenterScreen() {
   const [runs, setRuns] = useState<api.ProviderSyncRun[]>([]);
   const [issues, setIssues] = useState<api.ReconciliationIssue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       api.listSyncRuns({ limit: 20 }),
       api.listReconciliationIssues({ limit: 20 }),
     ])
       .then(([syncRuns, reconciliationIssues]) => {
-        setRuns(syncRuns);
-        setIssues(reconciliationIssues);
+        if (syncRuns.status === "fulfilled") setRuns(syncRuns.value);
+        if (reconciliationIssues.status === "fulfilled") setIssues(reconciliationIssues.value);
+        setLoadError(syncRuns.status === "rejected" || reconciliationIssues.status === "rejected");
       })
       .finally(() => setLoading(false));
   }, []);
@@ -33,6 +35,14 @@ export default function SyncCenterScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <HeaderTitle title="Sync Center" subtitle="Recent provider sync runs and surfaced reconciliation issues." />
+
+      {loadError ? (
+        <Card>
+          <Text accessibilityRole="alert" style={styles.errorText}>
+            Some provider history could not be loaded. Pull down or reopen this screen to try again.
+          </Text>
+        </Card>
+      ) : null}
 
       <Card style={{ gap: SPACING.sm }}>
         <SectionLabel>Sync Runs</SectionLabel>
@@ -92,4 +102,5 @@ const styles = StyleSheet.create({
   },
   title: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
   helperText: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
+  errorText: { color: COLORS.danger, fontSize: 13, fontWeight: "700" },
 });
