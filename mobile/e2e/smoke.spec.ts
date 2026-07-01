@@ -126,7 +126,7 @@ test.describe('Completed product surfaces', () => {
     await expect(page.getByText('Current access')).toBeVisible();
     await openSettings();
     await page.getByText('Advanced Analytics', { exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Advanced Analytics' })).toBeVisible();
+    await expect(page.getByTestId('analytics-content').getByRole('heading', { name: 'Advanced Analytics' })).toBeVisible();
     await openSettings();
     await page.getByText('Support', { exact: true }).click();
     await expect(page.getByText('Vendora Support')).toBeVisible();
