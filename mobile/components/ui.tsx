@@ -8,7 +8,125 @@ import {
   TextStyle,
   ScrollView,
 } from "react-native";
-import { COLORS, RADII, SPACING } from "../theme/tokens";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Polyline, Polygon, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
+import { COLORS, GRADIENTS, RADII, SPACING } from "../theme/tokens";
+
+export type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+export function Icon({ name, size = 20, color = COLORS.text }: { name: IconName; size?: number; color?: string }) {
+  return <Ionicons name={name} size={size} color={color} />;
+}
+
+/** Rounded-square icon badge used in action tiles and list rows. */
+export function IconCircle({
+  name,
+  size = 38,
+  tone = "primary",
+  color,
+}: {
+  name: IconName;
+  size?: number;
+  tone?: "primary" | "muted";
+  color?: string;
+}) {
+  const bg = tone === "primary" ? COLORS.primarySoft : COLORS.cardAlt;
+  const fg = color ?? (tone === "primary" ? COLORS.primaryBright : COLORS.textMuted);
+  return (
+    <View style={[styles.iconCircle, { width: size, height: size, borderRadius: size * 0.32, backgroundColor: bg }]}>
+      <Icon name={name} size={size * 0.5} color={fg} />
+    </View>
+  );
+}
+
+/** Gradient panel (purple hero card). */
+export function GradientCard({
+  children,
+  style,
+  colors = GRADIENTS.hero,
+}: {
+  children: React.ReactNode;
+  style?: ViewStyle | ViewStyle[];
+  colors?: readonly [string, string, ...string[]];
+}) {
+  return (
+    <LinearGradient colors={colors as any} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.gradientCard, style]}>
+      {children}
+    </LinearGradient>
+  );
+}
+
+/** Lightweight SVG sparkline with a soft gradient fill under the line. */
+export function Sparkline({
+  data,
+  width = 300,
+  height = 70,
+  stroke = "#FFFFFF",
+  fillOpacity = 0.18,
+}: {
+  data: number[];
+  width?: number;
+  height?: number;
+  stroke?: string;
+  fillOpacity?: number;
+}) {
+  const pts = data.length > 1 ? data : [0, 0];
+  const min = Math.min(...pts);
+  const max = Math.max(...pts);
+  const span = max - min || 1;
+  const pad = 4;
+  const stepX = (width - pad * 2) / (pts.length - 1);
+  const coords = pts.map((v, i) => {
+    const x = pad + i * stepX;
+    const y = pad + (height - pad * 2) * (1 - (v - min) / span);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const line = coords.join(" ");
+  const area = `${pad},${height} ${line} ${(width - pad).toFixed(1)},${height}`;
+  return (
+    <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+      <Defs>
+        <SvgGradient id="spark" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={stroke} stopOpacity={fillOpacity} />
+          <Stop offset="1" stopColor={stroke} stopOpacity={0} />
+        </SvgGradient>
+      </Defs>
+      <Polygon points={area} fill="url(#spark)" />
+      <Polyline points={line} fill="none" stroke={stroke} strokeWidth={2.4} strokeLinejoin="round" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+/** Compact stat card: label, big value, optional delta chip. */
+export function StatCard({
+  label,
+  value,
+  delta,
+  deltaTone = "up",
+  icon,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  delta?: string;
+  deltaTone?: "up" | "down" | "muted";
+  icon?: IconName;
+  onPress?: () => void;
+}) {
+  const deltaColor = deltaTone === "up" ? COLORS.success : deltaTone === "down" ? COLORS.danger : COLORS.textSoft;
+  const Wrap: any = onPress ? TouchableOpacity : View;
+  return (
+    <Wrap style={styles.statCard} onPress={onPress} activeOpacity={0.85}>
+      <View style={styles.statTopRow}>
+        <Text style={styles.statLabel}>{label}</Text>
+        {icon ? <Icon name={icon} size={15} color={COLORS.textSoft} /> : null}
+      </View>
+      <Text style={styles.statValue}>{value}</Text>
+      {delta ? <Text style={[styles.statDelta, { color: deltaColor }]}>{delta}</Text> : null}
+    </Wrap>
+  );
+}
 
 export function Card({
   children,
@@ -234,6 +352,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: SPACING.md,
+  },
+  iconCircle: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gradientCard: {
+    borderRadius: RADII.lg + 2,
+    padding: SPACING.lg,
+    overflow: "hidden",
+  },
+  statCard: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: RADII.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    padding: SPACING.md,
+    gap: 6,
+  },
+  statTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  statLabel: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  statValue: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
+  statDelta: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   sectionLabel: {
     color: COLORS.textSoft,

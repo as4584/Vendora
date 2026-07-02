@@ -45,7 +45,7 @@ jest.mock('react-native-safe-area-context', () => {
     useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 4, left: 0 }),
   };
 });
-jest.mock('../components/ui', () => ({ TabGlyph: () => null }));
+jest.mock('../components/ui', () => ({ TabGlyph: () => null, Icon: () => null }));
 
 describe('router layouts', () => {
   beforeEach(() => {
@@ -91,14 +91,15 @@ describe('router layouts', () => {
 
   it('registers visible and hidden tab routes with safe-area padding', () => {
     render(<TabsLayout />);
-    expect(mockTabsScreen).toHaveBeenCalledTimes(12);
+    expect(mockTabsScreen).toHaveBeenCalledTimes(13);
     const routeNames = mockTabsScreen.mock.calls.map(([props]) => props.name);
     expect(routeNames).toEqual([
       'dashboard',
       'inventory/index',
-      'inventory/sale',
-      'inventory/invoices',
       'inventory/add',
+      'inventory/sale',
+      'more',
+      'inventory/invoices',
       'settings',
       'inventory/[id]',
       'inventory/import',
@@ -109,6 +110,12 @@ describe('router layouts', () => {
     ]);
     const hidden = mockTabsScreen.mock.calls.find(([props]) => props.name === 'inventory/[id]')?.[0];
     expect(hidden.options.href).toBeNull();
+    // Invoices and Settings are now reachable via the "More" menu, not the tab bar.
+    const invoices = mockTabsScreen.mock.calls.find(([props]) => props.name === 'inventory/invoices')?.[0];
+    expect(invoices.options.href).toBeNull();
+    // The Add tab renders a custom floating FAB button instead of a standard icon.
+    const add = mockTabsScreen.mock.calls.find(([props]) => props.name === 'inventory/add')?.[0];
+    expect(add.options.tabBarButton({ onPress: jest.fn() })).toBeTruthy();
     const dashboard = mockTabsScreen.mock.calls[0][0];
     expect(dashboard.options.tabBarIcon({ focused: true })).toBeTruthy();
   });

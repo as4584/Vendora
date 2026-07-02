@@ -26,6 +26,7 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
+import { ScannerOverlay } from "../../../components/ScannerOverlay";
 
 const CATEGORY_PREFIXES: Record<string, string> = {
     sneakers: "SNK",
@@ -599,17 +600,7 @@ export default function AddItemScreen() {
                         barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] }}
                         onBarcodeScanned={scanned ? undefined : onBarcodeScanned}
                     />
-                    <View style={styles.scannerOverlay}>
-                        <View style={styles.scannerFrame} />
-                        <Text style={styles.scannerHint}>Point at a barcode to scan</Text>
-                        <TouchableOpacity
-                            accessibilityRole="button"
-                            style={styles.cancelScan}
-                            onPress={() => setScannerOpen(false)}
-                        >
-                            <Text style={styles.cancelScanText}>Cancel</Text>
-                        </TouchableOpacity>
-                    </View>
+                    <ScannerOverlay hint="Point at a barcode to scan" onCancel={() => setScannerOpen(false)} />
                 </View>
             </Modal>
         </KeyboardAvoidingView>

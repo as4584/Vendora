@@ -29,7 +29,7 @@ jest.mock('expo-router', () => ({
 
 jest.mock('../services/api', () => ({
   getDashboard: jest.fn(),
-  getProviderHealth: jest.fn(),
+  getAdvancedAnalytics: jest.fn(),
   listItems: jest.fn(),
   exportInventoryCSV: jest.fn(),
   exportInventoryWarehouseCSV: jest.fn(),
@@ -39,6 +39,15 @@ jest.mock('../services/api', () => ({
   triggerLightspeedSync: jest.fn(),
   triggerSquareSync: jest.fn(),
   triggerCloverSync: jest.fn(),
+}));
+
+jest.mock('../context/auth', () => ({
+  useAuth: () => ({ user: { business_name: 'Alex Store' } }),
+}));
+
+jest.mock('react-native-safe-area-context', () => ({
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
 jest.mock('../utils/fileActions', () => ({
@@ -66,6 +75,21 @@ const MOCK_DASHBOARD: apiMock.Dashboard = {
   total_refunds: 0,
 };
 
+const MOCK_ANALYTICS: apiMock.AdvancedAnalytics = {
+  period_days: 30,
+  revenue: '1500.00',
+  net: '600.00',
+  average_order_value: '75.00',
+  sell_through_rate: '0.4',
+  daily: Array.from({ length: 14 }, (_, i) => ({
+    date: `2026-06-${String(i + 1).padStart(2, '0')}`,
+    revenue: String(100 + i * 5),
+    net: String(40 + i * 2),
+    transactions: 1,
+  })),
+  categories: [],
+};
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -80,7 +104,7 @@ function setupMocks({
   dashSuccess = true,
 }: { dashSuccess?: boolean } = {}) {
   const getDashboard = apiMock.getDashboard as jest.Mock;
-  const getProviderHealth = apiMock.getProviderHealth as jest.Mock;
+  const getAdvancedAnalytics = apiMock.getAdvancedAnalytics as jest.Mock;
   const listItems = apiMock.listItems as jest.Mock;
   const getLightspeedStatus = apiMock.getLightspeedStatus as jest.Mock;
   const getSquareStatus = apiMock.getSquareStatus as jest.Mock;
@@ -91,7 +115,7 @@ function setupMocks({
   } else {
     getDashboard.mockRejectedValue(new Error('Network error'));
   }
-  getProviderHealth.mockResolvedValue({ providers: [] });
+  getAdvancedAnalytics.mockResolvedValue(MOCK_ANALYTICS);
   listItems.mockResolvedValue({ items: [], total: 0, page: 1, per_page: 100, pages: 0 });
   getLightspeedStatus.mockResolvedValue({ connected: false });
   getSquareStatus.mockResolvedValue({ connected: false });
@@ -122,10 +146,10 @@ describe('DashboardScreen', () => {
 
   it('exits loading state and renders KPI data on success', async () => {
     const dashboard = deferred<apiMock.Dashboard>();
-    const providerHealth = deferred<{ providers: apiMock.ProviderHealthEntry[] }>();
+    const analytics = deferred<apiMock.AdvancedAnalytics>();
     const inventory = deferred<apiMock.PaginatedItems>();
     (apiMock.getDashboard as jest.Mock).mockReturnValue(dashboard.promise);
-    (apiMock.getProviderHealth as jest.Mock).mockReturnValue(providerHealth.promise);
+    (apiMock.getAdvancedAnalytics as jest.Mock).mockReturnValue(analytics.promise);
     (apiMock.listItems as jest.Mock).mockReturnValue(inventory.promise);
 
     const screen = render(<DashboardScreen />);
@@ -134,9 +158,9 @@ describe('DashboardScreen', () => {
 
     await act(async () => {
       dashboard.resolve(MOCK_DASHBOARD);
-      providerHealth.resolve({ providers: [] });
+      analytics.resolve(MOCK_ANALYTICS);
       inventory.resolve({ items: [], total: 0, page: 1, per_page: 100, pages: 0 });
-      await Promise.all([dashboard.promise, providerHealth.promise, inventory.promise]);
+      await Promise.all([dashboard.promise, analytics.promise, inventory.promise]);
       await Promise.resolve();
     });
 
@@ -145,21 +169,21 @@ describe('DashboardScreen', () => {
 
   it('exits loading state and shows error view on API failure', async () => {
     const dashboard = deferred<apiMock.Dashboard>();
-    const providerHealth = deferred<{ providers: apiMock.ProviderHealthEntry[] }>();
+    const analytics = deferred<apiMock.AdvancedAnalytics>();
     const inventory = deferred<apiMock.PaginatedItems>();
     (apiMock.getDashboard as jest.Mock).mockReturnValue(dashboard.promise);
-    (apiMock.getProviderHealth as jest.Mock).mockReturnValue(providerHealth.promise);
+    (apiMock.getAdvancedAnalytics as jest.Mock).mockReturnValue(analytics.promise);
     (apiMock.listItems as jest.Mock).mockReturnValue(inventory.promise);
 
     const screen = render(<DashboardScreen />);
 
     await act(async () => {
       dashboard.reject(new Error('Network error'));
-      providerHealth.resolve({ providers: [] });
+      analytics.resolve(MOCK_ANALYTICS);
       inventory.resolve({ items: [], total: 0, page: 1, per_page: 100, pages: 0 });
       await Promise.all([
         dashboard.promise.catch(() => null),
-        providerHealth.promise,
+        analytics.promise,
         inventory.promise,
       ]);
       await Promise.resolve();
@@ -171,9 +195,9 @@ describe('DashboardScreen', () => {
     });
   });
 
-  it('keeps the dashboard usable when optional health requests fail', async () => {
+  it('keeps the dashboard usable when optional requests fail', async () => {
     setupMocks();
-    (apiMock.getProviderHealth as jest.Mock).mockRejectedValue(new Error('health unavailable'));
+    (apiMock.getAdvancedAnalytics as jest.Mock).mockRejectedValue(new Error('analytics unavailable'));
     (apiMock.listItems as jest.Mock).mockRejectedValue(new Error('inventory unavailable'));
 
     const screen = render(<DashboardScreen />);
@@ -186,10 +210,10 @@ describe('DashboardScreen', () => {
 
   it('downloads a warehouse CSV when Export is pressed', async () => {
     const dashboard = deferred<apiMock.Dashboard>();
-    const providerHealth = deferred<{ providers: apiMock.ProviderHealthEntry[] }>();
+    const analytics = deferred<apiMock.AdvancedAnalytics>();
     const inventory = deferred<apiMock.PaginatedItems>();
     (apiMock.getDashboard as jest.Mock).mockReturnValue(dashboard.promise);
-    (apiMock.getProviderHealth as jest.Mock).mockReturnValue(providerHealth.promise);
+    (apiMock.getAdvancedAnalytics as jest.Mock).mockReturnValue(analytics.promise);
     (apiMock.listItems as jest.Mock).mockReturnValue(inventory.promise);
     (apiMock.exportInventoryWarehouseCSV as jest.Mock).mockResolvedValue('Product Name,,\nJordan,,');
 
@@ -197,18 +221,18 @@ describe('DashboardScreen', () => {
 
     await act(async () => {
       dashboard.resolve(MOCK_DASHBOARD);
-      providerHealth.resolve({ providers: [] });
+      analytics.resolve(MOCK_ANALYTICS);
       inventory.resolve({ items: [], total: 0, page: 1, per_page: 100, pages: 0 });
-      await Promise.all([dashboard.promise, providerHealth.promise, inventory.promise]);
+      await Promise.all([dashboard.promise, analytics.promise, inventory.promise]);
       await Promise.resolve();
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Export')).toBeTruthy();
+      expect(screen.getByText('Export CSV')).toBeTruthy();
     });
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Export'));
+      fireEvent.press(screen.getByText('Export CSV'));
     });
 
     expect(apiMock.exportInventoryWarehouseCSV).toHaveBeenCalled();
@@ -227,7 +251,7 @@ describe('DashboardScreen', () => {
     });
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Sync'));
+      fireEvent.press(screen.getByText('Sync POS'));
     });
 
     expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
@@ -250,15 +274,8 @@ describe('DashboardScreen', () => {
     await screen.findByTestId('dashboard-content');
   });
 
-  it('renders low-stock and provider health states', async () => {
+  it('renders low-stock state derived from inventory', async () => {
     setupMocks();
-    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue({
-      providers: [
-        { provider: 'lightspeed', failed_runs_24h: 0, open_issues_count: 0 },
-        { provider: 'square', failed_runs_24h: 1, open_issues_count: 0 },
-        { provider: 'clover', failed_runs_24h: 0, open_issues_count: 2 },
-      ],
-    });
     (apiMock.listItems as jest.Mock).mockResolvedValue({
       items: [
         { id: 'one', quantity: 1 },
@@ -273,10 +290,10 @@ describe('DashboardScreen', () => {
     });
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
-    expect(screen.getByText('1/3 healthy')).toBeTruthy();
-    expect(screen.getByText('Healthy')).toBeTruthy();
-    expect(screen.getByText(/1 failed/)).toBeTruthy();
-    expect(screen.getByText(/2 issues/)).toBeTruthy();
+    // qty 1 and 3 are low (>0 and <=3); 0 and 8 are not.
+    expect(screen.getByText('Low Stock')).toBeTruthy();
+    expect(screen.getByText('View items')).toBeTruthy();
+    expect(screen.getByText('Business Overview')).toBeTruthy();
   });
 
   it('starts all connected syncs and reports partial failures', async () => {
@@ -289,7 +306,7 @@ describe('DashboardScreen', () => {
     (apiMock.triggerCloverSync as jest.Mock).mockResolvedValue({ status: 'started' });
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
-    fireEvent.press(screen.getByText('Sync'));
+    fireEvent.press(screen.getByText('Sync POS'));
     await waitFor(() =>
       expect(Alert.alert).toHaveBeenCalledWith(
         'Partial sync',
@@ -309,28 +326,27 @@ describe('DashboardScreen', () => {
     );
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
-    fireEvent.press(screen.getByText('Export'));
+    fireEvent.press(screen.getByText('Export CSV'));
     await waitFor(() =>
       expect(Alert.alert).toHaveBeenCalledWith('Export failed', 'export unavailable'),
     );
 
     (apiMock.getLightspeedStatus as jest.Mock).mockRejectedValueOnce(new Error('sync unavailable'));
-    fireEvent.press(screen.getByText('Sync'));
+    fireEvent.press(screen.getByText('Sync POS'));
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Sync failed', 'sync unavailable'));
   });
 
-  it('routes every dashboard navigation action', async () => {
+  it('routes quick-action navigation', async () => {
     setupMocks();
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
-    fireEvent.press(screen.getByText('Import'));
-    fireEvent.press(screen.getByText('Invoice'));
-    fireEvent.press(screen.getByText('Open Inventory'));
+    fireEvent.press(screen.getByText('Quick Sale'));
+    fireEvent.press(screen.getByText('Add Stock'));
+    fireEvent.press(screen.getByText('Scan SKU'));
     expect(mockPush.mock.calls).toEqual(
       expect.arrayContaining([
-        ['/inventory/import'],
-        ['/inventory/invoices'],
-        ['/inventory'],
+        ['/inventory/sale'],
+        ['/inventory/add'],
       ]),
     );
   });

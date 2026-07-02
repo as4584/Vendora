@@ -12,9 +12,11 @@ import {
     Platform,
     Alert,
     ActivityIndicator,
+    Image,
 } from "react-native";
 import { Link } from "expo-router";
 import { useAuth } from "../../context/auth";
+import { COLORS } from "../../theme/tokens";
 
 export default function LoginScreen() {
     const { signIn } = useAuth();
@@ -46,9 +48,14 @@ export default function LoginScreen() {
             <View style={styles.content}>
                 {/* Logo / Brand */}
                 <View style={styles.brandContainer}>
-                    <Text style={styles.brandIcon}>📦</Text>
+                    <Image
+                        source={require("../../assets/brand/vendora-logo.png")}
+                        style={styles.brandLogo}
+                        resizeMode="contain"
+                        accessibilityLabel="Vendora logo"
+                    />
                     <Text style={styles.brandName}>Vendora</Text>
-                    <Text style={styles.tagline}>Your Reseller OS</Text>
+                    <Text style={styles.tagline}>Inventory & Business Suite</Text>
                 </View>
 
                 {/* Form */}
@@ -128,7 +135,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#0A0A1A",
+        backgroundColor: COLORS.bg,
     },
     content: {
         flex: 1,
@@ -139,8 +146,9 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginBottom: 48,
     },
-    brandIcon: {
-        fontSize: 64,
+    brandLogo: {
+        width: 88,
+        height: 88,
         marginBottom: 8,
     },
     brandName: {
@@ -204,7 +212,7 @@ const styles = StyleSheet.create({
         fontWeight: "600",
     },
     button: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 12,
         paddingVertical: 16,
         alignItems: "center",

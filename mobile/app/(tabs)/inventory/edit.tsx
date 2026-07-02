@@ -23,6 +23,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
+import { ScannerOverlay } from "../../../components/ScannerOverlay";
 
 const CLOTHING_KEYWORDS = [
     "clothing", "apparel", "shirt", "pants", "jeans", "dress", "jacket",
@@ -632,13 +633,7 @@ export default function EditItemScreen() {
                             barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"],
                         }}
                     />
-                    <TouchableOpacity
-                        accessibilityRole="button"
-                        style={styles.scannerClose}
-                        onPress={() => setScannerOpen(false)}
-                    >
-                        <Text style={styles.scannerCloseText}>✕ Cancel</Text>
-                    </TouchableOpacity>
+                    <ScannerOverlay hint="Point at a barcode to scan" onCancel={() => setScannerOpen(false)} />
                 </View>
             </Modal>
         </KeyboardAvoidingView>
