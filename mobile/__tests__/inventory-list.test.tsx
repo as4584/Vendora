@@ -206,26 +206,32 @@ describe('InventoryListScreen', () => {
     await waitFor(() => expect(apiMock.listItems).toHaveBeenCalledTimes(3));
   });
 
-  it('filters by status and discovered source, including toggle-off behavior', async () => {
+  it('filters by status and source through the dropdown, and clears them', async () => {
     const item = makeItem({ source: 'lightspeed' });
     (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [item], total: 1 });
     const screen = render(<InventoryListScreen />);
     await screen.findByText('Jordan 1 Chicago');
-    fireEvent.press(screen.getAllByText('In Stock')[0]);
+
+    // Open the filter dropdown and pick a status.
+    fireEvent.press(screen.getByLabelText('Filters'));
+    fireEvent.press(screen.getByLabelText('In Stock'));
     await waitFor(() =>
       expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'in_stock' })),
     );
-    fireEvent.press(screen.getAllByText('In Stock')[0]);
-    await waitFor(() =>
-      expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ status: undefined })),
-    );
-    fireEvent.press(screen.getAllByText('Lightspeed')[0]);
+
+    // Reopen and pick a discovered source.
+    fireEvent.press(screen.getByLabelText('Filters'));
+    fireEvent.press(screen.getByLabelText('Lightspeed'));
     await waitFor(() =>
       expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ source: 'lightspeed' })),
     );
-    fireEvent.press(screen.getAllByText('Lightspeed')[0]);
+
+    // Clear all active filters.
+    fireEvent.press(screen.getByLabelText('Clear filters'));
     await waitFor(() =>
-      expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ source: undefined })),
+      expect(apiMock.listItems).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: undefined, source: undefined }),
+      ),
     );
   });
 

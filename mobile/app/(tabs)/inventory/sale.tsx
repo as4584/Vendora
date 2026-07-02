@@ -11,22 +11,21 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as api from "../../../services/api";
-import { ActionButton, Card, HeaderTitle, Pill, SectionLabel, Stepper } from "../../../components/ui";
+import { ActionButton, Card, HeaderTitle, Icon, Pill, SectionLabel, Stepper } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
-import { formatCurrency, resolveQty, sizeBreakdown } from "../../../utils/inventory";
+import { formatCurrency, resolveQty } from "../../../utils/inventory";
 
 const PAYMENT_METHODS = ["cash", "venmo", "cashapp", "paypal", "zelle", "stripe", "other"];
+
+type CartLine = { item: api.InventoryItem; qty: number };
 
 export default function QuickSaleScreen() {
   const router = useRouter();
   const [items, setItems] = useState<api.InventoryItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<api.InventoryItem | null>(null);
   const [query, setQuery] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [cart, setCart] = useState<Record<string, CartLine>>({});
   const [method, setMethod] = useState("cash");
-  const [grossAmount, setGrossAmount] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -47,45 +46,55 @@ export default function QuickSaleScreen() {
     );
   }, [items, query]);
 
-  const variants = useMemo(() => {
-    const raw = selectedItem?.custom_attributes?.variants;
-    return Array.isArray(raw) ? raw : [];
-  }, [selectedItem]);
+  const cartLines = Object.values(cart);
+  const total = cartLines.reduce((sum, line) => sum + Number(line.item.expected_sell_price || 0) * line.qty, 0);
+  const fee = parseFloat(feeAmount || "0") || 0;
+  const net = total - fee;
 
-  const selectItem = (item: api.InventoryItem | null) => {
-    setSelectedItem(item);
-    setGrossAmount(item?.expected_sell_price || "");
-    const itemVariants = item?.custom_attributes?.variants;
-    setSelectedSize(Array.isArray(itemVariants) && itemVariants.length === 1 ? itemVariants[0].size : null);
+  const toggleItem = (item: api.InventoryItem) => {
+    setCart((prev) => {
+      const next = { ...prev };
+      if (next[item.id]) delete next[item.id];
+      else next[item.id] = { item, qty: 1 };
+      return next;
+    });
   };
 
-  const parsedQty = Math.max(1, parseInt(quantity || "1", 10) || 1);
-  const availableAfter = selectedItem ? Math.max(0, resolveQty(selectedItem) - parsedQty) : 0;
+  const changeQty = (id: string, delta: number) => {
+    setCart((prev) => {
+      const line = prev[id];
+      if (!line) return prev;
+      const max = Math.max(1, resolveQty(line.item));
+      const qty = Math.min(max, Math.max(1, line.qty + delta));
+      return { ...prev, [id]: { ...line, qty } };
+    });
+  };
 
   const handleSubmit = async () => {
-    if (!grossAmount.trim()) {
-      Alert.alert("Sale amount required", "Enter the amount collected from the sale.");
+    if (cartLines.length === 0) {
+      Alert.alert("No items selected", "Tap items above to add them to this sale.");
       return;
     }
-    if (selectedItem && variants.length > 0 && !selectedSize) {
-      Alert.alert("Size required", "Choose the size that was sold before continuing.");
-      return;
-    }
-
     setSubmitting(true);
     try {
-      const payload: api.CreateTransactionPayload = {
-        item_id: selectedItem?.id,
-        method,
-        gross_amount: grossAmount.trim(),
-        fee_amount: feeAmount.trim() || "0.00",
-        quantity: parsedQty,
-        notes: [notes.trim(), selectedSize ? `Size sold: ${selectedSize}` : null].filter(Boolean).join(" • ") || undefined,
-      };
-      const transaction = await api.createTransaction(payload);
+      let logged = 0;
+      for (let i = 0; i < cartLines.length; i += 1) {
+        const line = cartLines[i];
+        const lineGross = (Number(line.item.expected_sell_price || 0) * line.qty).toFixed(2);
+        await api.createTransaction({
+          item_id: line.item.id,
+          method,
+          gross_amount: lineGross,
+          // The whole-order fee is attached to the first line item.
+          fee_amount: i === 0 ? (feeAmount.trim() || "0.00") : "0.00",
+          quantity: line.qty,
+          notes: notes.trim() || undefined,
+        });
+        logged += 1;
+      }
       Alert.alert(
         "Sale logged",
-        `${formatCurrency(transaction.gross_amount)} captured${selectedItem ? ` for ${selectedItem.name}` : ""}.`,
+        `${logged} item${logged === 1 ? "" : "s"} • ${formatCurrency(total.toFixed(2))} captured.`,
         [{ text: "OK", onPress: () => router.replace("/(tabs)/dashboard") }]
       );
     } catch (err: any) {
@@ -97,88 +106,72 @@ export default function QuickSaleScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <HeaderTitle title="Quick Sale" subtitle="Pick an item, confirm stock impact, then log the payment." />
+      <HeaderTitle title="Quick Sale" subtitle="Add one or more items, then log the payment in one go." />
 
       <Card style={{ gap: SPACING.md }}>
-        <SectionLabel>Flow</SectionLabel>
-        <Stepper steps={["Item", "Details", "Payment"]} active={selectedItem ? 1 : 0} />
+        <Stepper steps={["Select", "Review", "Payment"]} active={cartLines.length > 0 ? (total > 0 ? 2 : 1) : 0} />
       </Card>
 
       <Card style={{ gap: SPACING.md }}>
-        <SectionLabel>Step 1 · Select Item</SectionLabel>
+        <SectionLabel>Select Items</SectionLabel>
         <TextInput
           accessibilityLabel="Search sale inventory"
           style={styles.input}
-          placeholder="Search inventory or scan a sku"
+          placeholder="Search items, SKU, or category"
           placeholderTextColor={COLORS.textSoft}
           value={query}
           onChangeText={setQuery}
         />
-
         {loadingItems ? (
           <ActivityIndicator color={COLORS.primary} />
         ) : (
           <View style={{ gap: SPACING.sm }}>
-            <ActionButton label="Skip — Log Without Item" onPress={() => selectItem(null)} tone="ghost" />
-            {filtered.slice(0, 8).map((item) => (
-              <TouchableOpacity key={item.id} activeOpacity={0.84} onPress={() => selectItem(item)}>
-                <View style={[styles.itemOption, selectedItem?.id === item.id && styles.itemOptionActive]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.itemName}>{item.name}</Text>
-                    <Text style={styles.itemMeta}>
-                      Stock {resolveQty(item)} • Ask {formatCurrency(item.expected_sell_price)}
-                    </Text>
-                    <Text style={styles.itemMeta}>{sizeBreakdown(item)}</Text>
+            {filtered.slice(0, 12).map((item) => {
+              const added = !!cart[item.id];
+              return (
+                <TouchableOpacity key={item.id} activeOpacity={0.84} onPress={() => toggleItem(item)} accessibilityRole="button" accessibilityLabel={`${added ? "Remove" : "Add"} ${item.name}`}>
+                  <View style={[styles.itemOption, added && styles.itemOptionActive]}>
+                    <View style={[styles.check, added && styles.checkOn]}>{added ? <Icon name="checkmark" size={15} color="#fff" /> : null}</View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.itemName}>{item.name}</Text>
+                      <Text style={styles.itemMeta}>Stock {resolveQty(item)} · {formatCurrency(item.expected_sell_price)}</Text>
+                    </View>
+                    <Pill label={added ? "Added" : "Add"} tone={added ? "primary" : "neutral"} />
                   </View>
-                  <Pill label={selectedItem?.id === item.id ? "Selected" : "Choose"} tone={selectedItem?.id === item.id ? "primary" : "neutral"} />
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
+            {filtered.length === 0 ? <Text style={styles.helperText}>No sellable items match that search.</Text> : null}
           </View>
         )}
       </Card>
 
-      <Card style={{ gap: SPACING.md }}>
-        <SectionLabel>Step 2 · Stock Impact</SectionLabel>
-        {selectedItem ? (
-          <>
-            <Text style={styles.selectedTitle}>{selectedItem.name}</Text>
-            <Text style={styles.helperText}>
-              In stock {resolveQty(selectedItem)} • Cost {formatCurrency(selectedItem.buy_price)} • Ask {formatCurrency(selectedItem.expected_sell_price)}
-            </Text>
-            {variants.length > 0 ? (
-              <View style={styles.pillRow}>
-                {variants.map((variant: any) => (
-                  <TouchableOpacity key={variant.size} onPress={() => setSelectedSize(variant.size)}>
-                    <Pill label={`${variant.size} (${variant.quantity})`} tone={selectedSize === variant.size ? "primary" : "neutral"} />
-                  </TouchableOpacity>
-                ))}
+      {cartLines.length > 0 ? (
+        <Card style={{ gap: SPACING.sm }}>
+          <SectionLabel>Cart · {cartLines.length} item{cartLines.length === 1 ? "" : "s"}</SectionLabel>
+          {cartLines.map((line) => (
+            <View key={line.item.id} style={styles.cartRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemName}>{line.item.name}</Text>
+                <Text style={styles.itemMeta}>{formatCurrency(line.item.expected_sell_price)} each</Text>
               </View>
-            ) : (
-              <Text style={styles.helperText}>Single size item • {sizeBreakdown(selectedItem)}</Text>
-            )}
-            <View style={styles.qtyRow}>
-              <Text style={styles.qtyLabel}>Quantity</Text>
-              <TextInput
-                accessibilityLabel="Sale quantity"
-                style={[styles.input, styles.qtyInput]}
-                value={quantity}
-                onChangeText={setQuantity}
-                keyboardType="number-pad"
-              />
+              <View style={styles.qtyStepper}>
+                <TouchableOpacity accessibilityLabel={`Decrease ${line.item.name}`} style={styles.qtyBtn} onPress={() => changeQty(line.item.id, -1)}><Icon name="remove" size={16} color={COLORS.text} /></TouchableOpacity>
+                <Text style={styles.qtyValue}>{line.qty}</Text>
+                <TouchableOpacity accessibilityLabel={`Increase ${line.item.name}`} style={styles.qtyBtn} onPress={() => changeQty(line.item.id, 1)}><Icon name="add" size={16} color={COLORS.text} /></TouchableOpacity>
+              </View>
+              <Text style={styles.lineTotal}>{formatCurrency((Number(line.item.expected_sell_price || 0) * line.qty).toFixed(2))}</Text>
             </View>
-            <Pill
-              label={`Available after sale: ${availableAfter}`}
-              tone={availableAfter === 0 ? "warning" : "success"}
-            />
-          </>
-        ) : (
-          <Text style={styles.helperText}>No inventory item selected. This will log a standalone payment only.</Text>
-        )}
-      </Card>
+          ))}
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalValue}>{formatCurrency(total.toFixed(2))}</Text>
+          </View>
+        </Card>
+      ) : null}
 
       <Card style={{ gap: SPACING.md }}>
-        <SectionLabel>Step 3 · Payment</SectionLabel>
+        <SectionLabel>Payment</SectionLabel>
         <View style={styles.pillRow}>
           {PAYMENT_METHODS.map((entry) => (
             <TouchableOpacity key={entry} onPress={() => setMethod(entry)}>
@@ -186,15 +179,6 @@ export default function QuickSaleScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <TextInput
-          accessibilityLabel="Sale amount"
-          style={styles.input}
-          placeholder="Sale amount"
-          placeholderTextColor={COLORS.textSoft}
-          value={grossAmount}
-          onChangeText={setGrossAmount}
-          keyboardType="decimal-pad"
-        />
         <TextInput
           accessibilityLabel="Fee amount"
           style={styles.input}
@@ -213,10 +197,8 @@ export default function QuickSaleScreen() {
           onChangeText={setNotes}
           multiline
         />
-        <Text style={styles.helperText}>
-          Net after fees: {formatCurrency(String((parseFloat(grossAmount || "0") - parseFloat(feeAmount || "0")).toFixed(2)))}
-        </Text>
-        <ActionButton label={submitting ? "Logging Sale..." : "Log Sale"} onPress={handleSubmit} disabled={submitting} />
+        <Text style={styles.helperText}>Net after fees: {formatCurrency(net.toFixed(2))}</Text>
+        <ActionButton label={submitting ? "Logging Sale..." : `Log Sale · ${formatCurrency(total.toFixed(2))}`} onPress={handleSubmit} disabled={submitting} />
       </Card>
     </ScrollView>
   );
@@ -244,16 +226,26 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     padding: SPACING.md,
   },
-  itemOptionActive: {
-    borderColor: COLORS.primary,
+  itemOptionActive: { borderColor: COLORS.primary },
+  check: {
+    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: COLORS.border,
+    alignItems: "center", justifyContent: "center",
   },
+  checkOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   itemName: { color: COLORS.text, fontSize: 15, fontWeight: "800" },
   itemMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
-  selectedTitle: { color: COLORS.text, fontSize: 16, fontWeight: "800" },
   helperText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs },
-  qtyRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
-  qtyLabel: { color: COLORS.text, fontSize: 13, fontWeight: "700" },
-  qtyInput: { width: 90 },
+  cartRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm, paddingVertical: SPACING.xs },
+  qtyStepper: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  qtyBtn: {
+    width: 30, height: 30, borderRadius: 10, backgroundColor: COLORS.cardAlt,
+    borderWidth: 1, borderColor: COLORS.border, alignItems: "center", justifyContent: "center",
+  },
+  qtyValue: { color: COLORS.text, fontSize: 15, fontWeight: "800", minWidth: 20, textAlign: "center" },
+  lineTotal: { color: COLORS.success, fontSize: 14, fontWeight: "800", minWidth: 64, textAlign: "right" },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm, marginTop: SPACING.xs },
+  totalLabel: { color: COLORS.textMuted, fontSize: 14, fontWeight: "700" },
+  totalValue: { color: COLORS.text, fontSize: 20, fontWeight: "800" },
   notesInput: { minHeight: 72, textAlignVertical: "top" },
 });

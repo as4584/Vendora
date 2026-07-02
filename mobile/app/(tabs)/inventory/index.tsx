@@ -10,10 +10,11 @@ import {
   TextInput,
   Alert,
   Image,
+  Modal,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as api from "../../../services/api";
-import { ActionButton, Card, ChipRow, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
+import { ActionButton, Card, HeaderTitle, Icon, Pill } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
@@ -119,6 +120,7 @@ export default function InventoryListScreen() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filtersRef = useRef<{
     query: string;
@@ -255,6 +257,31 @@ export default function InventoryListScreen() {
     ]);
   };
 
+  const applyStatus = (next: string | null) => {
+    setStatusFilter(next);
+    filtersRef.current.status = next;
+    setLoading(true);
+    fetchItems({ page: 1, refresh: true, status: next });
+  };
+
+  const applySource = (next: string | null) => {
+    setSourceFilter(next);
+    filtersRef.current.source = next;
+    setLoading(true);
+    fetchItems({ page: 1, refresh: true, source: next });
+  };
+
+  const clearFilters = () => {
+    setStatusFilter(null);
+    setSourceFilter(null);
+    filtersRef.current.status = null;
+    filtersRef.current.source = null;
+    setLoading(true);
+    fetchItems({ page: 1, refresh: true, status: null, source: null });
+  };
+
+  const activeFilterCount = (statusFilter ? 1 : 0) + (sourceFilter ? 1 : 0);
+
   const availableSources = useMemo(() => {
     const seen = new Set<string>();
     items.forEach((item) => {
@@ -306,39 +333,30 @@ export default function InventoryListScreen() {
             </View>
 
             <Card>
-              <SectionLabel>Search + Filter</SectionLabel>
-              <TextInput
-                accessibilityLabel="Search inventory"
-                style={styles.searchInput}
-                placeholder="Search items, sku, upc"
-                placeholderTextColor={COLORS.textSoft}
-                value={searchQuery}
-                onChangeText={onSearchChange}
-              />
-              <ChipRow>
-                {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                  <TouchableOpacity key={key} onPress={() => {
-                    const next = statusFilter === key ? null : key;
-                    setStatusFilter(next);
-                    filtersRef.current.status = next;
-                    setLoading(true);
-                    fetchItems({ page: 1, refresh: true, status: next });
-                  }}>
-                    <Pill label={label} tone={statusFilter === key ? STATUS_TONES[key] || "primary" : "neutral"} />
-                  </TouchableOpacity>
-                ))}
-                {availableSources.map((source) => (
-                  <TouchableOpacity key={source} onPress={() => {
-                    const next = sourceFilter === source ? null : source;
-                    setSourceFilter(next);
-                    filtersRef.current.source = next;
-                    setLoading(true);
-                    fetchItems({ page: 1, refresh: true, source: next });
-                  }}>
-                    <Pill label={SOURCE_LABELS[source] || source} tone={sourceFilter === source ? "info" : "neutral"} />
-                  </TouchableOpacity>
-                ))}
-              </ChipRow>
+              <View style={styles.searchRow}>
+                <View style={styles.searchWrap}>
+                  <Icon name="search" size={16} color={COLORS.textSoft} />
+                  <TextInput
+                    accessibilityLabel="Search inventory"
+                    style={styles.searchInputFlex}
+                    placeholder="Search items, SKU, or keyword…"
+                    placeholderTextColor={COLORS.textSoft}
+                    value={searchQuery}
+                    onChangeText={onSearchChange}
+                  />
+                </View>
+                <TouchableOpacity accessibilityLabel="Filters" accessibilityRole="button" style={styles.filterBtn} onPress={() => setFilterOpen(true)}>
+                  <Icon name="options-outline" size={18} color={activeFilterCount ? COLORS.primaryBright : COLORS.text} />
+                  {activeFilterCount ? <View style={styles.filterBadge}><Text style={styles.filterBadgeText}>{activeFilterCount}</Text></View> : null}
+                </TouchableOpacity>
+              </View>
+              {activeFilterCount ? (
+                <View style={styles.activeFilters}>
+                  {statusFilter ? <Pill label={STATUS_LABELS[statusFilter] || statusFilter} tone={STATUS_TONES[statusFilter] || "primary"} /> : null}
+                  {sourceFilter ? <Pill label={SOURCE_LABELS[sourceFilter] || sourceFilter} tone="info" /> : null}
+                  <TouchableOpacity accessibilityLabel="Clear filters" onPress={clearFilters}><Pill label="Clear ✕" tone="neutral" /></TouchableOpacity>
+                </View>
+              ) : null}
             </Card>
           </View>
         }
@@ -368,7 +386,43 @@ export default function InventoryListScreen() {
           />
         </View>
       ) : null}
+
+      <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setFilterOpen(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.filterSheet}>
+            <View style={styles.filterSheetHead}>
+              <Text style={styles.filterSheetTitle}>Filter inventory</Text>
+              <TouchableOpacity accessibilityLabel="Close filters" onPress={() => setFilterOpen(false)}><Icon name="close" size={20} color={COLORS.textMuted} /></TouchableOpacity>
+            </View>
+
+            <Text style={styles.filterGroupLabel}>Status</Text>
+            <FilterOption label="All statuses" active={!statusFilter} onPress={() => { applyStatus(null); setFilterOpen(false); }} />
+            {Object.entries(STATUS_LABELS).map(([key, label]) => (
+              <FilterOption key={key} label={label} active={statusFilter === key} onPress={() => { applyStatus(statusFilter === key ? null : key); setFilterOpen(false); }} />
+            ))}
+
+            {availableSources.length > 0 ? (
+              <>
+                <Text style={styles.filterGroupLabel}>Source</Text>
+                <FilterOption label="All sources" active={!sourceFilter} onPress={() => { applySource(null); setFilterOpen(false); }} />
+                {availableSources.map((source) => (
+                  <FilterOption key={source} label={SOURCE_LABELS[source] || source} active={sourceFilter === source} onPress={() => { applySource(sourceFilter === source ? null : source); setFilterOpen(false); }} />
+                ))}
+              </>
+            ) : null}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
+  );
+}
+
+function FilterOption({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.filterOption} activeOpacity={0.8} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+      <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>{label}</Text>
+      {active ? <Icon name="checkmark" size={18} color={COLORS.primaryBright} /> : null}
+    </TouchableOpacity>
   );
 }
 
@@ -377,16 +431,75 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
   content: { padding: SPACING.lg, paddingBottom: 48 },
   actionRow: { flexDirection: "row", gap: SPACING.sm },
-  searchInput: {
+  searchRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  searchWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
     backgroundColor: COLORS.bgElevated,
     borderColor: COLORS.border,
     borderWidth: 1,
     borderRadius: 14,
-    color: COLORS.text,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: SPACING.sm,
   },
+  searchInputFlex: { flex: 1, color: COLORS.text, paddingVertical: 12 },
+  filterBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: COLORS.bgElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  activeFilters: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, marginTop: SPACING.sm },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
+  filterSheet: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xl,
+    gap: 4,
+  },
+  filterSheetHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: SPACING.sm },
+  filterSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: "800" },
+  filterGroupLabel: {
+    color: COLORS.textSoft,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginTop: SPACING.md,
+    marginBottom: 4,
+  },
+  filterOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  filterOptionText: { color: COLORS.textMuted, fontSize: 15, fontWeight: "600" },
+  filterOptionTextActive: { color: COLORS.text, fontWeight: "800" },
   itemCard: { padding: 0 },
   itemCardSelected: { borderColor: COLORS.primary, borderWidth: 2 },
   itemCardRow: { flexDirection: "row", gap: SPACING.md },
