@@ -76,6 +76,7 @@ jest.mock('../services/api', () => ({
   getLightspeedStatus: jest.fn(),
   getSquareStatus: jest.fn(),
   getCloverStatus: jest.fn(),
+  getEbayStatus: jest.fn(),
   getProviderHealth: jest.fn(),
   getLightspeedConnectUrl: jest.fn(),
   triggerLightspeedSync: jest.fn(),
@@ -83,6 +84,9 @@ jest.mock('../services/api', () => ({
   disconnectLightspeed: jest.fn(),
   triggerSquareSync: jest.fn(),
   triggerCloverSync: jest.fn(),
+  getEbayConnectUrl: jest.fn(),
+  triggerEbaySync: jest.fn(),
+  disconnectEbay: jest.fn(),
   connectSquare: jest.fn(),
   connectClover: jest.fn(),
   updateProfile: jest.fn(),
@@ -92,12 +96,14 @@ jest.mock('../services/api', () => ({
 const NOT_CONNECTED_LS = { connected: false, account_id: null, expires_at: null, last_synced_at: null };
 const NOT_CONNECTED_SQ = { connected: false, merchant_id: null, location_id: null, last_synced_at: null };
 const NOT_CONNECTED_CV = { connected: false, merchant_id: null, last_synced_at: null };
+const NOT_CONNECTED_EB = { connected: false, account_id: null, expires_at: null, last_synced_at: null };
 const EMPTY_HEALTH = { providers: [] };
 
 function setupAllDisconnected() {
   (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_LS);
   (apiMock.getSquareStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_SQ);
   (apiMock.getCloverStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_CV);
+  (apiMock.getEbayStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_EB);
   (apiMock.getProviderHealth as jest.Mock).mockResolvedValue(EMPTY_HEALTH);
 }
 
@@ -182,10 +188,11 @@ describe('SettingsScreen', () => {
       expect(getByTestId('settings-content')).toBeTruthy();
     });
 
-    // All three provider names are present
+    // All four provider names are present
     expect(getAllByText('Lightspeed').length).toBeGreaterThanOrEqual(1);
     expect(getAllByText('Square').length).toBeGreaterThanOrEqual(1);
     expect(getAllByText('Clover').length).toBeGreaterThanOrEqual(1);
+    expect(getAllByText('eBay').length).toBeGreaterThanOrEqual(1);
   });
 
   it('does not hang or crash when all provider endpoints throw errors', async () => {
@@ -195,7 +202,7 @@ describe('SettingsScreen', () => {
     // The screen must settle (not hang forever) even when every API fails.
     await waitFor(() => {
       expect(getByTestId('settings-content')).toBeTruthy();
-      expect(getAllByText('Not connected')).toHaveLength(3);
+      expect(getAllByText('Not connected')).toHaveLength(4);
     }, { timeout: 5000 });
   });
 
@@ -205,8 +212,8 @@ describe('SettingsScreen', () => {
 
     await waitFor(() => {
       const notConnected = getAllByText('Not connected');
-      // 3 provider cards × 1 "Not connected" pill each
-      expect(notConnected.length).toBe(3);
+      // 4 provider cards × 1 "Not connected" pill each (Lightspeed, Square, Clover, eBay)
+      expect(notConnected.length).toBe(4);
     });
   });
 

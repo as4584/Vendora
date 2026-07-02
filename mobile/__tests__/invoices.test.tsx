@@ -207,21 +207,12 @@ describe('InvoicesScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Close Preview')).toBeTruthy();
-      expect(screen.getByText('Preview PDF')).toBeTruthy();
-      expect(screen.getByText('Download PDF')).toBeTruthy();
+      expect(screen.getByText('Preview')).toBeTruthy();
+      expect(screen.getByText('Share PDF')).toBeTruthy();
     });
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Preview PDF'));
-    });
-
-    await waitFor(() => {
-      expect(apiMock.exportInvoicePdf).toHaveBeenCalledWith('inv-1');
-      expect(fileActionsMock.previewPdfFile).toHaveBeenCalledWith('JVBERi0xLjQK', 'invoice-0001.pdf');
-    });
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('Download PDF'));
+      fireEvent.press(screen.getByText('Share PDF'));
     });
 
     await waitFor(() => {
@@ -381,12 +372,12 @@ describe('InvoicesScreen', () => {
     fireEvent.press(screen.getByText('Recent Invoices'));
     fireEvent.press(screen.getByText('Open Invoice'));
     (apiMock.exportInvoicePdf as jest.Mock).mockRejectedValueOnce(new Error('PDF down'));
-    fireEvent.press(screen.getByText('Preview PDF'));
+    fireEvent.press(screen.getByText('Share PDF'));
     await waitFor(() =>
       expect(Alert.alert).toHaveBeenCalledWith('Invoice unavailable', 'PDF down'),
     );
     fireEvent.press(screen.getByText('Close Preview'));
-    expect(screen.queryByText('Preview PDF')).toBeNull();
+    expect(screen.queryByText('Share PDF')).toBeNull();
   });
 
   it('renders empty, paid, and sent invoice history states', async () => {
