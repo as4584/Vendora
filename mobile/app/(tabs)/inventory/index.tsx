@@ -28,6 +28,22 @@ const STATUS_TONES: Record<string, "success" | "warning" | "danger" | "info" | "
   archived: "neutral",
 };
 
+/**
+ * Case-insensitive subsequence match: every character of `query` must appear in
+ * `text` in the same order, but not necessarily adjacent or at a word boundary.
+ * e.g. "bla" → "Nike Black", "coc" → "Croc". Whitespace in the query is ignored.
+ */
+export function fuzzyMatch(query: string, text: string): boolean {
+  const q = query.toLowerCase().replace(/\s+/g, "");
+  if (!q) return true;
+  const t = text.toLowerCase();
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti += 1) {
+    if (t[ti] === q[qi]) qi += 1;
+  }
+  return qi === q.length;
+}
+
 function InventoryCard({
   item,
   onPress,
@@ -62,19 +78,12 @@ function InventoryCard({
               {selected ? <Text style={styles.checkboxTick}>✓</Text> : null}
             </View>
           ) : null}
-          <View style={styles.photoColumn}>
-            {frontPhoto ? (
-              <Image source={{ uri: frontPhoto }} style={styles.mainPhoto} resizeMode="cover" />
+          <View style={styles.thumbBox}>
+            {frontPhoto || backPhoto ? (
+              <Image source={{ uri: frontPhoto || backPhoto || undefined }} style={styles.thumbImg} resizeMode="cover" />
             ) : (
-              <View style={[styles.mainPhoto, styles.photoFallback]}><Text style={styles.photoFallbackText}>Front</Text></View>
+              <View style={[styles.thumbImg, styles.photoFallback]}><Text style={styles.photoFallbackText}>No photo</Text></View>
             )}
-            <View style={styles.backPhotoWrap}>
-              {backPhoto ? (
-                <Image source={{ uri: backPhoto }} style={styles.backPhoto} resizeMode="cover" />
-              ) : (
-                <View style={[styles.backPhoto, styles.photoFallback]}><Text style={styles.photoFallbackText}>Back</Text></View>
-              )}
-            </View>
           </View>
 
           <View style={styles.itemBody}>
@@ -121,6 +130,7 @@ export default function InventoryListScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filtersRef = useRef<{
     query: string;
@@ -168,8 +178,9 @@ export default function InventoryListScreen() {
     setSearchQuery(text);
     filtersRef.current.query = text;
     if (searchTimer.current) clearTimeout(searchTimer.current);
+    // Fetch more matches from the server in the background — no full-screen
+    // spinner, so the instant client-side filter stays visible while typing.
     searchTimer.current = setTimeout(() => {
-      setLoading(true);
       fetchItems({ page: 1, refresh: true, query: text });
     }, 250);
   };
@@ -230,11 +241,14 @@ export default function InventoryListScreen() {
   };
 
   const exportExcel = async () => {
+    setExporting(true);
     try {
       const token = await api.getToken();
       await downloadAndShareRemote(api.exportInventoryXlsxUrl(), "vendora-inventory.xlsx", token);
     } catch (err: any) {
       Alert.alert("Export failed", err?.message || "Could not export the Excel file.");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -288,6 +302,16 @@ export default function InventoryListScreen() {
     return Array.from(seen);
   }, [items]);
 
+  // Instant, reactive client-side subsequence filter over the loaded items. The
+  // debounced server search still runs to pull additional matches from the DB.
+  const displayedItems = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return items;
+    return items.filter((item) =>
+      fuzzyMatch(q, `${item.name} ${item.sku || ""} ${item.category || ""} ${item.color || ""}`)
+    );
+  }, [items, searchQuery]);
+
   if (loading) {
     return (
       <View testID="inventory-loading" style={styles.center}>
@@ -299,7 +323,7 @@ export default function InventoryListScreen() {
   return (
     <View style={styles.container}>
       <FlatList
-        data={items}
+        data={displayedItems}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <InventoryCard
@@ -385,6 +409,16 @@ export default function InventoryListScreen() {
         </View>
       ) : null}
 
+      <Modal visible={exporting} transparent animationType="fade">
+        <View style={styles.exportOverlay}>
+          <View style={styles.exportCard}>
+            <ActivityIndicator size="large" color={COLORS.primaryBright} />
+            <Text style={styles.exportTitle}>Building your Excel file…</Text>
+            <Text style={styles.exportHint}>Embedding item photos — this can take a moment for large inventories.</Text>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
         <TouchableOpacity testID="filter-backdrop" style={styles.modalBackdrop} activeOpacity={1} onPress={() => setFilterOpen(false)}>
           <TouchableOpacity activeOpacity={1} style={styles.filterSheet}>
@@ -466,6 +500,10 @@ const styles = StyleSheet.create({
   },
   filterBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
   activeFilters: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, marginTop: SPACING.sm },
+  exportOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: SPACING.xl },
+  exportCard: { backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.xl, alignItems: "center", gap: SPACING.md, maxWidth: 320 },
+  exportTitle: { color: COLORS.text, fontSize: 16, fontWeight: "800", textAlign: "center" },
+  exportHint: { color: COLORS.textMuted, fontSize: 13, textAlign: "center", lineHeight: 19 },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
   filterSheet: {
     backgroundColor: COLORS.card,
@@ -514,10 +552,8 @@ const styles = StyleSheet.create({
     borderRadius: 16, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
   },
   bulkCount: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
-  photoColumn: { width: 88, gap: SPACING.xs },
-  mainPhoto: { width: 88, height: 88, borderRadius: 14, backgroundColor: COLORS.cardAlt },
-  backPhotoWrap: { alignItems: "flex-end" },
-  backPhoto: { width: 44, height: 44, borderRadius: 10, backgroundColor: COLORS.cardAlt, borderWidth: 1, borderColor: COLORS.border },
+  thumbBox: { width: 92, height: 92, borderRadius: 14, overflow: "hidden", backgroundColor: COLORS.cardAlt },
+  thumbImg: { width: "100%", height: "100%" },
   photoFallback: { alignItems: "center", justifyContent: "center" },
   photoFallbackText: { color: COLORS.textSoft, fontSize: 11, fontWeight: "700" },
   itemBody: { flex: 1, gap: SPACING.sm },

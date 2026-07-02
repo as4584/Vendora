@@ -224,7 +224,7 @@ export default function ItemDetailScreen() {
           {[{ key: "front", uri: frontPhoto }, { key: "back", uri: backPhoto }].map((photo) => (
             <TouchableOpacity accessibilityLabel={`Show ${photo.key} thumbnail`} accessibilityRole="button" key={photo.key} onPress={() => setActivePhoto(photo.key as "front" | "back")}>
               {photo.uri ? (
-                <Image source={{ uri: photo.uri }} style={[styles.thumbPhoto, activePhoto === photo.key && styles.thumbPhotoActive]} />
+                <Image source={{ uri: photo.uri }} style={[styles.thumbPhoto, activePhoto === photo.key && styles.thumbPhotoActive]} resizeMode="cover" />
               ) : (
                 <View style={[styles.thumbPhoto, styles.photoFallback, activePhoto === photo.key && styles.thumbPhotoActive]}>
                   <Text style={styles.photoFallbackText}>{photo.key}</Text>
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.textMuted, fontSize: 13, textAlign: "center", marginBottom: SPACING.sm },
   photoHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: SPACING.sm },
   photoSwitchRow: { flexDirection: "row", gap: SPACING.xs },
-  heroPhoto: { width: "100%", height: 260, borderRadius: 18, backgroundColor: COLORS.cardAlt },
+  heroPhoto: { width: "100%", height: 260, borderRadius: 18, backgroundColor: COLORS.cardAlt, overflow: "hidden" },
   photoOverlay: {
     top: 0,
     right: 0,

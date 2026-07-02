@@ -327,7 +327,7 @@ export default function EditItemScreen() {
                         onPress={() => showPhotoOptions("front")}
                     >
                         {frontPhoto ? (
-                            <Image source={{ uri: frontPhoto }} style={styles.photoThumb} />
+                            <Image source={{ uri: frontPhoto }} style={styles.photoThumb} resizeMode="cover" />
                         ) : (
                             <View style={styles.photoPlaceholder}>
                                 <Text style={styles.photoIcon}>📸</Text>
@@ -342,7 +342,7 @@ export default function EditItemScreen() {
                         onPress={() => showPhotoOptions("back")}
                     >
                         {backPhoto ? (
-                            <Image source={{ uri: backPhoto }} style={styles.photoThumb} />
+                            <Image source={{ uri: backPhoto }} style={styles.photoThumb} resizeMode="cover" />
                         ) : (
                             <View style={styles.photoPlaceholder}>
                                 <Text style={styles.photoIcon}>📸</Text>

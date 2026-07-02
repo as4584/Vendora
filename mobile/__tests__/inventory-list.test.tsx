@@ -14,7 +14,7 @@ import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as apiMock from '../services/api';
 import * as fileActions from '../utils/fileActions';
-import InventoryListScreen from '../app/(tabs)/inventory/index';
+import InventoryListScreen, { fuzzyMatch } from '../app/(tabs)/inventory/index';
 
 const mockPush = jest.fn();
 
@@ -84,7 +84,36 @@ beforeEach(() => {
 
 afterEach(() => jest.restoreAllMocks());
 
+describe('fuzzyMatch', () => {
+  it('matches out-of-order subsequences, case-insensitively, ignoring spaces', () => {
+    expect(fuzzyMatch('bla', 'Nike Black')).toBe(true);
+    expect(fuzzyMatch('coc', 'Croc Classic')).toBe(true);
+    expect(fuzzyMatch('BLA', 'nike black')).toBe(true);
+    expect(fuzzyMatch('nk bl', 'Nike Black')).toBe(true);
+    expect(fuzzyMatch('', 'anything')).toBe(true);
+    expect(fuzzyMatch('zzz', 'Nike Black')).toBe(false);
+    expect(fuzzyMatch('bal', 'Nike Black')).toBe(false); // wrong order → no match
+  });
+});
+
 describe('InventoryListScreen', () => {
+  it('filters the list reactively as characters are typed (subsequence)', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue({
+      ...PAGINATED_EMPTY,
+      items: [
+        makeItem({ id: 'a', name: 'Nike Black', color: 'black', category: 'shoes', sku: 'NK-1' }),
+        makeItem({ id: 'b', name: 'Adidas White', color: 'white', category: 'shoes', sku: 'ADI-1' }),
+      ],
+      total: 2,
+    });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Nike Black');
+    fireEvent.changeText(screen.getByLabelText('Search inventory'), 'bla');
+    // "bla" is a subsequence of "Nike Black" but not "Adidas White".
+    expect(screen.getByText('Nike Black')).toBeTruthy();
+    expect(screen.queryByText('Adidas White')).toBeNull();
+  });
+
   it('shows loading indicator on mount', () => {
     (apiMock.listItems as jest.Mock).mockImplementation(() => new Promise(() => {})); // never resolves
     const { getByTestId } = render(<InventoryListScreen />);
@@ -359,7 +388,10 @@ describe('InventoryListScreen', () => {
     fireEvent.press(screen.getByLabelText('Filters'));
     fireEvent.press(screen.getByTestId('filter-backdrop'));
     fireEvent.press(screen.getByLabelText('Filters'));
-    screen.UNSAFE_getByType(require('react-native').Modal).props.onRequestClose();
+    const filterModal = screen
+      .UNSAFE_getAllByType(require('react-native').Modal)
+      .find((m: any) => typeof m.props.onRequestClose === 'function');
+    filterModal.props.onRequestClose();
   });
 
   it('loads the next page when the list reaches its end', async () => {
