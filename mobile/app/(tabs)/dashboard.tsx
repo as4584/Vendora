@@ -6,8 +6,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
-  TouchableOpacity,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,10 +16,8 @@ import {
   Card,
   GradientCard,
   Icon,
-  IconCircle,
   Sparkline,
   StatCard,
-  type IconName,
 } from "../../components/ui";
 import { COLORS, GRADIENTS, RADII, SPACING } from "../../theme/tokens";
 import { downloadTextFile } from "../../utils/fileActions";
@@ -86,44 +82,6 @@ export default function DashboardScreen() {
     return () => clearTimeout(timer);
   }, [fetchAll]);
 
-  const handleExport = async () => {
-    try {
-      const csv = await api.exportInventoryWarehouseCSV();
-      await downloadTextFile(csv, "vendora-inventory-warehouse.csv");
-      Alert.alert("Export ready", "Your inventory was exported in the warehouse Size/QTY spreadsheet format.");
-    } catch (err: any) {
-      Alert.alert("Export failed", err?.message || "Could not export inventory.");
-    }
-  };
-
-  const handleSync = async () => {
-    try {
-      const [lightspeed, square, clover] = await Promise.all([
-        api.getLightspeedStatus(),
-        api.getSquareStatus(),
-        api.getCloverStatus(),
-      ]);
-      const jobs: Promise<unknown>[] = [];
-      if (lightspeed.connected) jobs.push(api.triggerLightspeedSync());
-      if (square.connected) jobs.push(api.triggerSquareSync());
-      if (clover.connected) jobs.push(api.triggerCloverSync());
-      if (jobs.length === 0) {
-        router.push("/settings/sync-center" as any);
-        return;
-      }
-      const results = await Promise.allSettled(jobs);
-      const completed = results.filter((r) => r.status === "fulfilled").length;
-      const failed = results.length - completed;
-      if (failed > 0) {
-        Alert.alert("Partial sync", `${completed} provider syncs started; ${failed} could not be started.`);
-      }
-      router.push("/settings/sync-center" as any);
-      fetchAll();
-    } catch (err: any) {
-      Alert.alert("Sync failed", err?.message || "Could not start provider sync.");
-    }
-  };
-
   if (view.loading) {
     return (
       <View testID="dashboard-loading" style={styles.center}>
@@ -166,14 +124,6 @@ export default function DashboardScreen() {
   const revDelta = revSeries.length >= 8 ? pctDelta(sumLast(revSeries, 7), sumLast(revSeries, 7, 7)) : null;
   const netDelta = netSeries.length >= 8 ? pctDelta(sumLast(netSeries, 7), sumLast(netSeries, 7, 7)) : null;
 
-  const quickActions: { icon: IconName; label: string; onPress: () => void }[] = [
-    { icon: "flash-outline", label: "Quick Sale", onPress: () => router.push("/inventory/sale" as any) },
-    { icon: "add-circle-outline", label: "Add Stock", onPress: () => router.push("/inventory/add" as any) },
-    { icon: "scan-outline", label: "Scan SKU", onPress: () => router.push("/inventory/add" as any) },
-    { icon: "sync-outline", label: "Sync POS", onPress: handleSync },
-    { icon: "download-outline", label: "Export CSV", onPress: handleExport },
-  ];
-
   return (
     <ScrollView
       testID="dashboard-content"
@@ -190,9 +140,6 @@ export default function DashboardScreen() {
           <Text style={styles.greeting}>{`${greeting()}, ${name} 👋`}</Text>
           <Text style={styles.greetingSub}>Here&apos;s what&apos;s happening today.</Text>
         </View>
-        <TouchableOpacity style={styles.bell} activeOpacity={0.8} accessibilityLabel="Notifications">
-          <Icon name="notifications-outline" size={20} color={COLORS.text} />
-        </TouchableOpacity>
       </View>
 
       {/* Hero: today's profit */}
@@ -243,17 +190,6 @@ export default function DashboardScreen() {
           </View>
         ) : null}
       </Card>
-
-      {/* Quick actions */}
-      <Text style={styles.sectionLabel}>Quick Actions</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionsRow}>
-        {quickActions.map((a) => (
-          <TouchableOpacity key={a.label} style={styles.actionTile} activeOpacity={0.85} onPress={a.onPress}>
-            <IconCircle name={a.icon} size={44} />
-            <Text style={styles.actionTileLabel}>{a.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
     </ScrollView>
   );
 }

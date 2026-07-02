@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -28,12 +28,13 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { back, push, replace } = useRouter();
+  const { push, replace } = useRouter();
   const [item, setItem] = useState<api.InventoryItem | null>(null);
   const [activity, setActivity] = useState<api.InventoryActivityEntry[]>([]);
   const [transactions, setTransactions] = useState<api.Transaction[]>([]);
   const [invoices, setInvoices] = useState<api.InvoiceData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activePhoto, setActivePhoto] = useState<"front" | "back">("front");
   const [photoUploading, setPhotoUploading] = useState(false);
   const [market, setMarket] = useState<api.MarketPriceResult | null>(null);
@@ -41,44 +42,36 @@ export default function ItemDetailScreen() {
   const [pricingLoading, setPricingLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
+  const loadItem = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    if (!id) {
+      setLoadError("This item link is missing an inventory ID.");
+      setLoading(false);
+      return;
+    }
+    try {
+      const nextItem = await api.getItem(id);
+      setItem(nextItem);
+
+      const [nextActivity, nextTransactions, nextInvoices] = await Promise.allSettled([
+        api.getItemActivity(nextItem.id),
+        api.listTransactions({ itemId: nextItem.id, perPage: 10 }),
+        api.listInvoices({ inventoryItemId: nextItem.id, perPage: 10 }),
+      ]);
+      if (nextActivity.status === "fulfilled") setActivity(nextActivity.value);
+      if (nextTransactions.status === "fulfilled") setTransactions(nextTransactions.value.items);
+      if (nextInvoices.status === "fulfilled") setInvoices(nextInvoices.value.items);
+    } catch (err: any) {
+      setLoadError(err?.message || "Could not load this item.");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (!id) {
-        Alert.alert("Error", "This item link is missing an inventory ID.", [
-          { text: "OK", onPress: back },
-        ]);
-        setLoading(false);
-        return;
-      }
-      try {
-        const nextItem = await api.getItem(id);
-        if (cancelled) return;
-        setItem(nextItem);
-
-        const [nextActivity, nextTransactions, nextInvoices] = await Promise.allSettled([
-          api.getItemActivity(nextItem.id),
-          api.listTransactions({ itemId: nextItem.id, perPage: 10 }),
-          api.listInvoices({ inventoryItemId: nextItem.id, perPage: 10 }),
-        ]);
-        if (cancelled) return;
-        if (nextActivity.status === "fulfilled") setActivity(nextActivity.value);
-        if (nextTransactions.status === "fulfilled") setTransactions(nextTransactions.value.items);
-        if (nextInvoices.status === "fulfilled") setInvoices(nextInvoices.value.items);
-      } catch (err: any) {
-        Alert.alert("Error", err?.message || "Item not found.", [
-          { text: "OK", onPress: back },
-        ]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [back, id]);
+    void loadItem();
+  }, [loadItem]);
 
   const uploadPhoto = async (side: "front" | "back", uri: string) => {
     setPhotoUploading(true);
@@ -169,10 +162,23 @@ export default function ItemDetailScreen() {
     return Array.isArray(raw) ? raw : [];
   }, [item]);
 
-  if (loading || !item) {
+  if (loading) {
     return (
       <View testID="item-detail-loading" style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (loadError || !item) {
+    return (
+      <View testID="item-detail-error" style={styles.center}>
+        <Text style={styles.errorTitle}>Couldn&apos;t load this item</Text>
+        <Text style={styles.errorText}>{loadError || "Item not found."}</Text>
+        <View style={styles.actionRow}>
+          <ActionButton label="Retry" onPress={() => void loadItem()} compact />
+          <ActionButton label="Back to Inventory" onPress={() => replace("/(tabs)/inventory")} tone="secondary" compact />
+        </View>
       </View>
     );
   }
@@ -268,7 +274,7 @@ export default function ItemDetailScreen() {
         <View style={styles.summaryGrid}>
           <View style={styles.summaryBlock}>
             <Text style={styles.summaryLabel}>Status</Text>
-            <Text style={styles.summaryValue}>{STATUS_LABELS[item.status] || item.status.toUpperCase()}</Text>
+            <Text style={styles.summaryValue}>{STATUS_LABELS[item.status] || (item.status || "").toUpperCase()}</Text>
           </View>
           <View style={styles.summaryBlock}>
             <Text style={styles.summaryLabel}>Available</Text>
@@ -324,7 +330,7 @@ export default function ItemDetailScreen() {
         ) : (
           transactions.slice(0, 5).map((transaction) => (
             <View key={transaction.id} style={styles.timelineRow}>
-              <Text style={styles.timelineTitle}>{transaction.method.toUpperCase()}</Text>
+              <Text style={styles.timelineTitle}>{(transaction.method || "sale").toUpperCase()}</Text>
               <Text style={styles.timelineMeta}>
                 {formatCurrency(transaction.gross_amount)} • Qty {transaction.quantity} • {formatCompactDate(transaction.created_at)}
               </Text>
@@ -402,7 +408,9 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: SPACING.lg, paddingBottom: 48, gap: SPACING.md },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg, padding: SPACING.lg, gap: SPACING.sm },
+  errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "800" },
+  errorText: { color: COLORS.textMuted, fontSize: 13, textAlign: "center", marginBottom: SPACING.sm },
   photoHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: SPACING.sm },
   photoSwitchRow: { flexDirection: "row", gap: SPACING.xs },
   heroPhoto: { width: "100%", height: 260, borderRadius: 18, backgroundColor: COLORS.cardAlt },

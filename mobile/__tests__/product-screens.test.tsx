@@ -65,7 +65,8 @@ describe('subscription product', () => {
   it('reports load, checkout, and portal errors', async () => {
     (api.getSubscriptionStatus as jest.Mock).mockRejectedValueOnce(new Error('load failed'));
     const failed = render(<SubscriptionScreen />);
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Billing unavailable', 'load failed'));
+    await failed.findByTestId('subscription-error');
+    expect(failed.getByText('load failed')).toBeTruthy();
     failed.unmount();
     (api.getSubscriptionStatus as jest.Mock).mockResolvedValue(subscription);
     (api.createSubscriptionCheckout as jest.Mock).mockRejectedValue(new Error('checkout failed'));

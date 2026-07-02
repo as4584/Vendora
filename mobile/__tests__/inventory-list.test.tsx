@@ -229,16 +229,20 @@ describe('InventoryListScreen', () => {
     );
   });
 
-  it('exports warehouse CSV, reports export errors, and routes header actions', async () => {
+  it('exports inventory via the CSV chooser option, reports errors, and routes header actions', async () => {
     (apiMock.listItems as jest.Mock).mockResolvedValue(PAGINATED_EMPTY);
     (apiMock.exportInventoryWarehouseCSV as jest.Mock).mockResolvedValueOnce('Product Name,,');
+    // The Export button opens a format chooser; auto-select "CSV".
+    (Alert.alert as jest.Mock).mockImplementation((_title, _msg, buttons?: any[]) => {
+      buttons?.find((b) => b.text === 'CSV')?.onPress?.();
+    });
     const screen = render(<InventoryListScreen />);
     await screen.findByText('No inventory matches this view.');
     fireEvent.press(screen.getByText('Export'));
     await waitFor(() =>
       expect(fileActions.downloadTextFile).toHaveBeenCalledWith(
         'Product Name,,',
-        'vendora-inventory-warehouse.csv',
+        'vendora-inventory.csv',
       ),
     );
 

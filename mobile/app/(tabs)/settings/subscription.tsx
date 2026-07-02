@@ -11,11 +11,14 @@ export default function SubscriptionScreen() {
   const { refreshUser } = useAuth();
   const [status, setStatus] = useState<api.SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
 
   const load = async () => {
+    setLoading(true);
+    setLoadError(null);
     try { setStatus(await api.getSubscriptionStatus()); }
-    catch (error: any) { Alert.alert("Billing unavailable", error?.message || "Could not load billing status."); }
+    catch (error: any) { setLoadError(error?.message || "Could not load billing status."); }
     finally { setLoading(false); }
   };
 
@@ -47,11 +50,19 @@ export default function SubscriptionScreen() {
 
   if (loading) return <View testID="subscription-loading" style={styles.center}><ActivityIndicator color={COLORS.primary} /></View>;
 
+  if (loadError) return (
+    <View testID="subscription-error" style={styles.center}>
+      <Text style={styles.errorTitle}>Billing unavailable</Text>
+      <Text style={styles.muted}>{loadError}</Text>
+      <ActionButton label="Retry" onPress={load} />
+    </View>
+  );
+
   return (
     <ScrollView testID="subscription-content" style={styles.container} contentContainerStyle={styles.content}>
       <HeaderTitle title="Plans & Billing" subtitle="Upgrade securely with Stripe. Changes activate after Stripe confirms payment." />
       <Card style={styles.card}>
-        <View style={styles.row}><SectionLabel>Current access</SectionLabel><Pill label={status?.is_partner ? "PARTNER" : status?.tier.toUpperCase() || "FREE"} tone="primary" /></View>
+        <View style={styles.row}><SectionLabel>Current access</SectionLabel><Pill label={status?.is_partner ? "PARTNER" : (status?.tier ?? "free").toUpperCase()} tone="primary" /></View>
         <Text style={styles.muted}>Billing status: {status?.status || "none"}</Text>
         {status?.current_period_end ? <Text style={styles.muted}>Current period ends {new Date(status.current_period_end).toLocaleDateString()}</Text> : null}
         {status?.managed_billing ? <ActionButton label={working === "portal" ? "Opening..." : "Manage Billing"} onPress={manageBilling} disabled={!!working} tone="secondary" /> : null}
@@ -73,7 +84,8 @@ export default function SubscriptionScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg }, content: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: 48 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg, padding: SPACING.lg, gap: SPACING.sm },
+  errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "800" },
   card: { gap: SPACING.sm }, row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   muted: { color: COLORS.textMuted, fontSize: 12 }, copy: { color: COLORS.textSoft, fontSize: 14, lineHeight: 21 },
   legal: { color: COLORS.textMuted, fontSize: 11, lineHeight: 17 },

@@ -929,6 +929,11 @@ export async function exportTransactionsCSV(): Promise<string> {
   return request<string>("/export/transactions");
 }
 
+/** Absolute URL for the styled .xlsx export with embedded item photos (Pro). */
+export function exportInventoryXlsxUrl(): string {
+  return `${API_BASE_URL}/export/inventory?format=xlsx`;
+}
+
 // ─── Public Seller Page ──────────────────────────────
 
 export interface SellerProfile {

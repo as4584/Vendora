@@ -268,38 +268,25 @@ describe('ItemDetailScreen', () => {
     expect(screen.getByText('6')).toBeTruthy();
   });
 
-  it('calls router.back() after getItem throws an error', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(
-      (_title, _msg, buttons) => {
-        // Press the OK button programmatically
-        buttons?.[0]?.onPress?.();
-      },
-    );
+  it('shows a retryable error view after getItem throws, then recovers', async () => {
+    (apiMock.getItem as jest.Mock).mockRejectedValueOnce(new Error('Not found'));
+    const screen = render(<ItemDetailScreen />);
 
-    (apiMock.getItem as jest.Mock).mockRejectedValue(new Error('Not found'));
+    await screen.findByTestId('item-detail-error');
+    expect(screen.getByText('Not found')).toBeTruthy();
 
-    render(<ItemDetailScreen />);
-
-    await waitFor(() => {
-      expect(mockBack).toHaveBeenCalledTimes(1);
-    });
-
-    alertSpy.mockRestore();
+    // Retry succeeds and the content renders.
+    (apiMock.getItem as jest.Mock).mockResolvedValueOnce(makeItem());
+    fireEvent.press(screen.getByText('Retry'));
+    await screen.findByTestId('item-detail-content');
   });
 
-  it('handles a missing route ID without making an API request', async () => {
+  it('shows an error view for a missing route ID without making an API request', async () => {
     mockSearchParams.mockReturnValue({});
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    render(<ItemDetailScreen />);
-    await waitFor(() =>
-      expect(alertSpy).toHaveBeenCalledWith(
-        'Error',
-        'This item link is missing an inventory ID.',
-        expect.any(Array),
-      ),
-    );
+    const screen = render(<ItemDetailScreen />);
+    await screen.findByTestId('item-detail-error');
+    expect(screen.getByText('This item link is missing an inventory ID.')).toBeTruthy();
     expect(apiMock.getItem).not.toHaveBeenCalled();
-    alertSpy.mockRestore();
   });
 
   it('renders sales, invoice, and stock activity timelines', async () => {

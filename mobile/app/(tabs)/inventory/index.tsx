@@ -16,7 +16,7 @@ import * as api from "../../../services/api";
 import { ActionButton, Card, ChipRow, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
-import { downloadTextFile } from "../../../utils/fileActions";
+import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
 
 const STATUS_TONES: Record<string, "success" | "warning" | "danger" | "info" | "neutral" | "primary"> = {
   in_stock: "success",
@@ -229,13 +229,30 @@ export default function InventoryListScreen() {
     );
   };
 
-  const onExport = async () => {
+  const exportExcel = async () => {
+    try {
+      const token = await api.getToken();
+      await downloadAndShareRemote(api.exportInventoryXlsxUrl(), "vendora-inventory.xlsx", token);
+    } catch (err: any) {
+      Alert.alert("Export failed", err?.message || "Could not export the Excel file.");
+    }
+  };
+
+  const exportCsv = async () => {
     try {
       const csv = await api.exportInventoryWarehouseCSV();
-      await downloadTextFile(csv, "vendora-inventory-warehouse.csv");
+      await downloadTextFile(csv, "vendora-inventory.csv");
     } catch (err: any) {
       Alert.alert("Export failed", err?.message || "Could not export the inventory CSV.");
     }
+  };
+
+  const onExport = () => {
+    Alert.alert("Export inventory", "Excel keeps item photos and is easiest to read. CSV is best for re-importing.", [
+      { text: "Excel (with photos)", onPress: exportExcel },
+      { text: "CSV", onPress: exportCsv },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const availableSources = useMemo(() => {

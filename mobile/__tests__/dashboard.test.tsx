@@ -208,55 +208,6 @@ describe('DashboardScreen', () => {
     });
   });
 
-  it('downloads a warehouse CSV when Export is pressed', async () => {
-    const dashboard = deferred<apiMock.Dashboard>();
-    const analytics = deferred<apiMock.AdvancedAnalytics>();
-    const inventory = deferred<apiMock.PaginatedItems>();
-    (apiMock.getDashboard as jest.Mock).mockReturnValue(dashboard.promise);
-    (apiMock.getAdvancedAnalytics as jest.Mock).mockReturnValue(analytics.promise);
-    (apiMock.listItems as jest.Mock).mockReturnValue(inventory.promise);
-    (apiMock.exportInventoryWarehouseCSV as jest.Mock).mockResolvedValue('Product Name,,\nJordan,,');
-
-    const screen = render(<DashboardScreen />);
-
-    await act(async () => {
-      dashboard.resolve(MOCK_DASHBOARD);
-      analytics.resolve(MOCK_ANALYTICS);
-      inventory.resolve({ items: [], total: 0, page: 1, per_page: 100, pages: 0 });
-      await Promise.all([dashboard.promise, analytics.promise, inventory.promise]);
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('Export CSV')).toBeTruthy();
-    });
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('Export CSV'));
-    });
-
-    expect(apiMock.exportInventoryWarehouseCSV).toHaveBeenCalled();
-    expect(fileActionsMock.downloadTextFile).toHaveBeenCalledWith(
-      'Product Name,,\nJordan,,',
-      'vendora-inventory-warehouse.csv',
-    );
-  });
-
-  it('routes to Sync Center when no providers are connected', async () => {
-    setupMocks();
-    const screen = render(<DashboardScreen />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dashboard-content')).toBeTruthy();
-    });
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('Sync POS'));
-    });
-
-    expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
-  });
-
   it('refreshes through the native refresh control and retries a failed load', async () => {
     setupMocks();
     const screen = render(<DashboardScreen />);
@@ -294,61 +245,6 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('Low Stock')).toBeTruthy();
     expect(screen.getByText('View items')).toBeTruthy();
     expect(screen.getByText('Business Overview')).toBeTruthy();
-  });
-
-  it('starts all connected syncs and reports partial failures', async () => {
-    setupMocks();
-    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue({ connected: true });
-    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue({ connected: true });
-    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue({ connected: true });
-    (apiMock.triggerLightspeedSync as jest.Mock).mockResolvedValue({ status: 'started' });
-    (apiMock.triggerSquareSync as jest.Mock).mockRejectedValue(new Error('square offline'));
-    (apiMock.triggerCloverSync as jest.Mock).mockResolvedValue({ status: 'started' });
-    const screen = render(<DashboardScreen />);
-    await screen.findByTestId('dashboard-content');
-    fireEvent.press(screen.getByText('Sync POS'));
-    await waitFor(() =>
-      expect(Alert.alert).toHaveBeenCalledWith(
-        'Partial sync',
-        '2 provider syncs started; 1 could not be started.',
-      ),
-    );
-    expect(apiMock.triggerLightspeedSync).toHaveBeenCalled();
-    expect(apiMock.triggerSquareSync).toHaveBeenCalled();
-    expect(apiMock.triggerCloverSync).toHaveBeenCalled();
-    expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
-  });
-
-  it('reports export and provider-status failures', async () => {
-    setupMocks();
-    (apiMock.exportInventoryWarehouseCSV as jest.Mock).mockRejectedValueOnce(
-      new Error('export unavailable'),
-    );
-    const screen = render(<DashboardScreen />);
-    await screen.findByTestId('dashboard-content');
-    fireEvent.press(screen.getByText('Export CSV'));
-    await waitFor(() =>
-      expect(Alert.alert).toHaveBeenCalledWith('Export failed', 'export unavailable'),
-    );
-
-    (apiMock.getLightspeedStatus as jest.Mock).mockRejectedValueOnce(new Error('sync unavailable'));
-    fireEvent.press(screen.getByText('Sync POS'));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Sync failed', 'sync unavailable'));
-  });
-
-  it('routes quick-action navigation', async () => {
-    setupMocks();
-    const screen = render(<DashboardScreen />);
-    await screen.findByTestId('dashboard-content');
-    fireEvent.press(screen.getByText('Quick Sale'));
-    fireEvent.press(screen.getByText('Add Stock'));
-    fireEvent.press(screen.getByText('Scan SKU'));
-    expect(mockPush.mock.calls).toEqual(
-      expect.arrayContaining([
-        ['/inventory/sale'],
-        ['/inventory/add'],
-      ]),
-    );
   });
 
   it('opens inventory when the Low Stock card is tapped', async () => {
