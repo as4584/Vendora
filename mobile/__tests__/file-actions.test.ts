@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import {
+  downloadAndShareRemote,
   downloadPdfFile,
   downloadTextFile,
   openPdfFile,
@@ -24,6 +25,7 @@ jest.mock('expo-file-system/legacy', () => {
     },
     EncodingType: { UTF8: 'utf8', Base64: 'base64' },
     writeAsStringAsync: jest.fn(async () => undefined),
+    downloadAsync: jest.fn(async () => ({ status: 200, uri: 'cache://vendora-inventory.xlsx' })),
   };
 });
 
@@ -150,6 +152,57 @@ describe('fileActions', () => {
       (global as any).window = originalWindow;
       URL.createObjectURL = originalCreateObjectURL;
       URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
+  it('downloads a remote binary and shares it on native', async () => {
+    (files.downloadAsync as jest.Mock).mockResolvedValueOnce({ status: 200, uri: 'cache://vendora-inventory.xlsx' });
+    await downloadAndShareRemote('https://api.test/x.xlsx', 'vendora-inventory.xlsx', 'tok');
+    expect(files.downloadAsync).toHaveBeenCalledWith(
+      'https://api.test/x.xlsx',
+      'cache://vendora-inventory.xlsx',
+      { headers: { Authorization: 'Bearer tok' } },
+    );
+    expect(sharing.shareAsync).toHaveBeenCalledWith('cache://vendora-inventory.xlsx', expect.objectContaining({ dialogTitle: 'vendora-inventory.xlsx' }));
+  });
+
+  it('maps Pro-gated (403) and generic errors, and missing storage/sharing', async () => {
+    (files.downloadAsync as jest.Mock).mockResolvedValueOnce({ status: 403, uri: 'x' });
+    await expect(downloadAndShareRemote('u', 'f.xlsx', null)).rejects.toThrow(/Pro feature/);
+
+    (files.downloadAsync as jest.Mock).mockResolvedValueOnce({ status: 500, uri: 'x' });
+    await expect(downloadAndShareRemote('u', 'f.xlsx', 'tok')).rejects.toThrow('Export failed (500).');
+
+    (FileSystem as any).__setDirectories(null, null);
+    await expect(downloadAndShareRemote('u', 'f.xlsx', 'tok')).rejects.toThrow('File storage is not available on this device.');
+
+    (FileSystem as any).__setDirectories('cache://', null);
+    (files.downloadAsync as jest.Mock).mockResolvedValueOnce({ status: 200, uri: 'cache://f.xlsx' });
+    sharing.isAvailableAsync.mockResolvedValue(false);
+    await expect(downloadAndShareRemote('u', 'f.xlsx', 'tok')).rejects.toThrow('File sharing is not available on this device.');
+  });
+
+  it('downloads a remote binary in the browser (and surfaces HTTP errors)', async () => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+    const anchor: Record<string, unknown> = { click: jest.fn(), remove: jest.fn() };
+    const originalDocument = (global as any).document;
+    const originalWindow = (global as any).window;
+    const originalFetch = (global as any).fetch;
+    (global as any).document = { createElement: jest.fn(() => anchor), body: { appendChild: jest.fn() } };
+    (global as any).window = { setTimeout: (cb: () => void) => { cb(); return 1; } };
+    URL.createObjectURL = jest.fn(() => 'blob:x');
+    URL.revokeObjectURL = jest.fn();
+    try {
+      (global as any).fetch = jest.fn(async () => ({ ok: true, status: 200, blob: async () => new Blob(['xlsx']) }));
+      await downloadAndShareRemote('https://api.test/x.xlsx', 'inv.xlsx', 'tok');
+      expect(anchor.download).toBe('inv.xlsx');
+
+      (global as any).fetch = jest.fn(async () => ({ ok: false, status: 402, blob: async () => new Blob([]) }));
+      await expect(downloadAndShareRemote('u', 'inv.xlsx', 'tok')).rejects.toThrow(/Pro feature/);
+    } finally {
+      (global as any).document = originalDocument;
+      (global as any).window = originalWindow;
+      (global as any).fetch = originalFetch;
     }
   });
 });

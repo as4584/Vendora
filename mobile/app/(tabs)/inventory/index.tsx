@@ -202,7 +202,6 @@ export default function InventoryListScreen() {
 
   const runBulkDelete = async (deleteFromSource: boolean) => {
     const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
     setDeleting(true);
     try {
       const result = await api.bulkDeleteItems(ids, deleteFromSource);
@@ -219,7 +218,6 @@ export default function InventoryListScreen() {
 
   const confirmBulkDelete = () => {
     const n = selectedIds.size;
-    if (n === 0) return;
     Alert.alert(
       `Delete ${n} item${n === 1 ? "" : "s"}?`,
       "Choose where to remove them.",
@@ -388,7 +386,7 @@ export default function InventoryListScreen() {
       ) : null}
 
       <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
-        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setFilterOpen(false)}>
+        <TouchableOpacity testID="filter-backdrop" style={styles.modalBackdrop} activeOpacity={1} onPress={() => setFilterOpen(false)}>
           <TouchableOpacity activeOpacity={1} style={styles.filterSheet}>
             <View style={styles.filterSheetHead}>
               <Text style={styles.filterSheetTitle}>Filter inventory</Text>

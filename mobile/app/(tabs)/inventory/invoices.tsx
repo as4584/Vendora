@@ -15,7 +15,7 @@ import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, sizeBreakdown } from "../../../utils/inventory";
-import { downloadPdfFile, previewPdfFile } from "../../../utils/fileActions";
+import { downloadPdfFile } from "../../../utils/fileActions";
 
 interface DraftLineItem {
   description: string;
@@ -151,15 +151,11 @@ export default function InvoicesScreen() {
     router.replace("/dashboard" as any);
   };
 
-  const handleOpenInvoice = async (invoiceId: string, mode: "preview" | "download" = "preview") => {
+  const handleOpenInvoice = async (invoiceId: string) => {
     setOpeningInvoiceId(invoiceId);
     try {
       const { pdf_base64, filename } = await api.exportInvoicePdf(invoiceId);
-      if (mode === "download") {
-        await downloadPdfFile(pdf_base64, filename);
-      } else {
-        await previewPdfFile(pdf_base64, filename);
-      }
+      await downloadPdfFile(pdf_base64, filename);
     } catch (err: any) {
       Alert.alert("Invoice unavailable", err?.message || "Could not open the invoice PDF.");
     } finally {
@@ -512,7 +508,7 @@ export default function InvoicesScreen() {
               />
               <ActionButton
                 label={openingInvoiceId === selectedInvoice.id ? "Preparing PDF..." : "Share PDF"}
-                onPress={() => handleOpenInvoice(selectedInvoice.id, "download")}
+                onPress={() => handleOpenInvoice(selectedInvoice.id)}
                 tone="secondary"
                 compact
                 disabled={openingInvoiceId === selectedInvoice.id}

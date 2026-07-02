@@ -233,6 +233,17 @@ describe('API endpoint contracts', () => {
     { name: 'Lightspeed push', call: () => api.pushLightspeedInventory(), path: '/integrations/lightspeed/push', method: 'POST' },
     { name: 'Lightspeed item push', call: () => api.pushItemToLightspeed('item-1'), path: '/integrations/lightspeed/items/item-1/push', method: 'POST' },
     { name: 'Lightspeed disconnect', call: () => api.disconnectLightspeed(), path: '/integrations/lightspeed', method: 'DELETE' },
+    {
+      name: 'bulk delete items',
+      call: () => api.bulkDeleteItems(['a', 'b'], true),
+      path: '/inventory/bulk-delete',
+      method: 'POST',
+      body: { item_ids: ['a', 'b'], delete_from_source: true },
+    },
+    { name: 'eBay status', call: () => api.getEbayStatus(), path: '/integrations/ebay/status' },
+    { name: 'eBay connect', call: () => api.getEbayConnectUrl(), path: '/integrations/ebay/connect' },
+    { name: 'eBay sync', call: () => api.triggerEbaySync(), path: '/integrations/ebay/sync', method: 'POST' },
+    { name: 'eBay disconnect', call: () => api.disconnectEbay(), path: '/integrations/ebay', method: 'DELETE' },
     { name: 'Square status', call: () => api.getSquareStatus(), path: '/integrations/square/status' },
     {
       name: 'Square connect',
@@ -284,6 +295,10 @@ describe('API endpoint contracts', () => {
     expectPath(url, path);
     expect(options.method ?? 'GET').toBe(method ?? 'GET');
     if (body !== undefined) expect(JSON.parse(options.body as string)).toEqual(body);
+  });
+
+  it('builds the xlsx export URL', () => {
+    expect(api.exportInventoryXlsxUrl()).toMatch(/\/export\/inventory\?format=xlsx$/);
   });
 
   it('builds list query strings for numeric and filtered forms', async () => {

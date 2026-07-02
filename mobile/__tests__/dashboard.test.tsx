@@ -41,8 +41,9 @@ jest.mock('../services/api', () => ({
   triggerCloverSync: jest.fn(),
 }));
 
+let mockUser: Record<string, unknown> | null = { business_name: 'Alex Store' };
 jest.mock('../context/auth', () => ({
-  useAuth: () => ({ user: { business_name: 'Alex Store' } }),
+  useAuth: () => ({ user: mockUser }),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -123,6 +124,7 @@ function setupMocks({
 }
 
 beforeEach(() => {
+  mockUser = { business_name: 'Alex Store' };
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation((message?: unknown, ...args: unknown[]) => {
@@ -245,6 +247,26 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('Low Stock')).toBeTruthy();
     expect(screen.getByText('View items')).toBeTruthy();
     expect(screen.getByText('Business Overview')).toBeTruthy();
+  });
+
+  it('handles a nameless user, a null-prior delta, and null quantities', async () => {
+    mockUser = {}; // no business_name → greets "there"
+    setupMocks();
+    (apiMock.getAdvancedAnalytics as jest.Mock).mockResolvedValue({
+      ...MOCK_ANALYTICS,
+      // yesterday net = 0 → pctDelta guards against divide-by-zero (returns null)
+      daily: [
+        { date: '2026-06-01', revenue: '0', net: '0', transactions: 0 },
+        { date: '2026-06-02', revenue: '100', net: '50', transactions: 1 },
+      ],
+    });
+    (apiMock.listItems as jest.Mock).mockResolvedValue({
+      items: [{ id: 'x', quantity: null }],
+      total: 1, page: 1, per_page: 100, pages: 1,
+    });
+    const screen = render(<DashboardScreen />);
+    await screen.findByTestId('dashboard-content');
+    expect(screen.getByText(/Good (morning|afternoon|evening), there/)).toBeTruthy();
   });
 
   it('opens inventory when the Low Stock card is tapped', async () => {

@@ -50,6 +50,10 @@ describe('QuickSaleScreen (multi-item cart)', () => {
 
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));
     fireEvent.press(screen.getByText('Sony WH-1000XM5'));
+    // Toggle Sony off then back on (covers the cart remove/add branches).
+    // Once added the name appears in both the list and cart, so target the list row by label.
+    fireEvent.press(screen.getByLabelText('Remove Sony WH-1000XM5'));
+    fireEvent.press(screen.getByLabelText('Add Sony WH-1000XM5'));
     // Cart shows both lines + a total (340 + 210 = 550).
     await waitFor(() => expect(screen.getByText(/Cart · 2 items/)).toBeTruthy());
 
@@ -69,6 +73,8 @@ describe('QuickSaleScreen (multi-item cart)', () => {
     await screen.findByText('Jordan 1 Retro High');
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));
     fireEvent.press(screen.getByLabelText('Increase Jordan 1 Retro High')); // qty 2
+    fireEvent.press(screen.getByLabelText('Increase Jordan 1 Retro High')); // qty 3
+    fireEvent.press(screen.getByLabelText('Decrease Jordan 1 Retro High')); // back to qty 2
     fireEvent.press(screen.getByText('PAYPAL'));
     fireEvent.changeText(screen.getByLabelText('Fee amount'), '5');
     fireEvent.press(screen.getByText(/Log Sale/));

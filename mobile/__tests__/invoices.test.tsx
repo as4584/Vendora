@@ -211,6 +211,11 @@ describe('InvoicesScreen', () => {
       expect(screen.getByText('Share PDF')).toBeTruthy();
     });
 
+    // Preview navigates to the read-only preview screen.
+    await act(async () => {
+      fireEvent.press(screen.getByText('Preview'));
+    });
+
     await act(async () => {
       fireEvent.press(screen.getByText('Share PDF'));
     });

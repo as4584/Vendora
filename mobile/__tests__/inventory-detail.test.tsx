@@ -281,12 +281,14 @@ describe('ItemDetailScreen', () => {
     await screen.findByTestId('item-detail-content');
   });
 
-  it('shows an error view for a missing route ID without making an API request', async () => {
+  it('shows an error view for a missing route ID and returns to inventory', async () => {
     mockSearchParams.mockReturnValue({});
     const screen = render(<ItemDetailScreen />);
     await screen.findByTestId('item-detail-error');
     expect(screen.getByText('This item link is missing an inventory ID.')).toBeTruthy();
     expect(apiMock.getItem).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByText('Back to Inventory'));
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/inventory');
   });
 
   it('renders sales, invoice, and stock activity timelines', async () => {

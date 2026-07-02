@@ -63,7 +63,6 @@ export default function QuickSaleScreen() {
   const changeQty = (id: string, delta: number) => {
     setCart((prev) => {
       const line = prev[id];
-      if (!line) return prev;
       const max = Math.max(1, resolveQty(line.item));
       const qty = Math.min(max, Math.max(1, line.qty + delta));
       return { ...prev, [id]: { ...line, qty } };

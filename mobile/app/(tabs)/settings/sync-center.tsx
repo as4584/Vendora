@@ -82,8 +82,6 @@ export default function SyncCenterScreen() {
       const failed = results.filter((r) => r.status === "rejected").length;
       await load();
       if (failed > 0) Alert.alert("Partial sync", `${connected.length - failed} of ${connected.length} providers synced.`);
-    } catch (err: any) {
-      Alert.alert("Sync failed", err?.message || "Could not start the sync.");
     } finally {
       setSyncing(null);
     }

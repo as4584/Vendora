@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import RootLayout from '../app/_layout';
 import Index from '../app/index';
 import AuthLayout from '../app/(auth)/_layout';
@@ -115,7 +115,10 @@ describe('router layouts', () => {
     expect(invoices.options.href).toBeNull();
     // The Add tab renders a custom floating FAB button instead of a standard icon.
     const add = mockTabsScreen.mock.calls.find(([props]) => props.name === 'inventory/add')?.[0];
-    expect(add.options.tabBarButton({ onPress: jest.fn() })).toBeTruthy();
+    const onFabPress = jest.fn();
+    const fab = render(add.options.tabBarButton({ onPress: onFabPress }));
+    fireEvent.press(fab.getByLabelText('Add stock'));
+    expect(onFabPress).toHaveBeenCalled();
     const dashboard = mockTabsScreen.mock.calls[0][0];
     expect(dashboard.options.tabBarIcon({ focused: true })).toBeTruthy();
   });

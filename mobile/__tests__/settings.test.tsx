@@ -111,6 +111,7 @@ function setupAllErrors() {
   (apiMock.getLightspeedStatus as jest.Mock).mockRejectedValue(new Error('404'));
   (apiMock.getSquareStatus as jest.Mock).mockRejectedValue(new Error('404'));
   (apiMock.getCloverStatus as jest.Mock).mockRejectedValue(new Error('404'));
+  (apiMock.getEbayStatus as jest.Mock).mockRejectedValue(new Error('404'));
   (apiMock.getProviderHealth as jest.Mock).mockRejectedValue(new Error('404'));
 }
 
@@ -528,5 +529,78 @@ describe('SettingsScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
     expect(backgroundSync.unregisterBackgroundSync).toHaveBeenCalled();
     expect(mockSignOut).toHaveBeenCalled();
+  });
+
+  it('connects eBay via OAuth and reports launch failures', async () => {
+    setupAllDisconnected();
+    (apiMock.getEbayConnectUrl as jest.Mock).mockResolvedValueOnce({ authorization_url: 'https://ebay.test/oauth' });
+    const screen = render(<SettingsScreen />);
+    await screen.findByTestId('settings-content');
+    fireEvent.press(screen.getByText('Connect eBay'));
+    await waitFor(() => expect(WebBrowser.openAuthSessionAsync).toHaveBeenCalledWith('https://ebay.test/oauth', expect.anything()));
+
+    (apiMock.getEbayConnectUrl as jest.Mock).mockRejectedValueOnce(new Error('nope'));
+    fireEvent.press(screen.getByText('Connect eBay'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('eBay unavailable', 'nope'));
+  });
+
+  it('syncs eBay to the sync center and reports failures', async () => {
+    setupAllDisconnected();
+    (apiMock.getEbayStatus as jest.Mock).mockResolvedValue({ connected: true, account_id: 'seller', expires_at: null, last_synced_at: null });
+    (apiMock.triggerEbaySync as jest.Mock).mockResolvedValueOnce({ status: 'completed' });
+    const screen = render(<SettingsScreen />);
+    await screen.findByTestId('settings-content');
+    fireEvent.press(await screen.findByText('Sync Now')); // eBay is the only connected provider
+    await waitFor(() => {
+      expect(apiMock.triggerEbaySync).toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
+    });
+
+    (apiMock.triggerEbaySync as jest.Mock).mockRejectedValueOnce(new Error('sync down'));
+    fireEvent.press(screen.getByText('Sync Now'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('eBay sync failed', 'sync down'));
+  });
+
+  it('disconnects eBay after confirmation and reports failures', async () => {
+    setupAllDisconnected();
+    (apiMock.getEbayStatus as jest.Mock).mockResolvedValue({ connected: true, account_id: 'seller', expires_at: null, last_synced_at: null });
+    (apiMock.disconnectEbay as jest.Mock).mockResolvedValueOnce({ disconnected: true, links_retained: 0 });
+    const screen = render(<SettingsScreen />);
+    await screen.findByTestId('settings-content');
+    (Alert.alert as jest.Mock).mockImplementation((_t, _m, buttons?: any[]) =>
+      buttons?.find((b) => b.text === 'Disconnect')?.onPress?.(),
+    );
+    fireEvent.press(await screen.findByText('Disconnect')); // eBay is the only provider with a Disconnect action
+    await waitFor(() => expect(apiMock.disconnectEbay).toHaveBeenCalled());
+    // Failure path.
+    (apiMock.disconnectEbay as jest.Mock).mockRejectedValueOnce(new Error('dc down'));
+    fireEvent.press(screen.getByText('Disconnect'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Disconnect failed', 'dc down'));
+  });
+
+  it('saves invoice branding, validating hex and reporting failures', async () => {
+    setupAllDisconnected();
+    const screen = render(<SettingsScreen />);
+    await screen.findByTestId('settings-content');
+    // Pick a preset swatch color.
+    fireEvent.press(screen.getAllByLabelText(/^Use color /)[0]);
+    // Invalid hex is rejected before any request.
+    fireEvent.changeText(screen.getByLabelText('Brand color hex'), 'nope');
+    fireEvent.press(screen.getByText('Save Branding'));
+    expect(Alert.alert).toHaveBeenLastCalledWith('Invalid color', expect.any(String));
+    expect(apiMock.updateProfile).not.toHaveBeenCalled();
+    // Valid hex saves.
+    fireEvent.changeText(screen.getByLabelText('Brand color hex'), '#123ABC');
+    (apiMock.updateProfile as jest.Mock).mockResolvedValueOnce({});
+    fireEvent.press(screen.getByText('Save Branding'));
+    await waitFor(() =>
+      expect(apiMock.updateProfile).toHaveBeenCalledWith(
+        expect.objectContaining({ invoice_accent_color: '#123ABC' }),
+      ),
+    );
+    // Save failure surfaces an alert.
+    (apiMock.updateProfile as jest.Mock).mockRejectedValueOnce(new Error('save down'));
+    fireEvent.press(screen.getByText('Save Branding'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Save failed', 'save down'));
   });
 });

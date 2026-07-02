@@ -33,9 +33,13 @@ jest.mock('../services/api', () => ({
   listItems: jest.fn(),
   exportInventoryCSV: jest.fn(),
   exportInventoryWarehouseCSV: jest.fn(),
+  bulkDeleteItems: jest.fn(),
+  getToken: jest.fn(async () => 'tok-123'),
+  exportInventoryXlsxUrl: jest.fn(() => 'https://api.test/export/inventory?format=xlsx'),
 }));
 jest.mock('../utils/fileActions', () => ({
   downloadTextFile: jest.fn(),
+  downloadAndShareRemote: jest.fn(),
 }));
 
 function makeItem(overrides: Partial<apiMock.InventoryItem> = {}): apiMock.InventoryItem {
@@ -262,5 +266,111 @@ describe('InventoryListScreen', () => {
     expect(mockPush.mock.calls).toEqual(
       expect.arrayContaining([['/inventory/import'], ['/inventory/add']]),
     );
+  });
+
+  it('selects an item and bulk-deletes from app only', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [makeItem()], total: 1 });
+    (apiMock.bulkDeleteItems as jest.Mock).mockResolvedValue({ deleted: 1 });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Jordan 1 Chicago');
+    fireEvent.press(screen.getByText('Select'));
+    fireEvent.press(screen.getByText('Jordan 1 Chicago')); // select
+    await screen.findByText('Delete 1');
+    fireEvent.press(screen.getByText('Jordan 1 Chicago')); // deselect (toggle off)
+    fireEvent.press(screen.getByText('Jordan 1 Chicago')); // reselect
+    await screen.findByText('Delete 1');
+    (Alert.alert as jest.Mock).mockImplementationOnce((_t, _m, buttons?: any[]) =>
+      buttons?.find((b) => b.text === 'Delete from app only')?.onPress?.(),
+    );
+    fireEvent.press(screen.getByText('Delete 1'));
+    await waitFor(() => expect(apiMock.bulkDeleteItems).toHaveBeenCalledWith(['item-1'], false));
+  });
+
+  it('bulk-deletes from app + source and reports failures, then cancels select mode', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [makeItem()], total: 1 });
+    (apiMock.bulkDeleteItems as jest.Mock).mockResolvedValueOnce({ deleted: 1, source_note: 'read-only' });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Jordan 1 Chicago');
+    fireEvent.press(screen.getByText('Select'));
+    fireEvent.press(screen.getByText('Jordan 1 Chicago'));
+    await screen.findByText('Delete 1');
+    (Alert.alert as jest.Mock).mockImplementationOnce((_t, _m, buttons?: any[]) =>
+      buttons?.find((b) => b.text === 'Delete from app + source')?.onPress?.(),
+    );
+    fireEvent.press(screen.getByText('Delete 1'));
+    await waitFor(() => expect(apiMock.bulkDeleteItems).toHaveBeenCalledWith(['item-1'], true));
+
+    // Failure path
+    fireEvent.press(screen.getByText('Select'));
+    fireEvent.press(screen.getByText('Jordan 1 Chicago'));
+    await screen.findByText('Delete 1');
+    (apiMock.bulkDeleteItems as jest.Mock).mockRejectedValueOnce(new Error('delete down'));
+    (Alert.alert as jest.Mock).mockImplementationOnce((_t, _m, buttons?: any[]) =>
+      buttons?.find((b) => b.text === 'Delete from app only')?.onPress?.(),
+    );
+    fireEvent.press(screen.getByText('Delete 1'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Delete failed', 'delete down'));
+    fireEvent.press(screen.getByText('Cancel'));
+    expect(screen.getByText('Select')).toBeTruthy();
+  });
+
+  it('exports Excel with photos via the chooser, reporting errors', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue(PAGINATED_EMPTY);
+    (fileActions.downloadAndShareRemote as jest.Mock).mockResolvedValueOnce(undefined);
+    (Alert.alert as jest.Mock).mockImplementation((_t, _m, buttons?: any[]) =>
+      buttons?.find((b) => typeof b.text === 'string' && b.text.startsWith('Excel'))?.onPress?.(),
+    );
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('No inventory matches this view.');
+    fireEvent.press(screen.getByText('Export'));
+    await waitFor(() =>
+      expect(fileActions.downloadAndShareRemote).toHaveBeenCalledWith(
+        'https://api.test/export/inventory?format=xlsx',
+        'vendora-inventory.xlsx',
+        'tok-123',
+      ),
+    );
+
+    (fileActions.downloadAndShareRemote as jest.Mock).mockRejectedValueOnce(new Error('pro only'));
+    fireEvent.press(screen.getByText('Export'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Export failed', 'pro only'));
+  });
+
+  it('shows active filter state, clears via "All statuses", and closes the dropdown', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [makeItem({ source: 'lightspeed' })], total: 1 });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Jordan 1 Chicago');
+    // Apply a status (each option press also closes the sheet).
+    fireEvent.press(screen.getByLabelText('Filters'));
+    fireEvent.press(screen.getByLabelText('In Stock'));
+    await waitFor(() => expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'in_stock' })));
+    // Reopen (In Stock now shows active) → clear via "All statuses".
+    fireEvent.press(screen.getByLabelText('Filters'));
+    fireEvent.press(screen.getByLabelText('All statuses'));
+    await waitFor(() => expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ status: undefined })));
+    // Reopen → "All sources" clears the source group.
+    fireEvent.press(screen.getByLabelText('Filters'));
+    fireEvent.press(screen.getByLabelText('All sources'));
+    await waitFor(() => expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ source: undefined })));
+    // Reopen → dismiss with the X.
+    fireEvent.press(screen.getByLabelText('Filters'));
+    fireEvent.press(screen.getByLabelText('Close filters'));
+    // Reopen → dismiss by tapping the backdrop and via hardware back.
+    fireEvent.press(screen.getByLabelText('Filters'));
+    fireEvent.press(screen.getByTestId('filter-backdrop'));
+    fireEvent.press(screen.getByLabelText('Filters'));
+    screen.UNSAFE_getByType(require('react-native').Modal).props.onRequestClose();
+  });
+
+  it('loads the next page when the list reaches its end', async () => {
+    const page1 = { items: [makeItem()], total: 40, page: 1, per_page: 24, pages: 2 };
+    (apiMock.listItems as jest.Mock)
+      .mockResolvedValueOnce(page1)
+      .mockResolvedValueOnce({ ...page1, items: [makeItem({ id: 'item-2', name: 'Page Two Item' })], page: 2 });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Jordan 1 Chicago');
+    const list = screen.UNSAFE_getByType(require('react-native').FlatList);
+    await act(async () => list.props.onEndReached());
+    await waitFor(() => expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })));
   });
 });
