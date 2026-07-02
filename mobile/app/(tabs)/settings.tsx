@@ -76,9 +76,12 @@ export default function SettingsScreen() {
   const [lsLoading, setLsLoading] = useState(true);
   const [sqLoading, setSqLoading] = useState(true);
   const [cvLoading, setCvLoading] = useState(true);
+  const [ebStatus, setEbStatus] = useState<api.EbayStatus | null>(null);
+  const [ebLoading, setEbLoading] = useState(true);
   const [lsSyncing, setLsSyncing] = useState(false);
   const [sqSyncing, setSqSyncing] = useState(false);
   const [cvSyncing, setCvSyncing] = useState(false);
+  const [ebSyncing, setEbSyncing] = useState(false);
   const [photoSaving, setPhotoSaving] = useState(false);
   const [connectionProvider, setConnectionProvider] = useState<"square" | "clover" | null>(null);
   const [accessToken, setAccessToken] = useState("");
@@ -94,19 +97,23 @@ export default function SettingsScreen() {
     setLsLoading(true);
     setSqLoading(true);
     setCvLoading(true);
-    const [ls, sq, cv, providerHealth] = await Promise.allSettled([
+    setEbLoading(true);
+    const [ls, sq, cv, eb, providerHealth] = await Promise.allSettled([
       api.getLightspeedStatus(),
       api.getSquareStatus(),
       api.getCloverStatus(),
+      api.getEbayStatus(),
       api.getProviderHealth(),
     ]);
     if (ls.status === "fulfilled") setLsStatus(ls.value); else setLsStatus(null);
     if (sq.status === "fulfilled") setSqStatus(sq.value); else setSqStatus(null);
     if (cv.status === "fulfilled") setCvStatus(cv.value); else setCvStatus(null);
+    if (eb.status === "fulfilled") setEbStatus(eb.value); else setEbStatus(null);
     if (providerHealth.status === "fulfilled") setHealth(providerHealth.value.providers); else setHealth([]);
     setLsLoading(false);
     setSqLoading(false);
     setCvLoading(false);
+    setEbLoading(false);
   };
 
   useEffect(() => {
@@ -216,6 +223,41 @@ export default function SettingsScreen() {
       setCvSyncing(false);
     }
   };
+
+  const handleConnectEbay = async () => {
+    try {
+      const { authorization_url } = await api.getEbayConnectUrl();
+      await WebBrowser.openAuthSessionAsync(authorization_url, Linking.createURL("settings"));
+      await fetchAll();
+    } catch (err: any) {
+      Alert.alert("eBay unavailable", err?.message || "Could not open the eBay connect flow.");
+    }
+  };
+
+  const handleSyncEbay = async () => {
+    setEbSyncing(true);
+    try {
+      await api.triggerEbaySync();
+      await fetchAll();
+      router.push("/settings/sync-center" as any);
+    } catch (err: any) {
+      Alert.alert("eBay sync failed", err?.message || "Could not complete the eBay sync.");
+    } finally {
+      setEbSyncing(false);
+    }
+  };
+
+  const handleDisconnectEbay = () => Alert.alert(
+    "Disconnect eBay?",
+    "OAuth credentials will be removed. Existing inventory links stay available for a safe reconnect.",
+    [
+      { text: "Cancel", style: "cancel" },
+      { text: "Disconnect", style: "destructive", onPress: async () => {
+        try { await api.disconnectEbay(); await fetchAll(); }
+        catch (err: any) { Alert.alert("Disconnect failed", err?.message || "Could not disconnect eBay."); }
+      } },
+    ],
+  );
 
   const openProviderConnection = (provider: "square" | "clover") => {
     setConnectionProvider(provider);
@@ -377,6 +419,17 @@ export default function SettingsScreen() {
         syncing={cvSyncing}
         onConnect={handleConnectClover}
         onSync={handleSyncClover}
+      />
+      <ProviderCard
+        name="eBay"
+        connected={ebStatus?.connected ?? false}
+        lastSynced={ebStatus?.last_synced_at}
+        helper="Import your eBay listings and orders into Vendora (read-only)."
+        loading={ebLoading}
+        syncing={ebSyncing}
+        onConnect={handleConnectEbay}
+        onSync={handleSyncEbay}
+        onDisconnect={handleDisconnectEbay}
       />
 
       <Modal

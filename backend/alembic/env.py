@@ -15,7 +15,7 @@ from app.models.inventory import InventoryItem  # noqa: F401 — register model
 from app.models.transaction import Transaction  # noqa: F401 — register model
 from app.models.invoice import Invoice, InvoiceItem  # noqa: F401 — register model
 from app.models.subscription import Subscription, WebhookEvent  # noqa: F401 — register model
-from app.models.integration import LightspeedToken  # noqa: F401 — register model
+from app.models.integration import LightspeedToken, EbayToken  # noqa: F401 — register model
 from app.models.square import SquareCredential  # noqa: F401 — register model
 from app.models.clover import CloverCredential  # noqa: F401 — register model
 from app.models.provider import ProviderSyncRun, ReconciliationIssue, ProviderWebhookEvent  # noqa: F401

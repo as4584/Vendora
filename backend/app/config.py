@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     LIGHTSPEED_CLIENT_ID: str = ""
     LIGHTSPEED_CLIENT_SECRET: str = ""
     LIGHTSPEED_REDIRECT_URI: str = "http://localhost:8000/integrations/lightspeed/callback"
+    # eBay Sell APIs (pull-only integration). Switch sandbox/production via EBAY_ENV.
+    EBAY_CLIENT_ID: str = ""        # App ID (Client ID) from the eBay developer portal
+    EBAY_CLIENT_SECRET: str = ""    # Cert ID (Client Secret)
+    EBAY_RUNAME: str = ""           # Redirect URL name (RuName) — used as redirect_uri in OAuth
+    EBAY_ENV: str = "sandbox"       # "sandbox" | "production"
     # Provider token encryption key (Fernet — 32-byte URL-safe base64).
     # Generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # If empty, a key is derived from SECRET_KEY via SHA-256 (acceptable for dev/test).

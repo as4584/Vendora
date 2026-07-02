@@ -154,7 +154,7 @@ class InventoryExternalLink(Base, TimestampMixin):
     user_id = Column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
     )
-    # lightspeed | square | clover | spreadsheet
+    # lightspeed | square | clover | ebay | spreadsheet
     provider = Column(String(50), nullable=False)
     external_id = Column(String(255), nullable=False)
     external_sku = Column(String(255), nullable=True)

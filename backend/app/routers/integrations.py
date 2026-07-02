@@ -37,10 +37,15 @@ from app.schemas.integration import (
     SyncRetryResponse,
     ProviderHealthResponse,
     ProviderHealthEntry,
+    EbayAuthURLResponse,
+    EbayStatusResponse,
+    EbaySyncResponse,
+    EbayDisconnectResponse,
 )
 from app.services.lightspeed import lightspeed_service
 from app.services.square import square_service
 from app.services.clover import clover_service
+from app.services.ebay import ebay_service
 from app.services.providers.base import claim_webhook_event, is_duplicate_event
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -154,6 +159,90 @@ def lightspeed_disconnect(
 ):
     links = lightspeed_service.disconnect(db, current_user.id)
     return LightspeedDisconnectResponse(disconnected=True, links_retained=links)
+
+
+# ─── eBay (pull-only) ───────────────────────────────────────────────────────────
+
+@router.get("/ebay/status", response_model=EbayStatusResponse)
+def ebay_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return whether the current user has connected their eBay account."""
+    token = ebay_service.get_token(db, current_user.id)
+    if not token:
+        return EbayStatusResponse(connected=False)
+
+    last_synced_scalar = (
+        db.query(func.max(InventoryExternalLink.last_synced_at))
+        .filter(
+            InventoryExternalLink.user_id == current_user.id,
+            InventoryExternalLink.provider == "ebay",
+        )
+        .scalar()
+    )
+    return EbayStatusResponse(
+        connected=True,
+        account_id=token.account_id,
+        expires_at=token.expires_at.isoformat(),
+        last_synced_at=last_synced_scalar.isoformat() if last_synced_scalar else None,
+    )
+
+
+@router.get("/ebay/connect", response_model=EbayAuthURLResponse)
+async def ebay_connect(current_user: User = Depends(get_current_user)):
+    """Return the eBay OAuth consent URL so the reseller can authorize Vendora."""
+    state = ebay_service.build_state(current_user.id)
+    return EbayAuthURLResponse(authorization_url=ebay_service.authorization_url(state))
+
+
+@router.get("/ebay/callback")
+async def ebay_callback(code: str, state: str, db: Session = Depends(get_db)):
+    """Handle the eBay OAuth callback and persist tokens."""
+    user_id = ebay_service.parse_state(state)
+    token_payload = await ebay_service.exchange_authorization_code(code)
+    username = await ebay_service.fetch_username(token_payload["access_token"])
+    ebay_service.upsert_token(
+        db,
+        user_id=user_id,
+        account_id=username,
+        access_token=token_payload["access_token"],
+        refresh_token=token_payload.get("refresh_token", ""),
+        expires_at=token_payload["expires_at"],
+        scopes=token_payload.get("scope"),
+    )
+    return RedirectResponse(
+        "vendora://settings?integration=ebay&status=connected",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/ebay/sync", response_model=EbaySyncResponse)
+async def ebay_sync(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pull-only sync: import eBay inventory items and orders into Vendora."""
+    result = await ebay_service.sync(db, current_user.id)
+    return EbaySyncResponse(
+        status="completed" if result.errors_count == 0 else "partial",
+        run_id=result.run_id,
+        items_imported=result.items_imported,
+        items_updated=result.items_updated,
+        items_skipped=result.items_skipped,
+        transactions_imported=result.transactions_imported,
+        transactions_updated=result.transactions_updated,
+        errors_count=result.errors_count,
+    )
+
+
+@router.delete("/ebay", response_model=EbayDisconnectResponse)
+def ebay_disconnect(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    links = ebay_service.disconnect(db, current_user.id)
+    return EbayDisconnectResponse(disconnected=True, links_retained=links)
 
 
 # ─── Square ───────────────────────────────────────────────────────────────────
@@ -571,7 +660,7 @@ def provider_health(
     Includes last run timestamp, last run status, count of failed runs in the
     past 24 hours, and count of currently open reconciliation issues.
     """
-    providers = ["lightspeed", "square", "clover"]
+    providers = ["lightspeed", "square", "clover", "ebay"]
     entries = []
 
     for prov in providers:

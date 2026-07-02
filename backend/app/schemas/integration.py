@@ -45,6 +45,35 @@ class LightspeedDisconnectResponse(BaseModel):
     links_retained: int
 
 
+# ─── eBay (pull-only) ──────────────────────────────────────────────────────────
+
+class EbayAuthURLResponse(BaseModel):
+    authorization_url: HttpUrl
+
+
+class EbayStatusResponse(BaseModel):
+    connected: bool
+    account_id: Optional[str] = None
+    expires_at: Optional[str] = None
+    last_synced_at: Optional[str] = None
+
+
+class EbaySyncResponse(BaseModel):
+    status: str = "completed"
+    run_id: uuid.UUID
+    items_imported: int = 0
+    items_updated: int = 0
+    items_skipped: int = 0
+    transactions_imported: int = 0
+    transactions_updated: int = 0
+    errors_count: int = 0
+
+
+class EbayDisconnectResponse(BaseModel):
+    disconnected: bool
+    links_retained: int
+
+
 class ProviderSyncRunResponse(BaseModel):
     """Response for GET /integrations/sync-runs and GET /integrations/sync-runs/{run_id}."""
 

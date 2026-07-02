@@ -1138,6 +1138,40 @@ export async function triggerCloverSync(): Promise<{
   return request("/integrations/clover/sync", { method: "POST" });
 }
 
+// ─── eBay Integration (pull-only) ─────────────────────
+
+export interface EbayStatus {
+  connected: boolean;
+  account_id: string | null;
+  expires_at: string | null;
+  last_synced_at: string | null;
+}
+
+export async function getEbayStatus(): Promise<EbayStatus> {
+  return request<EbayStatus>("/integrations/ebay/status");
+}
+
+export async function getEbayConnectUrl(): Promise<{ authorization_url: string }> {
+  return request<{ authorization_url: string }>("/integrations/ebay/connect");
+}
+
+export async function triggerEbaySync(): Promise<{
+  status: string;
+  run_id: string;
+  items_imported: number;
+  items_updated: number;
+  items_skipped: number;
+  transactions_imported: number;
+  transactions_updated: number;
+  errors_count: number;
+}> {
+  return request("/integrations/ebay/sync", { method: "POST" });
+}
+
+export async function disconnectEbay(): Promise<{ disconnected: boolean; links_retained: number }> {
+  return request("/integrations/ebay", { method: "DELETE" });
+}
+
 // ─── Provider Health ──────────────────────────────────
 
 export interface ProviderHealthEntry {
