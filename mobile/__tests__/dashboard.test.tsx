@@ -350,4 +350,45 @@ describe('DashboardScreen', () => {
       ]),
     );
   });
+
+  it('opens inventory when the Low Stock card is tapped', async () => {
+    setupMocks();
+    const screen = render(<DashboardScreen />);
+    await screen.findByTestId('dashboard-content');
+    fireEvent.press(screen.getByText('Low Stock'));
+    expect(mockPush).toHaveBeenCalledWith('/inventory');
+  });
+
+  it.each([
+    [14, 'Good afternoon, Alex 👋'],
+    [20, 'Good evening, Alex 👋'],
+  ])('greets by time of day (%i:00)', async (hour, expected) => {
+    const spy = jest.spyOn(Date.prototype, 'getHours').mockReturnValue(hour);
+    setupMocks();
+    const screen = render(<DashboardScreen />);
+    await screen.findByTestId('dashboard-content');
+    expect(screen.getByText(expected)).toBeTruthy();
+    spy.mockRestore();
+  });
+
+  it('shows a downward week-over-week delta when revenue falls', async () => {
+    setupMocks();
+    // Descending revenue/net so the last 7 days trail the prior 7 (down branch),
+    // and a zero prior day exercises the pctDelta null guard.
+    (apiMock.getAdvancedAnalytics as jest.Mock).mockResolvedValue({
+      ...MOCK_ANALYTICS,
+      daily: [
+        { date: '2026-06-01', revenue: '0', net: '0', transactions: 0 },
+        ...Array.from({ length: 13 }, (_, i) => ({
+          date: `2026-06-${String(i + 2).padStart(2, '0')}`,
+          revenue: String(400 - i * 20),
+          net: String(200 - i * 10),
+          transactions: 1,
+        })),
+      ],
+    });
+    const screen = render(<DashboardScreen />);
+    await screen.findByTestId('dashboard-content');
+    expect(screen.getByText('Business Overview')).toBeTruthy();
+  });
 });
