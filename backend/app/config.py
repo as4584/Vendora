@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # EBAY_DELETION_ENDPOINT must EXACTLY match the endpoint URL configured there (used in the hash).
     EBAY_VERIFICATION_TOKEN: str = ""
     EBAY_DELETION_ENDPOINT: str = "https://vendora.lexmakesit.com/api/v1/integrations/ebay/deletion"
+    # StockX (market data / last-sale lookups). Creds live in Doppler `api-keys`.
+    STOCKX_API_KEY: str = ""
+    STOCKX_CLIENT_ID: str = ""
+    STOCKX_CLIENT_SECRET: str = ""
+    STOCKX_REDIRECT_URI: str = "https://vendora.lexmakesit.com/api/v1/integrations/stockx/callback"
     # Provider token encryption key (Fernet — 32-byte URL-safe base64).
     # Generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # If empty, a key is derived from SECRET_KEY via SHA-256 (acceptable for dev/test).
