@@ -229,6 +229,40 @@ export default function ItemDetailScreen() {
         </View>
       </Card>
 
+      {(() => {
+        const cost = Number(item.buy_price ?? 0);
+        const list = Number(item.expected_sell_price ?? 0);
+        const profit = list - cost;
+        const roi = cost > 0 ? Math.round((profit / cost) * 100) : null;
+        return (
+          <Card>
+            <View style={styles.metricStrip}>
+              <View style={styles.metricCell}>
+                <Text style={styles.metricCellValue}>{formatCurrency(item.buy_price)}</Text>
+                <Text style={styles.metricCellLabel}>Cost</Text>
+              </View>
+              <View style={styles.metricCellDivider} />
+              <View style={styles.metricCell}>
+                <Text style={styles.metricCellValue}>{formatCurrency(item.expected_sell_price)}</Text>
+                <Text style={styles.metricCellLabel}>List</Text>
+              </View>
+              <View style={styles.metricCellDivider} />
+              <View style={styles.metricCell}>
+                <Text style={[styles.metricCellValue, { color: profit >= 0 ? COLORS.success : COLORS.danger }]}>
+                  {`${profit >= 0 ? "+" : "-"}$${Math.abs(profit).toFixed(0)}`}
+                </Text>
+                <Text style={styles.metricCellLabel}>Profit</Text>
+              </View>
+              <View style={styles.metricCellDivider} />
+              <View style={styles.metricCell}>
+                <Text style={[styles.metricCellValue, { color: COLORS.primaryBright }]}>{roi == null ? "—" : `${roi}%`}</Text>
+                <Text style={styles.metricCellLabel}>ROI</Text>
+              </View>
+            </View>
+          </Card>
+        );
+      })()}
+
       <Card>
         <SectionLabel>Stock Summary</SectionLabel>
         <View style={styles.summaryGrid}>
@@ -388,6 +422,11 @@ const styles = StyleSheet.create({
   photoThumbRow: { flexDirection: "row", gap: SPACING.sm, marginTop: SPACING.sm },
   thumbPhoto: { width: 64, height: 64, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardAlt },
   thumbPhotoActive: { borderColor: COLORS.primary, borderWidth: 2 },
+  metricStrip: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  metricCell: { flex: 1, alignItems: "center", gap: 3 },
+  metricCellValue: { color: COLORS.text, fontSize: 16, fontWeight: "800" },
+  metricCellLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: "600" },
+  metricCellDivider: { width: 1, height: 30, backgroundColor: COLORS.border },
   summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm, marginBottom: SPACING.sm },
   summaryBlock: {
     flex: 1,

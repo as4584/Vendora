@@ -21,7 +21,7 @@ jest.mock('../services/api', () => ({
 }));
 
 const subscription = { tier: 'free', is_partner: false, status: 'none', current_period_end: null, managed_billing: false };
-const analytics = { period_days: 30, revenue: '100', net: '80', average_order_value: '50', sell_through_rate: '25', daily: [{ date: '2026-07-01', revenue: '100', net: '80', transactions: 2 }], categories: [{ category: 'Shoes', revenue: '100', units_sold: 2 }] };
+const analytics = { period_days: 30, revenue: '100', net: '80', average_order_value: '50', sell_through_rate: '25', daily: [{ date: '2026-07-01', revenue: '100', net: '80', transactions: 2 }, { date: '2026-07-02', revenue: '120', net: '90', transactions: 1 }], categories: [{ category: 'Shoes', revenue: '100', units_sold: 2 }] };
 const seller = { seller: { id: 'seller-1', business_name: 'Test Store', is_partner: true, verified: true, member_since: '2025-01-01T00:00:00Z' }, stats: { total_items: 4, items_sold: 2, total_transactions: 3 }, listings: [{ id: 'item-1', name: 'Sneaker', category: 'Shoes', size: '10', color: 'Red', condition: 'New', price: '120', status: 'in_stock' }], disclaimer: 'Marketplace disclaimer.' };
 
 beforeEach(() => {
@@ -84,7 +84,7 @@ describe('analytics product', () => {
     let resolve!: (value: any) => void;
     (api.getAdvancedAnalytics as jest.Mock).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
     const screen = render(<AnalyticsScreen />); expect(screen.getByTestId('analytics-loading')).toBeTruthy(); resolve(analytics);
-    await screen.findByTestId('analytics-content'); expect(screen.getByText('Shoes')).toBeTruthy(); expect(screen.getByLabelText('2026-07-01: $100.00')).toBeTruthy();
+    await screen.findByTestId('analytics-content'); expect(screen.getByText('Shoes')).toBeTruthy(); expect(screen.getByText('Revenue over time')).toBeTruthy(); expect(screen.getByText('100%')).toBeTruthy();
   });
   it('shows empty categories and API errors', async () => {
     (api.getAdvancedAnalytics as jest.Mock).mockResolvedValueOnce({ ...analytics, revenue: '0', categories: [], daily: [] });
