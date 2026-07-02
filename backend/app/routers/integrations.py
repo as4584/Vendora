@@ -245,6 +245,34 @@ def ebay_disconnect(
     return EbayDisconnectResponse(disconnected=True, links_retained=links)
 
 
+# ─── eBay Marketplace Account Deletion (public; required for production) ─────────
+
+@router.get("/ebay/deletion")
+def ebay_deletion_challenge(challenge_code: str = Query(...)):
+    """Respond to eBay's account-deletion validation challenge.
+
+    eBay sends GET ?challenge_code=... and expects
+    sha256(challengeCode + verificationToken + endpoint) hex as challengeResponse.
+    The endpoint value MUST equal the URL configured in the eBay portal.
+    """
+    token = settings.EBAY_VERIFICATION_TOKEN
+    endpoint = settings.EBAY_DELETION_ENDPOINT
+    if not token:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="eBay deletion token not configured.")
+    digest = hashlib.sha256((challenge_code + token + endpoint).encode("utf-8")).hexdigest()
+    return {"challengeResponse": digest}
+
+
+@router.post("/ebay/deletion", status_code=status.HTTP_200_OK)
+async def ebay_deletion_notify(request: Request):
+    """Acknowledge eBay marketplace account-deletion notifications with 200 OK."""
+    try:
+        await request.body()  # drain the payload
+    except Exception:
+        pass
+    return {"ok": True}
+
+
 # ─── Square ───────────────────────────────────────────────────────────────────
 
 @router.get("/square/status", response_model=SquareStatusResponse)

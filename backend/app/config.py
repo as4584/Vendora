@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     EBAY_CLIENT_SECRET: str = ""    # Cert ID (Client Secret)
     EBAY_RUNAME: str = ""           # Redirect URL name (RuName) — used as redirect_uri in OAuth
     EBAY_ENV: str = "sandbox"       # "sandbox" | "production"
+    # Marketplace Account Deletion compliance (required to enable a production keyset).
+    # EBAY_VERIFICATION_TOKEN is a self-chosen 32–80 char string entered in the eBay portal.
+    # EBAY_DELETION_ENDPOINT must EXACTLY match the endpoint URL configured there (used in the hash).
+    EBAY_VERIFICATION_TOKEN: str = ""
+    EBAY_DELETION_ENDPOINT: str = "https://vendora.lexmakesit.com/api/v1/integrations/ebay/deletion"
     # Provider token encryption key (Fernet — 32-byte URL-safe base64).
     # Generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # If empty, a key is derived from SECRET_KEY via SHA-256 (acceptable for dev/test).
