@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     EMAIL_FROM_EMAIL: str = "noreply@lexmakesit.com"
     EMAIL_FROM_NAME: str = "Vendora"
+    # Discord webhook — in-app support requests are mirrored to the team channel.
+    DISCORD_WEBHOOK_URL: str = ""
     PASSWORD_RESET_URL: str = "vendora://reset-password"
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
     INTEGRATION_SUCCESS_URL: str = "vendora://settings?integration=lightspeed&status=connected"

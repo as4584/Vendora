@@ -131,14 +131,27 @@ class TestSupportProduct:
 
     def test_standard_and_priority_requests(self, client, auth_headers, db, test_user, monkeypatch):
         sent = []
+        notified = []
         monkeypatch.setattr("app.routers.support.send_support_request_email", lambda *args: sent.append(args))
+        monkeypatch.setattr("app.routers.support.send_support_notification", lambda *args: notified.append(args))
         response = client.post("/api/v1/support", headers=auth_headers, json={"subject": "Need help", "message": "The inventory sync is stuck."})
         assert response.status_code == 201 and response.json()["priority"] == "standard"
+        assert response.json()["discord_notified"] is True
         test_user.is_partner = True; db.flush()
         response = client.post("/api/v1/support", headers=auth_headers, json={"subject": "Need help", "message": "The inventory sync is stuck."})
         assert response.json()["priority"] == "priority"
         assert db.query(SupportRequest).filter_by(user_id=test_user.id).count() == 2
-        assert len(sent) == 2
+        assert len(sent) == 2 and len(notified) == 2
+
+    def test_discord_failure_keeps_ticket(self, client, auth_headers, monkeypatch):
+        from app.services.discord import DiscordNotifyError
+        monkeypatch.setattr("app.routers.support.send_support_request_email", lambda *args: None)
+        monkeypatch.setattr(
+            "app.routers.support.send_support_notification",
+            lambda *args: (_ for _ in ()).throw(DiscordNotifyError("down")),
+        )
+        response = client.post("/api/v1/support", headers=auth_headers, json={"subject": "Need help", "message": "The inventory sync is stuck."})
+        assert response.status_code == 201 and response.json()["discord_notified"] is False
 
     def test_email_failure_keeps_ticket(self, client, auth_headers, db, monkeypatch):
         from app.services.email import EmailDeliveryError

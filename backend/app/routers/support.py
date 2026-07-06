@@ -9,6 +9,7 @@ from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.support import SupportRequest
 from app.models.user import User
+from app.services.discord import DiscordNotifyError, send_support_notification
 from app.services.email import EmailDeliveryError, send_support_request_email
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,12 @@ def create_support_request(
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
+    discord_notified = True
+    try:
+        send_support_notification(current_user.email, ticket.subject, ticket.message, priority)
+    except DiscordNotifyError:
+        discord_notified = False
+        logger.exception("Support Discord notification failed for ticket %s", ticket.id)
     email_queued = True
     try:
         send_support_request_email(current_user.email, ticket.subject, ticket.message, priority)
@@ -47,4 +54,5 @@ def create_support_request(
         "status": ticket.status,
         "priority": priority,
         "email_queued": email_queued,
+        "discord_notified": discord_notified,
     }
