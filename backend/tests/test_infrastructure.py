@@ -14,15 +14,17 @@ class _EmailResponse:
             raise httpx.HTTPStatusError("rejected", request=None, response=None)
 
 
-def test_password_reset_email_requires_sendgrid_key(monkeypatch):
-    monkeypatch.setattr("app.services.email.settings.SENDGRID_API", "")
+def test_password_reset_email_requires_resend_key(monkeypatch):
+    monkeypatch.setattr("app.services.email.settings.RESEND_API_KEY", "")
     with pytest.raises(EmailDeliveryError, match="not configured"):
         send_password_reset_email("user@example.com", "token")
 
 
 def test_password_reset_email_builds_safe_text_and_html_payload(monkeypatch):
     captured = {}
-    monkeypatch.setattr("app.services.email.settings.SENDGRID_API", "sendgrid-test-key")
+    monkeypatch.setattr("app.services.email.settings.RESEND_API_KEY", "resend-test-key")
+    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_NAME", "Vendora")
+    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_EMAIL", "noreply@lexmakesit.com")
     monkeypatch.setattr(
         "app.services.email.settings.PASSWORD_RESET_URL",
         "vendora://reset-password?source=a&unsafe=\"quoted\"",
@@ -35,16 +37,33 @@ def test_password_reset_email_builds_safe_text_and_html_payload(monkeypatch):
     monkeypatch.setattr("app.services.email.httpx.post", post)
     send_password_reset_email("user@example.com", "token with spaces")
 
-    assert captured["url"] == "https://api.sendgrid.com/v3/mail/send"
-    assert captured["headers"]["Authorization"] == "Bearer sendgrid-test-key"
+    assert captured["url"] == "https://api.resend.com/emails"
+    assert captured["headers"]["Authorization"] == "Bearer resend-test-key"
     payload = captured["json"]
-    assert payload["personalizations"][0]["to"][0]["email"] == "user@example.com"
-    assert "token+with+spaces" in payload["content"][0]["value"]
-    assert "&quot;quoted&quot;" in payload["content"][1]["value"]
+    assert payload["from"] == "Vendora <noreply@lexmakesit.com>"
+    assert payload["to"] == ["user@example.com"]
+    assert "token+with+spaces" in payload["text"]
+    assert "&quot;quoted&quot;" in payload["html"]
 
 
-def test_password_reset_email_wraps_sendgrid_http_failure(monkeypatch):
-    monkeypatch.setattr("app.services.email.settings.SENDGRID_API", "sendgrid-test-key")
+def test_password_reset_email_uses_bare_from_without_name(monkeypatch):
+    captured = {}
+    monkeypatch.setattr("app.services.email.settings.RESEND_API_KEY", "resend-test-key")
+    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_NAME", "")
+    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_EMAIL", "noreply@lexmakesit.com")
+
+    def post(url, **kwargs):
+        captured.update({"url": url, **kwargs})
+        return _EmailResponse()
+
+    monkeypatch.setattr("app.services.email.httpx.post", post)
+    send_password_reset_email("user@example.com", "token")
+
+    assert captured["json"]["from"] == "noreply@lexmakesit.com"
+
+
+def test_password_reset_email_wraps_provider_http_failure(monkeypatch):
+    monkeypatch.setattr("app.services.email.settings.RESEND_API_KEY", "resend-test-key")
     monkeypatch.setattr(
         "app.services.email.httpx.post",
         lambda *args, **kwargs: _EmailResponse(error=True),

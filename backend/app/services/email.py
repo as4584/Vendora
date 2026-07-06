@@ -8,35 +8,36 @@ from app.config import settings
 
 
 class EmailDeliveryError(RuntimeError):
-    """Raised when a transactional email cannot be accepted by SendGrid."""
+    """Raised when a transactional email cannot be accepted by the provider."""
 
 
 def _send_email(to_email: str, subject: str, plain_text: str, html_text: str) -> None:
-    if not settings.SENDGRID_API:
-        raise EmailDeliveryError("SENDGRID_API is not configured")
+    if not settings.RESEND_API_KEY:
+        raise EmailDeliveryError("RESEND_API_KEY is not configured")
+    from_address = settings.EMAIL_FROM_EMAIL
+    if settings.EMAIL_FROM_NAME:
+        from_address = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM_EMAIL}>"
     payload = {
-        "personalizations": [{"to": [{"email": to_email}]}],
-        "from": {"email": settings.SENDGRID_FROM_EMAIL, "name": settings.SENDGRID_FROM_NAME},
+        "from": from_address,
+        "to": [to_email],
         "subject": subject,
-        "content": [
-            {"type": "text/plain", "value": plain_text},
-            {"type": "text/html", "value": html_text},
-        ],
+        "text": plain_text,
+        "html": html_text,
     }
     try:
         response = httpx.post(
-            "https://api.sendgrid.com/v3/mail/send",
-            headers={"Authorization": f"Bearer {settings.SENDGRID_API}", "Content-Type": "application/json"},
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}", "Content-Type": "application/json"},
             json=payload,
             timeout=10.0,
         )
         response.raise_for_status()
     except httpx.HTTPError as exc:
-        raise EmailDeliveryError("SendGrid rejected the email") from exc
+        raise EmailDeliveryError("Resend rejected the email") from exc
 
 
 def send_password_reset_email(email: str, token: str) -> None:
-    """Send a password reset link through SendGrid."""
+    """Send a password reset link through Resend."""
     reset_url = f"{settings.PASSWORD_RESET_URL}?{urlencode({'token': token})}"
     safe_url = html.escape(reset_url, quote=True)
     minutes = settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
