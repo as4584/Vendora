@@ -3,6 +3,7 @@
  */
 import React, { createContext, useContext, useEffect, useState } from "react";
 import * as api from "../services/api";
+import { clearOfflineData } from "../services/offline";
 
 interface AuthState {
     user: api.User | null;
@@ -71,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const signOut = async () => {
         await api.logoutSession();
+        await clearOfflineData();
         setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
     };
 

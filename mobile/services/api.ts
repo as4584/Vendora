@@ -7,6 +7,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
+import {
+  isOnline,
+  setSender,
+  cacheItemsFromServer,
+  cacheItemFromServer,
+  offlineListItems,
+  offlineGetItem,
+  queueCreateItem,
+  queueUpdateItem,
+  queueQuickSale,
+  cacheDashboard,
+  readCachedDashboard,
+} from "./offline";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://vendora.lexmakesit.com/api/v1";
@@ -180,6 +193,22 @@ export class ApiError extends Error {
   }
 }
 
+// ─── Offline wiring ──────────────────────────────────
+// A real HTTP failure (no server response) throws a plain Error/TypeError with
+// no numeric status; an ApiError always carries one. Treat the former as
+// "connection is down" so reads fall back to cache and writes queue.
+function isNetworkError(e: unknown): boolean {
+  return !(e instanceof ApiError);
+}
+
+// Let the offline sync runner replay queued mutations through the authed client.
+setSender((path, method, body) =>
+  request(path, {
+    method,
+    body: body != null ? JSON.stringify(body) : undefined,
+  }),
+);
+
 // ─── Auth Endpoints ──────────────────────────────────
 
 export interface User {
@@ -337,6 +366,8 @@ export interface InventoryItem {
   external_id: string | null;
   created_at: string;
   updated_at: string;
+  /** Local-only: set on records created/edited offline and awaiting sync. */
+  _pending?: boolean;
 }
 
 export interface InventoryActivityEntry {
@@ -402,6 +433,8 @@ export async function listItems(
     perPage = params.perPage ?? 20;
   }
 
+  const normalized: ListItemsParams = { ...params, page, perPage };
+
   const qs = new URLSearchParams();
   qs.set("page", String(page));
   qs.set("per_page", String(perPage));
@@ -410,11 +443,33 @@ export async function listItems(
   if (params.source) qs.set("source", params.source);
   if (params.availableOnly) qs.set("available_only", "true");
 
-  return request<PaginatedItems>(`/inventory?${qs.toString()}`);
+  if (!isOnline()) return offlineListItems(normalized);
+  try {
+    const res = await request<PaginatedItems>(`/inventory?${qs.toString()}`);
+    await cacheItemsFromServer(res.items);
+    return res;
+  } catch (e) {
+    if (isNetworkError(e)) return offlineListItems(normalized);
+    throw e;
+  }
 }
 
 export async function getItem(id: string): Promise<InventoryItem> {
-  return request<InventoryItem>(`/inventory/${id}`);
+  if (!isOnline()) {
+    const cached = await offlineGetItem(id);
+    if (cached) return cached;
+  }
+  try {
+    const item = await request<InventoryItem>(`/inventory/${id}`);
+    await cacheItemFromServer(item);
+    return item;
+  } catch (e) {
+    if (isNetworkError(e)) {
+      const cached = await offlineGetItem(id);
+      if (cached) return cached;
+    }
+    throw e;
+  }
 }
 
 export async function getItemActivity(
@@ -427,20 +482,36 @@ export async function getItemActivity(
 export async function createItem(
   payload: CreateItemPayload
 ): Promise<InventoryItem> {
-  return request<InventoryItem>("/inventory", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  if (!isOnline()) return queueCreateItem(payload);
+  try {
+    const item = await request<InventoryItem>("/inventory", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    await cacheItemFromServer(item);
+    return item;
+  } catch (e) {
+    if (isNetworkError(e)) return queueCreateItem(payload);
+    throw e;
+  }
 }
 
 export async function updateItem(
   id: string,
   payload: Partial<CreateItemPayload>
 ): Promise<InventoryItem> {
-  return request<InventoryItem>(`/inventory/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
+  if (!isOnline()) return queueUpdateItem(id, payload);
+  try {
+    const item = await request<InventoryItem>(`/inventory/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    await cacheItemFromServer(item);
+    return item;
+  } catch (e) {
+    if (isNetworkError(e)) return queueUpdateItem(id, payload);
+    throw e;
+  }
 }
 
 export async function deleteItem(id: string): Promise<void> {
@@ -663,10 +734,16 @@ export interface CreateTransactionPayload {
 export async function createTransaction(
   payload: CreateTransactionPayload
 ): Promise<Transaction> {
-  return request<Transaction>("/transactions", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  if (!isOnline()) return queueQuickSale(payload);
+  try {
+    return await request<Transaction>("/transactions", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    if (isNetworkError(e)) return queueQuickSale(payload);
+    throw e;
+  }
 }
 
 export async function listTransactions(
@@ -726,7 +803,21 @@ export interface Dashboard {
 }
 
 export async function getDashboard(): Promise<Dashboard> {
-  return request<Dashboard>("/dashboard");
+  if (!isOnline()) {
+    const cached = await readCachedDashboard();
+    if (cached) return cached;
+  }
+  try {
+    const d = await request<Dashboard>("/dashboard");
+    await cacheDashboard(d);
+    return d;
+  } catch (e) {
+    if (isNetworkError(e)) {
+      const cached = await readCachedDashboard();
+      if (cached) return cached;
+    }
+    throw e;
+  }
 }
 
 // ─── Invoice Endpoints ───────────────────────────────

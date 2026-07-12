@@ -26,6 +26,7 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
+import { isTempId } from "../../../services/offline";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 
 const CATEGORY_PREFIXES: Record<string, string> = {
@@ -241,9 +242,12 @@ export default function AddItemScreen() {
             };
 
             const created = await api.createItem(payload);
+            const queuedOffline = isTempId(created.id);
 
-            // Save photos after item is created using the dedicated photo endpoint.
-            if (frontPhoto || backPhoto) {
+            // Photos upload to a dedicated endpoint that needs a connection and a
+            // real (server-assigned) item id. Offline, the item is queued now and
+            // photos can be added after it syncs.
+            if ((frontPhoto || backPhoto) && !queuedOffline) {
                 try {
                     await api.uploadItemPhotos(created.id, frontPhoto, backPhoto);
                 } catch {
@@ -251,9 +255,13 @@ export default function AddItemScreen() {
                 }
             }
 
-            Alert.alert("✅ Added", "Item saved to inventory!", [
-                { text: "OK", onPress: () => router.replace("/(tabs)/inventory") },
-            ]);
+            Alert.alert(
+                queuedOffline ? "Saved offline" : "✅ Added",
+                queuedOffline
+                    ? "Item saved on your device — it'll sync automatically when you're back online."
+                    : "Item saved to inventory!",
+                [{ text: "OK", onPress: () => router.replace("/(tabs)/inventory") }],
+            );
         } catch (err: any) {
             if (err.detail?.error === "tier_limit_reached") {
                 Alert.alert("Tier Limit", err.detail.message || "Upgrade to Pro for unlimited inventory.");

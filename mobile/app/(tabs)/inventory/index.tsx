@@ -98,6 +98,7 @@ function InventoryCard({
             </View>
 
             <View style={styles.pillRow}>
+              {item._pending ? <Pill label="Sync pending" tone="warning" /> : null}
               <Pill label={STATUS_LABELS[item.status] || item.status} tone={STATUS_TONES[item.status] || "neutral"} />
               <Pill label={lowStock ? `Low stock ${qty}` : `Stock ${qty}`} tone={qty === 0 ? "danger" : lowStock ? "warning" : "success"} />
               <Pill label={sourceLabel} tone="info" />

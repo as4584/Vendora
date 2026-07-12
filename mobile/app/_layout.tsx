@@ -5,6 +5,8 @@ import { useEffect } from "react";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "../context/auth";
+import { NetworkProvider } from "../context/network";
+import { OfflineBanner } from "../components/OfflineBanner";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -41,8 +43,11 @@ export default function RootLayout() {
     return (
         <SafeAreaProvider>
             <AuthProvider>
-                <StatusBar style="light" />
-                <RootLayoutNav />
+                <NetworkProvider>
+                    <StatusBar style="light" />
+                    <OfflineBanner />
+                    <RootLayoutNav />
+                </NetworkProvider>
             </AuthProvider>
         </SafeAreaProvider>
     );

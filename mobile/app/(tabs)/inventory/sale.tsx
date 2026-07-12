@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as api from "../../../services/api";
+import { isOnline } from "../../../services/offline";
 import { ActionButton, Card, HeaderTitle, Icon, Pill, SectionLabel, Stepper } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCurrency, resolveQty } from "../../../utils/inventory";
@@ -91,9 +92,11 @@ export default function QuickSaleScreen() {
         });
         logged += 1;
       }
+      const offline = !isOnline();
       Alert.alert(
-        "Sale logged",
-        `${logged} item${logged === 1 ? "" : "s"} • ${formatCurrency(total.toFixed(2))} captured.`,
+        offline ? "Sale queued offline" : "Sale logged",
+        `${logged} item${logged === 1 ? "" : "s"} • ${formatCurrency(total.toFixed(2))} captured.` +
+          (offline ? "\n\nStock is updated on your device — this sale syncs automatically when you're back online." : ""),
         [{ text: "OK", onPress: () => router.replace("/(tabs)/dashboard") }]
       );
     } catch (err: any) {
