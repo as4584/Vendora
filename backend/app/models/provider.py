@@ -25,7 +25,7 @@ class ProviderSyncRun(Base):
     __tablename__ = "provider_sync_runs"
     __table_args__ = (
         CheckConstraint(
-            "provider IN ('lightspeed','square','clover','spreadsheet')",
+            "provider IN ('lightspeed','square','clover','ebay','spreadsheet')",
             name="ck_provider_sync_runs_provider",
         ),
         CheckConstraint(
@@ -94,7 +94,7 @@ class ReconciliationIssue(Base):
     __tablename__ = "reconciliation_issues"
     __table_args__ = (
         CheckConstraint(
-            "provider IN ('lightspeed','square','clover','spreadsheet')",
+            "provider IN ('lightspeed','square','clover','ebay','spreadsheet')",
             name="ck_recon_issues_provider",
         ),
         CheckConstraint(

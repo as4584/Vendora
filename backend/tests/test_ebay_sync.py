@@ -256,3 +256,42 @@ class TestEbayTransactionUpsert:
             .count()
         )
         assert count == 1
+
+
+# ─── Provider check constraints ─────────────────────────────────────────────────
+
+class TestEbayProviderConstraints:
+    """Regression: DB check constraints must accept provider='ebay' (migration 021)."""
+
+    def test_sync_run_accepts_ebay(self, db, test_user):
+        from app.services.providers.base import SyncRunManager
+
+        run = SyncRunManager.start(db, "ebay", test_user.id)
+        assert run.id is not None
+
+    def test_reconciliation_issue_accepts_ebay(self, db, test_user):
+        from app.models.provider import ReconciliationIssue
+
+        issue = ReconciliationIssue(
+            provider="ebay", user_id=test_user.id, issue_type="unknown"
+        )
+        db.add(issue)
+        db.flush()
+        assert issue.id is not None
+
+    def test_external_link_rejects_unknown_provider(self, db, test_user):
+        from sqlalchemy.exc import IntegrityError
+
+        item, _ = ebay_service._upsert_inventory_item(
+            db, test_user.id, _eb_item(), Decimal("120.00")
+        )
+        db.flush()
+        db.add(InventoryExternalLink(
+            inventory_item_id=item.id,
+            user_id=test_user.id,
+            provider="not-a-provider",
+            external_id="X1",
+        ))
+        with pytest.raises(IntegrityError):
+            db.flush()
+        db.rollback()
