@@ -403,12 +403,12 @@ class TestReconciliationResolution:
 # ─── Provider health endpoint ─────────────────────────────────────────────────
 
 class TestProviderHealth:
-    def test_health_returns_all_three_providers(self, client, auth_headers):
+    def test_health_returns_all_providers(self, client, auth_headers):
         resp = client.get("/api/v1/integrations/health", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         providers = {entry["provider"] for entry in data["providers"]}
-        assert providers == {"lightspeed", "square", "clover"}
+        assert providers == {"lightspeed", "square", "clover", "ebay"}
 
     def test_health_with_no_runs_shows_none(self, client, auth_headers):
         resp = client.get("/api/v1/integrations/health", headers=auth_headers)

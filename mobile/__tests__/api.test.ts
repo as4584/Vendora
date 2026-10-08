@@ -71,7 +71,7 @@ describe('api.ts — request()', () => {
       makeFetchResponse({ status: 200, contentType: 'text/csv; charset=utf-8', body: csvText }),
     );
 
-    const result = await api.listItems(); // any api call — we're testing the transport layer
+    const result = await api.getMe(); // any api call — we're testing the transport layer
     // The raw CSV string should be returned without throwing
     expect(result).toBe(csvText);
   });

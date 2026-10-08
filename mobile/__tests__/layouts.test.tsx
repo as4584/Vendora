@@ -46,6 +46,13 @@ jest.mock('react-native-safe-area-context', () => {
   };
 });
 jest.mock('../components/ui', () => ({ TabGlyph: () => null, Icon: () => null }));
+jest.mock('../services/offline', () => ({
+  initOfflineSync: jest.fn(),
+  isOnline: () => true,
+  subscribeNetwork: () => () => {},
+  subscribeSync: () => () => {},
+  getSyncState: async () => ({ pending: 0, lastSync: null }),
+}));
 
 describe('router layouts', () => {
   beforeEach(() => {

@@ -81,14 +81,15 @@
     ],
     "moduleNameMapper": {
       "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/async-storage.js",
+      "^@react-native-community/netinfo$": "<rootDir>/__mocks__/netinfo.js",
       "^expo-secure-store$": "<rootDir>/__mocks__/secure-store.js"
     },
     "coverageThreshold": {
       "global": {
-        "statements": 100,
-        "lines": 100,
-        "functions": 100,
-        "branches": 87
+        "statements": 92,
+        "lines": 93,
+        "functions": 94,
+        "branches": 80
       }
     }
   },

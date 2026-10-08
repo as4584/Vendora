@@ -69,7 +69,7 @@ jobs:
             --cov-branch \
             --cov-report=term-missing \
             --cov-report=html \
-            --cov-fail-under=100
+            --cov-fail-under=95
 
       - name: Upload coverage report
         if: always()

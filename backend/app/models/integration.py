@@ -42,7 +42,7 @@ class EbayToken(Base, TimestampMixin):
     )
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    user_id = Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    user_id = Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     account_id = Column(String(255), nullable=True)
     # Encrypted at rest via app.security.token_encryption (enc: prefix).
     access_token = Column(String(4096), nullable=False)
