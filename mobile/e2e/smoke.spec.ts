@@ -14,7 +14,7 @@ test.describe('Login screen', () => {
 
     // App loads and redirects to login
     await expect(page.locator('text=Vendora')).toBeVisible();
-    await expect(page.locator('text=Your Reseller OS')).toBeVisible();
+    await expect(page.locator('text=Inventory & Business Suite')).toBeVisible();
 
     // Form fields are present
     await expect(page.getByText('Email', { exact: true })).toBeVisible();
@@ -115,20 +115,22 @@ test.describe('Completed product surfaces', () => {
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
     const openSettings = async () => {
+      // Settings lives under the More tab since the tab-bar redesign.
       await page.goto('/');
-      await expect.poll(() => page.locator('body').innerText()).toContain('Settings');
+      await expect.poll(() => page.locator('body').innerText()).toContain('More');
+      await page.getByText('More', { exact: true }).click();
       await page.getByText('Settings', { exact: true }).click();
       await expect(page.getByText('Vendora Plus')).toBeVisible();
     };
     await openSettings();
     expect(errors).toEqual([]);
-    await page.getByText('Plans & Billing').click();
+    await page.getByRole('button', { name: 'Plans & Billing', exact: true }).click();
     await expect(page.getByText('Current access')).toBeVisible();
     await openSettings();
-    await page.getByText('Advanced Analytics', { exact: true }).click();
+    await page.getByRole('button', { name: 'Advanced Analytics', exact: true }).click();
     await expect(page.getByTestId('analytics-content').getByRole('heading', { name: 'Advanced Analytics' })).toBeVisible();
     await openSettings();
-    await page.getByText('Support', { exact: true }).click();
+    await page.getByRole('button', { name: 'Support', exact: true }).click();
     await expect(page.getByText('Vendora Support')).toBeVisible();
     await openSettings();
     await page.getByText('View Public Storefront').click();
