@@ -5,3 +5,8 @@
 --secret-file .act.secrets
 # Store workflow artifacts locally
 --artifact-server-path /tmp/act-artifacts
+# Reuse cached images and actions instead of re-downloading on every push,
+# so a flaky network can't block the pre-push hook. New images/actions are
+# still fetched the first time they're needed.
+--pull=false
+--action-offline-mode
