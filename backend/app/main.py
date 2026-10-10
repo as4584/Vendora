@@ -1,6 +1,7 @@
 """Vendora API — FastAPI application entrypoint."""
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -15,11 +16,28 @@ from slowapi.errors import RateLimitExceeded
 
 from app.routers import auth, inventory, transactions, dashboard, invoices, webhooks
 from app.routers import export, features, sellers, integrations
-from app.routers import subscriptions, support
+from app.routers import subscriptions, support, reset_bridge
 from app.config import settings
 from app.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
+
+_TOKEN_IN_QUERY = re.compile(r"(?i)(token=)[^&\s\"]+")
+
+
+class RedactTokensFilter(logging.Filter):
+    """Keep reset tokens (and any other ?token= value) out of access logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.args and isinstance(record.args, tuple):
+            record.args = tuple(
+                _TOKEN_IN_QUERY.sub(r"\1[redacted]", a) if isinstance(a, str) else a
+                for a in record.args
+            )
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(RedactTokensFilter())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,12 +78,24 @@ DEFAULT_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-_allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGIN", "").split(",") if o.strip()]
+
+def build_allowed_origins(environment: str, configured: str) -> list[str]:
+    """Production allows only explicitly configured origins; every other
+    environment also gets the localhost Expo/web dev origins."""
+    origins = [o.strip() for o in configured.split(",") if o.strip()]
+    if environment != "production":
+        origins += DEFAULT_ALLOWED_ORIGINS
+    return list(dict.fromkeys(origins))
+
+
+_allowed_origins = build_allowed_origins(settings.ENVIRONMENT, os.getenv("ALLOWED_ORIGIN", ""))
+if settings.ENVIRONMENT == "production" and not _allowed_origins:
+    logger.warning("ALLOWED_ORIGIN is empty in production; cross-origin browser requests will be refused.")
 
 # CORS — allow mobile app to connect
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins or DEFAULT_ALLOWED_ORIGINS,
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -84,6 +114,8 @@ app.include_router(sellers.router, prefix="/api/v1")
 app.include_router(integrations.router, prefix="/api/v1")
 app.include_router(subscriptions.router, prefix="/api/v1")
 app.include_router(support.router, prefix="/api/v1")
+# The password-reset email bridge page lives at the site root, outside /api/v1.
+app.include_router(reset_bridge.router)
 
 
 @app.get("/api/v1/health", tags=["health"])
