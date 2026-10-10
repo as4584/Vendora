@@ -24,6 +24,7 @@ try:
     stripe.api_key = settings.STRIPE_SECRET_KEY
     STRIPE_AVAILABLE = bool(settings.STRIPE_SECRET_KEY)
 except ImportError:
+    stripe = None
     STRIPE_AVAILABLE = False
 
 
