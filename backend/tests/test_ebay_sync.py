@@ -11,6 +11,7 @@ Covers the eBay-specific logic:
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from urllib.parse import urlparse
 
 import pytest
 from fastapi import HTTPException
@@ -55,16 +56,17 @@ class TestEbayEnvironment:
     def test_sandbox_hosts(self):
         svc = EbayService()
         svc.env = "sandbox"
-        assert "auth.sandbox.ebay.com" in svc.auth_url
-        assert "api.sandbox.ebay.com" in svc.token_url
-        assert "api.sandbox.ebay.com" in svc.api_base
-        assert "apiz.sandbox.ebay.com" in svc.identity_base
+        assert urlparse(svc.auth_url).hostname == "auth.sandbox.ebay.com"
+        assert urlparse(svc.token_url).hostname == "api.sandbox.ebay.com"
+        assert urlparse(svc.api_base).hostname == "api.sandbox.ebay.com"
+        assert urlparse(svc.identity_base).hostname == "apiz.sandbox.ebay.com"
 
     def test_production_hosts(self):
         svc = EbayService()
         svc.env = "production"
         assert svc.auth_url == "https://auth.ebay.com/oauth2/authorize"
-        assert "api.ebay.com/identity" in svc.token_url
+        token_url = urlparse(svc.token_url)
+        assert token_url.hostname == "api.ebay.com" and token_url.path.startswith("/identity")
         assert svc.api_base == "https://api.ebay.com"
         assert svc.identity_base == "https://apiz.ebay.com"
 
