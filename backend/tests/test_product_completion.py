@@ -124,7 +124,7 @@ class TestSubscriptionProduct:
 class TestSupportProduct:
     def test_support_email_escapes_html(self, monkeypatch):
         observed = []
-        monkeypatch.setattr(email_service, "_send_email", lambda *args: observed.append(args))
+        monkeypatch.setattr(email_service, "_send_email", lambda *args, **kwargs: observed.append(args))
         email_service.send_support_request_email("user@test.com", "<Help>", "Line 1\n<script>", "priority")
         assert "&lt;Help&gt;" in observed[0][3]
         assert "<br>" in observed[0][3]

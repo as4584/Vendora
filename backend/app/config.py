@@ -14,14 +14,22 @@ class Settings(BaseSettings):
     ALLOWED_ORIGIN: str = "http://localhost:3000,http://localhost:8081"
     PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"
     TESTER_EMAIL_ALLOWLIST: str = "management.donxera@gmail.com"
-    # Transactional email (Resend — https://resend.com). Domain lexmakesit.com is
-    # DKIM/SPF-authenticated so mail from EMAIL_FROM_EMAIL passes DMARC (inbox, not spam).
+    # Transactional email. Resend is the production provider. SMTP is an
+    # optional fallback, used instead of Resend only when SMTP_HOST is set;
+    # production leaves it empty. See docs/EMAIL_DELIVERY.md.
     RESEND_API_KEY: str = ""
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 465
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = False
     EMAIL_FROM_EMAIL: str = "noreply@lexmakesit.com"
     EMAIL_FROM_NAME: str = "Vendora"
     # Discord webhook — in-app support requests are mirrored to the team channel.
     DISCORD_WEBHOOK_URL: str = ""
-    PASSWORD_RESET_URL: str = "vendora://reset-password"
+    # HTTPS keeps reset links clickable in Gmail; the bridge page served by
+    # app/routers/reset_bridge.py opens the app's vendora:// reset screen.
+    PASSWORD_RESET_URL: str = "https://vendora.lexmakesit.com/reset-password"
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
     INTEGRATION_SUCCESS_URL: str = "vendora://settings?integration=lightspeed&status=connected"
     # Stripe
