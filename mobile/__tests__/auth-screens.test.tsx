@@ -166,8 +166,15 @@ describe('authentication screens', () => {
       fireEvent.changeText(screen.getByLabelText('New Password'), 'newsecret1');
       fireEvent.changeText(screen.getByLabelText('Confirm Password'), 'newsecret1');
       fireEvent.press(screen.getByText('Reset Password'));
-      await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Reset failed', 'Expired link'));
+      await waitFor(() =>
+        expect(alertSpy).toHaveBeenCalledWith('Reset failed', 'Expired link', expect.any(Array)),
+      );
       expect(screen.getByText('Reset Password')).toBeTruthy();
+      // The user can request a fresh email straight from the error.
+      const actions = alertSpy.mock.calls.at(-1)?.[2];
+      expect(actions[0].text).toBe('Request New Link');
+      actions[0].onPress();
+      expect(mockReplace).toHaveBeenCalledWith('/(auth)/forgot-password');
     });
   });
 

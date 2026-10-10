@@ -22,3 +22,12 @@ export function getSender(): Sender {
   if (!_send) throw new Error("offline sender not initialized");
   return _send;
 }
+
+/**
+ * Non-throwing variant for callers that can simply wait. The sync runner can
+ * fire (reconnect, app launch) before api.ts has registered its sender, and a
+ * not-yet-ready sender means "retry on the next trigger", not "error".
+ */
+export function tryGetSender(): Sender | null {
+  return _send;
+}

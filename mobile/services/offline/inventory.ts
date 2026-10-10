@@ -23,7 +23,7 @@ import type {
   Dashboard,
 } from "../api";
 import { isOnline } from "./net";
-import { getSender } from "./sender";
+import { tryGetSender } from "./sender";
 import {
   KEYS,
   readJSON,
@@ -292,10 +292,13 @@ function isTransient(err: any): boolean {
  */
 export async function flushOutbox(): Promise<void> {
   if (flushing || !isOnline()) return;
+  // No sender registered yet (api.ts not imported): nothing we can replay.
+  // The next reconnect or launch will pick the outbox back up.
+  const send = tryGetSender();
+  if (!send) return;
   flushing = true;
   const remap: Record<string, string> = {};
   try {
-    const send = getSender();
     let q = await readJSON<OutboxEntry[]>(KEYS.outbox, []);
     while (q.length) {
       const entry = applyRemap(q[0], remap);
