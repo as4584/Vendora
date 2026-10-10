@@ -1,0 +1,18 @@
+[Unit]
+Description=Vendora production Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target lexmakesit-compose.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/mnt/c/Users/AlexS/Projects/Vendora
+EnvironmentFile=/etc/vendora/compose.env
+ExecStart=/usr/bin/docker compose -p vendora-prod --env-file /etc/vendora/compose.env -f /mnt/c/Users/AlexS/Projects/Vendora/docker-compose.prod.yml up -d --build --wait --wait-timeout 180
+ExecStop=/usr/bin/docker compose -p vendora-prod --env-file /etc/vendora/compose.env -f /mnt/c/Users/AlexS/Projects/Vendora/docker-compose.prod.yml stop backend db
+TimeoutStartSec=600
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

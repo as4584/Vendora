@@ -9,7 +9,7 @@ Backend: FastAPI (or Node if preferred)
 Database: PostgreSQL
 Payments: Stripe Connect
 Auth: JWT (or Supabase Auth if desired)
-Hosting: DigitalOcean / Render
+Hosting: self-hosted on the owner's Windows/WSL machine behind a Cloudflare Tunnel (see infra/self-hosted/README.md)
 Storage: S3-compatible (for QR images)
 
 Architecture style:
