@@ -48,8 +48,9 @@ DATABASE_URL = os.environ.get(
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-TARGET_EMAIL    = sys.argv[1] if len(sys.argv) > 1 else "thegamermasterninja@gmail.com"
-TARGET_PASSWORD = "Alexander1221"
+# Never hardcode real credentials here: this repository is public.
+TARGET_EMAIL    = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("VENDORA_SEED_EMAIL", "dev@vendora.test")
+TARGET_PASSWORD = os.environ.get("VENDORA_SEED_PASSWORD", "")
 TARGET_BUSINESS = "Ninja Resale"
 
 # ─── Seed data ────────────────────────────────────────────────────────────────
@@ -204,6 +205,8 @@ def main():
             db.commit()
             print(f"[seed_dev] User {TARGET_EMAIL} upgraded to Pro.")
         else:
+            if len(TARGET_PASSWORD) < 8:
+                raise SystemExit("[seed_dev] Set VENDORA_SEED_PASSWORD (8+ characters) to create the dev account.")
             user = User(
                 email=TARGET_EMAIL,
                 password_hash=hash_password(TARGET_PASSWORD),
@@ -303,7 +306,7 @@ def main():
     print("1. Get a token:")
     print(f"  curl -s -X POST http://localhost:8000/api/v1/auth/login \\")
     print(f'    -H "Content-Type: application/json" \\')
-    print(f'    -d \'{{"email":"{TARGET_EMAIL}","password":"{TARGET_PASSWORD}"}}\' | python3 -m json.tool')
+    print(f'    -d \'{{"email":"{TARGET_EMAIL}","password":"$VENDORA_SEED_PASSWORD"}}\' | python3 -m json.tool')
     print()
     print("2. Export CSV (replace TOKEN):")
     print("  curl -s http://localhost:8000/api/v1/export/inventory \\")
