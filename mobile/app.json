@@ -9,7 +9,10 @@
     "scheme": "vendora",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.vendora.app"
+      "bundleIdentifier": "com.vendora.app",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {

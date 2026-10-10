@@ -38,9 +38,15 @@ export default function ResetPasswordScreen() {
                 { text: "Sign In", onPress: () => router.replace("/(auth)/login") },
             ]);
         } catch (error: any) {
+            // Expired or already-used links are the common failure; let the
+            // user get a fresh email right here instead of contacting support.
             Alert.alert(
                 "Reset failed",
-                error.message || "This reset link is invalid or has expired."
+                error.message || "This reset link is invalid or has expired.",
+                [
+                    { text: "Request New Link", onPress: () => router.replace("/(auth)/forgot-password") },
+                    { text: "OK", style: "cancel" },
+                ]
             );
         } finally {
             setLoading(false);

@@ -1,5 +1,12 @@
 # Vendora — Agent Rules
 
+## Email delivery
+
+Password-reset and support email go through Resend (primary provider); SMTP
+is an optional fallback that production does not use. Read
+[`EMAIL_DELIVERY.md`](EMAIL_DELIVERY.md) before changing email configuration,
+and build every email through `_send_email()` so headers stay sanitized.
+
 ## 🎯 Purpose
 
 This document defines the behavioral rules that all AI agents must follow when working on Vendora. These rules are **non-negotiable** and exist to protect system stability, revenue integrity, and documentation accuracy.

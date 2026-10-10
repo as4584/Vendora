@@ -16,7 +16,8 @@ class _EmailResponse:
 
 def test_password_reset_email_requires_resend_key(monkeypatch):
     monkeypatch.setattr("app.services.email.settings.RESEND_API_KEY", "")
-    with pytest.raises(EmailDeliveryError, match="not configured"):
+    monkeypatch.setattr("app.services.email.settings.SMTP_HOST", "")
+    with pytest.raises(EmailDeliveryError, match="No email provider is configured"):
         send_password_reset_email("user@example.com", "token")
 
 

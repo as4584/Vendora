@@ -4,3 +4,5 @@
 # Hook scripts must always be LF (bash requires it on Windows via Git for Windows)
 .hooks/pre-push text eol=lf
 scripts/*.sh    text eol=lf
+*.sh text eol=lf
+*.service text eol=lf
