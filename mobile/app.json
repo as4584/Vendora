@@ -2,7 +2,7 @@
   "expo": {
     "name": "Vendora",
     "slug": "vendora",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -51,7 +51,10 @@
           "resizeMode": "contain",
           "backgroundColor": "#0A0A1A"
         }
-      ]
+      ],
+      "expo-sharing",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "extra": {
       "router": {},

@@ -56,7 +56,7 @@ export default function ForgotPasswordScreen() {
                             If a Vendora account exists for {email.trim()}, a reset link is on its way.
                         </Text>
                         <Text style={styles.successText}>
-                            If there's no account for that email, we'll send it a short note saying so.
+                            If there&apos;s no account for that email, we&apos;ll send it a short note saying so.
                             Nothing at all? Check spam, or try another email you may have signed up with.
                         </Text>
                         <TouchableOpacity
