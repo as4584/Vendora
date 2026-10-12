@@ -56,10 +56,12 @@
     "eslint": "^9.0.0",
     "eslint-config-expo": "~10.0.0",
     "jest": "^29.7.0",
-    "jest-expo": "~57.0.5",
+    "jest-expo": "~54.0.17",
     "react-test-renderer": "19.1.0",
     "serve": "^14.2.6",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "image-size": "file:./shims/image-size",
+    "decode-uri-component": "file:./shims/decode-uri-component"
   },
   "jest": {
     "preset": "jest-expo",
@@ -96,7 +98,9 @@
   "overrides": {
     "uuid": "^11.1.1",
     "compression": "1.8.2",
-    "postcss": "8.5.23"
+    "postcss": "8.5.23",
+    "image-size": "$image-size",
+    "decode-uri-component": "$decode-uri-component"
   },
   "private": true
 }

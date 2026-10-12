@@ -1,0 +1,10 @@
+{
+  "name": "image-size",
+  "version": "2.0.4-compat.0",
+  "description": "image-size 1.x call style (file path or buffer) over the patched image-size 2.0.4 (fixes GHSA-5p2g-fcmc-qvqq) for Metro.",
+  "license": "MIT",
+  "main": "index.js",
+  "dependencies": {
+    "image-size-patched": "npm:image-size@2.0.4"
+  }
+}
