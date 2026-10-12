@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from typing import Optional
 import uuid
 
+import httpx
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, text
@@ -47,6 +49,7 @@ from app.services.lightspeed import lightspeed_service
 from app.services.square import square_service
 from app.services.clover import clover_service
 from app.services.ebay import ebay_service
+from app.services import ebay_signature
 from app.services.providers.base import claim_webhook_event
 
 logger = logging.getLogger(__name__)
@@ -272,14 +275,24 @@ async def ebay_deletion_notify(request: Request, db: Session = Depends(get_db)):
     eBay requires that we purge the eBay-linked data we hold for the deleted
     eBay account. We match on the eBay username/userId in the payload and
     remove only that account's eBay OAuth token and eBay inventory links —
-    never the Vendora account itself. Always answer 200 so eBay stops
-    retrying. (Full x-ebay-signature public-key verification is a follow-up;
-    the purge is scoped and idempotent, and only disconnects a re-linkable
-    integration.)
+    never the Vendora account itself. Notices must carry a valid
+    x-ebay-signature (412 otherwise, as eBay specifies); verified notices
+    always get 200 so eBay stops retrying.
     """
+    body = await request.body()
     try:
-        payload = await request.json()
-    except Exception:
+        await ebay_signature.verify_request(
+            ebay_service, body, request.headers.get("x-ebay-signature")
+        )
+    except ebay_signature.SignatureError as exc:
+        logger.warning("Rejected eBay deletion notice: %s", exc)
+        raise HTTPException(status_code=status.HTTP_412_PRECONDITION_FAILED, detail="Invalid signature.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify signature.")
+
+    try:
+        payload = json.loads(body)
+    except ValueError:
         return {"ok": True}
 
     data = ((payload or {}).get("notification") or {}).get("data") or {}
