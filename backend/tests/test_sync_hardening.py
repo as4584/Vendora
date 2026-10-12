@@ -557,7 +557,7 @@ class TestSquarePaymentImport:
         with patch.object(SquareService, "_fetch_catalog", new=AsyncMock(return_value=[])), \
              patch.object(SquareService, "_fetch_inventory_counts", new=AsyncMock(return_value={})), \
              patch.object(SquareService, "_fetch_payments", new=AsyncMock(return_value=fake_payments)):
-            result = asyncio.get_event_loop().run_until_complete(svc.sync(db, test_user.id))
+            result = asyncio.run(svc.sync(db, test_user.id))
 
         assert result.transactions_imported == 2
         assert result.transactions_updated == 0
@@ -580,7 +580,7 @@ class TestSquarePaymentImport:
         with patch.object(SquareService, "_fetch_catalog", new=AsyncMock(return_value=[])), \
              patch.object(SquareService, "_fetch_inventory_counts", new=AsyncMock(return_value={})), \
              patch.object(SquareService, "_fetch_payments", new=AsyncMock(return_value=[])):
-            result = asyncio.get_event_loop().run_until_complete(svc.sync(db, test_user.id))
+            result = asyncio.run(svc.sync(db, test_user.id))
 
         run = db.query(ProviderSyncRun).filter_by(id=result.run_id).first()
         assert run.trigger_type == "manual"

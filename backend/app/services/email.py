@@ -139,6 +139,29 @@ def send_password_reset_email(email: str, token: str) -> None:
     )
 
 
+def send_no_account_email(email: str) -> None:
+    """Tell someone who asked for a reset that this address has no account.
+
+    Sent to the address itself, so only its owner learns the result and the
+    API response stays identical for known and unknown emails.
+    """
+    _send_email(
+        email,
+        "Vendora password reset request",
+        "Someone asked to reset the Vendora password for this email address, "
+        "but there is no Vendora account using it.\n\n"
+        "If this was you, try the other email addresses you may have signed up "
+        "with, or create a new account in the app.\n\n"
+        "If you did not request this, you can ignore this email.",
+        "<h2>No Vendora account for this email</h2>"
+        "<p>Someone asked to reset the Vendora password for this email address, "
+        "but there is no Vendora account using it.</p>"
+        "<p>If this was you, try the other email addresses you may have signed up "
+        "with, or create a new account in the app.</p>"
+        "<p>If you did not request this, you can ignore this email.</p>",
+    )
+
+
 def send_support_request_email(email: str, subject: str, message: str, priority: str) -> None:
     """Notify the support mailbox; all user content is escaped, never trusted as HTML."""
     _send_email(
