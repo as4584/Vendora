@@ -11,6 +11,7 @@ import math
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -31,6 +32,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
+CLIENT_REQUEST_SOURCE = "app"
+
+
+def _find_client_request(db: Session, user_id, reference: str) -> Transaction | None:
+    return db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.source == CLIENT_REQUEST_SOURCE,
+        Transaction.external_reference_id == reference,
+    ).first()
+
+
 @router.post("", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
 def create_transaction(
     payload: TransactionCreate,
@@ -44,7 +56,17 @@ def create_transaction(
     - Updates item's actual_sell_price.
     - Deducts stock via the shared stock service (writes ledger entry).
     - Transitions item to 'sold' if stock reaches zero.
+    - Replays with the same client_request_id return the original sale.
     """
+    source = None
+    reference = payload.external_reference_id
+    if payload.client_request_id and not reference:
+        source = CLIENT_REQUEST_SOURCE
+        reference = payload.client_request_id
+        existing = _find_client_request(db, current_user.id, reference)
+        if existing:
+            return existing
+
     item = None
     if payload.item_id:
         item = db.query(InventoryItem).filter(
@@ -80,12 +102,21 @@ def create_transaction(
         fee_amount=payload.fee_amount,
         net_amount=net,
         quantity=qty,
-        external_reference_id=payload.external_reference_id,
+        external_reference_id=reference,
+        source=source,
         notes=payload.notes,
         is_refund=False,
     )
     db.add(txn)
-    db.flush()  # get txn.id before writing ledger
+    try:
+        db.flush()  # get txn.id before writing ledger
+    except IntegrityError:
+        # A concurrent replay of the same request won the race.
+        db.rollback()
+        existing = _find_client_request(db, current_user.id, reference) if source else None
+        if existing:
+            return existing
+        raise
 
     if item:
         item.actual_sell_price = payload.gross_amount
@@ -176,7 +207,8 @@ def refund_transaction(
     original = db.query(Transaction).filter(
         Transaction.id == txn_id,
         Transaction.user_id == current_user.id,
-    ).first()
+    # Lock the row so a double tap or retry can't refund it twice.
+    ).with_for_update().first()
     if not original:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
@@ -220,7 +252,7 @@ def refund_transaction(
         ).first()
         if item:
             restore_qty = original.quantity if original.quantity else 1
-            idem_key = f"txn:{original.id}:refund:{refund_txn.id}"
+            idem_key = f"txn:{original.id}:refund"
             try:
                 restore_stock(
                     db,

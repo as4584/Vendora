@@ -5,6 +5,14 @@ import { AuthProvider, useAuth } from '../context/auth';
 import * as api from '../services/api';
 
 jest.mock('../services/api', () => ({
+  ApiError: class ApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
+  getCachedUser: jest.fn(),
   getToken: jest.fn(),
   getMe: jest.fn(),
   clearToken: jest.fn(),
@@ -89,10 +97,28 @@ describe('AuthProvider', () => {
 
   it('clears an invalid stored session on mount', async () => {
     mockedApi.getToken.mockResolvedValue('bad-token');
-    mockedApi.getMe.mockRejectedValueOnce(new Error('expired'));
+    mockedApi.getMe.mockRejectedValueOnce(new api.ApiError('expired', 401));
     const screen = await renderProvider();
     expect(screen.getByTestId('state').props.children).toBe('signed-out');
     expect(mockedApi.clearToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays signed in with the cached profile when offline on launch', async () => {
+    mockedApi.getToken.mockResolvedValue('stored-token');
+    mockedApi.getMe.mockRejectedValueOnce(new TypeError('Network request failed'));
+    mockedApi.getCachedUser.mockResolvedValue(USER as any);
+    const screen = await renderProvider();
+    expect(screen.getByTestId('state').props.children).toBe(USER.email);
+    expect(mockedApi.clearToken).not.toHaveBeenCalled();
+  });
+
+  it('keeps the stored token when offline without a cached profile', async () => {
+    mockedApi.getToken.mockResolvedValue('stored-token');
+    mockedApi.getMe.mockRejectedValueOnce(new TypeError('Network request failed'));
+    mockedApi.getCachedUser.mockResolvedValue(null);
+    const screen = await renderProvider();
+    expect(screen.getByTestId('state').props.children).toBe('signed-out');
+    expect(mockedApi.clearToken).not.toHaveBeenCalled();
   });
 
   it('responds to the global unauthorized callback', async () => {

@@ -66,7 +66,9 @@ def decode_access_token(token: str) -> dict | None:
     """Decode and validate a JWT access token. Returns payload or None."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        if payload.get("typ") not in {None, "access"}:
+        # Only real access tokens: OAuth state JWTs share the signing key
+        # but carry no "typ", so they must never authenticate API calls.
+        if payload.get("typ") != "access":
             return None
         return payload
     except JWTError:
