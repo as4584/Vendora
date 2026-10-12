@@ -741,13 +741,49 @@ def update_item(
     item = _get_active_item(item_id, current_user.id, db)
 
     update_data = payload.model_dump(exclude_unset=True)
+    new_qty = update_data.pop("quantity", None)
+    expected_qty = update_data.pop("expected_quantity", None)
     for field, value in update_data.items():
         setattr(item, field, value)
+
+    if new_qty is not None:
+        _apply_quantity_edit(db, item, new_qty, expected_qty)
 
     db.add(item)
     db.commit()
     db.refresh(item)
     return item
+
+
+def _apply_quantity_edit(db: Session, item: InventoryItem, new_qty: int, expected_qty: int | None) -> None:
+    """Apply a manual stock edit through the ledger, keeping status in step.
+
+    With expected_qty, the edit is a delta on the current (locked) stock, so a
+    sale recorded since the client loaded the item isn't undone.
+    """
+    from app.models.inventory import InventoryStockLedger
+
+    db.flush()
+    db.refresh(item, with_for_update=True)
+    current = item.quantity or 0
+    target = new_qty if expected_qty is None else max(0, current + (new_qty - expected_qty))
+    if target == current:
+        return
+    item.quantity = target
+    if target == 0 and item.status in ("in_stock", "listed"):
+        item.status = "sold"
+    elif target > 0 and item.status == "sold":
+        item.status = "in_stock"
+        item.actual_sell_price = None
+    db.add(InventoryStockLedger(
+        inventory_item_id=item.id,
+        user_id=item.user_id,
+        delta_quantity=target - current,
+        quantity_after=target,
+        event_type="manual_adjust",
+        source_type="manual",
+        source_id=str(item.id),
+    ))
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)

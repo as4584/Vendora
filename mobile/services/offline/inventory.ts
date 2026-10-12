@@ -188,13 +188,14 @@ export async function queueCreateItem(
 /** Edit an item offline: patch the mirror, queue the PUT. */
 export async function queueUpdateItem(
   id: string,
-  payload: Partial<CreateItemPayload>,
+  payload: Partial<CreateItemPayload> & { expected_quantity?: number },
 ): Promise<InventoryItem> {
   const m = await readMirror();
   const existing = m[id];
+  const { expected_quantity: _expected, ...fields } = payload;
   const merged: MirrorItem = {
     ...(existing as MirrorItem),
-    ...(payload as any),
+    ...(fields as any),
     id,
     updated_at: new Date().toISOString(),
     _pending: true,

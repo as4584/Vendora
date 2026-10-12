@@ -165,6 +165,7 @@ describe('edit inventory screen', () => {
       actual_sell_price: '20',
       platform: 'eBay',
       quantity: 2,
+      expected_quantity: 2,
       custom_attributes: { brand: 'Updated Brand' },
     });
     const actions = alertSpy.mock.calls.at(-1)?.[2];

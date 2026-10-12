@@ -521,9 +521,14 @@ export async function createItem(
   }
 }
 
+export type UpdateItemPayload = Partial<CreateItemPayload> & {
+  /** Stock the user saw when editing began; the server applies only their change. */
+  expected_quantity?: number;
+};
+
 export async function updateItem(
   id: string,
-  payload: Partial<CreateItemPayload>
+  payload: UpdateItemPayload
 ): Promise<InventoryItem> {
   if (!isOnline()) return queueUpdateItem(id, payload);
   try {
