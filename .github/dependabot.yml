@@ -28,6 +28,9 @@ updates:
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "@react-navigation/*"
         update-types: ["version-update:semver-major"]
+      # jest-expo is versioned with the SDK (jest-expo 54 for SDK 54).
+      - dependency-name: "jest-expo"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: pip
     directory: /backend
