@@ -17,6 +17,7 @@ import hmac
 import json
 import uuid
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -133,10 +134,9 @@ class TestSquareWebhookEndpoint:
         assert resp.json()["status"] == "duplicate"
 
     def test_concurrent_claim_loser_returns_duplicate(self, client, monkeypatch):
-        monkeypatch.setattr("app.routers.integrations.is_duplicate_event", lambda *args: False)
         monkeypatch.setattr(
             "app.routers.integrations.claim_webhook_event",
-            lambda *args, **kwargs: (object(), False),
+            lambda *args, **kwargs: (SimpleNamespace(processed=False, error=None), False),
         )
         payload = self._make_payload("MERCHANT", "order.created")
         response = client.post("/api/v1/integrations/square/webhook", json=payload)
@@ -237,6 +237,87 @@ class TestSquareWebhookEndpoint:
         assert evt.processed is True
         assert evt.sync_run_id is not None
 
+    def test_failed_sync_returns_500_so_square_redelivers(self, client, db, test_user, monkeypatch):
+        """A failed webhook sync returns 500 so Square redelivers it."""
+        cred = SquareCredential(
+            user_id=test_user.id, merchant_id="MERCHANT_RETRY",
+            access_token=encrypt_token("tok"),
+        )
+        db.add(cred)
+        db.commit()
+        payload = self._make_payload("MERCHANT_RETRY", "inventory.count.updated")
+        # The handler calls db.rollback() to clear the aborted tx; in the shared
+        # test session that would also drop this test's own rows, so we no-op it
+        # here (production uses a per-request session).
+        monkeypatch.setattr(db, "rollback", lambda: None)
+        with patch.object(SquareService, "sync", new=AsyncMock(side_effect=RuntimeError("boom"))):
+            resp = client.post("/api/v1/integrations/square/webhook", json=payload)
+        assert resp.status_code == 500
+        evt = db.query(ProviderWebhookEvent).filter_by(event_id=payload["event_id"]).first()
+        assert evt is not None and evt.processed is False and evt.error
+
+    def test_redelivery_of_errored_event_retries_sync(self, client, db, test_user):
+        """An event whose earlier sync errored is retried on redelivery,
+        not swallowed as a duplicate."""
+        cred = SquareCredential(
+            user_id=test_user.id, merchant_id="MERCHANT_RD",
+            access_token=encrypt_token("tok"),
+        )
+        db.add(cred)
+        event_id = str(uuid.uuid4())
+        evt = record_webhook_event(
+            db, "square", event_id, "inventory.count.updated", "{}", test_user.id
+        )
+        evt.processed = False
+        evt.error = "earlier failure"
+        db.add(evt)
+        db.commit()
+
+        payload = self._make_payload("MERCHANT_RD", "inventory.count.updated", event_id)
+        with patch.object(SquareService, "_fetch_catalog", new=AsyncMock(return_value=[])), \
+             patch.object(SquareService, "_fetch_inventory_counts", new=AsyncMock(return_value={})), \
+             patch.object(SquareService, "_fetch_payments", new=AsyncMock(return_value=[])):
+            resp = client.post("/api/v1/integrations/square/webhook", json=payload)
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"  # retried, not "duplicate"
+        db.refresh(evt)
+        assert evt.processed is True and evt.error is None and evt.sync_run_id
+
+    def test_ebay_deletion_purges_only_ebay_data(self, client, db, test_user):
+        from datetime import datetime, timedelta, timezone
+        from app.models.integration import EbayToken
+        from app.models.inventory import InventoryItem, InventoryExternalLink
+
+        db.add(EbayToken(
+            user_id=test_user.id, account_id="ebayuser1",
+            access_token=encrypt_token("a"), refresh_token=encrypt_token("r"),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        ))
+        item = InventoryItem(user_id=test_user.id, name="X", buy_price=Decimal("1"), quantity=1)
+        db.add(item); db.flush()
+        db.add(InventoryExternalLink(
+            inventory_item_id=item.id, user_id=test_user.id, provider="ebay", external_id="E1",
+        ))
+        db.commit()
+
+        resp = client.post(
+            "/api/v1/integrations/ebay/deletion",
+            json={"notification": {"data": {"username": "ebayuser1", "userId": "ebayuser1"}}},
+        )
+        assert resp.status_code == 200
+        db.expire_all()
+        assert db.query(EbayToken).filter_by(account_id="ebayuser1").first() is None
+        assert db.query(InventoryExternalLink).filter_by(provider="ebay").count() == 0
+        # The Vendora account and its inventory item are untouched.
+        assert db.get(InventoryItem, item.id) is not None
+
+    def test_ebay_deletion_unknown_account_is_accepted(self, client):
+        resp = client.post(
+            "/api/v1/integrations/ebay/deletion",
+            json={"notification": {"data": {"username": "nobody"}}},
+        )
+        assert resp.status_code == 200
+
     def test_actionable_event_unknown_merchant_records_but_no_sync(self, client, db):
         payload = self._make_payload("UNKNOWN_MERCHANT_XYZ", "inventory.count.updated")
         resp = client.post("/api/v1/integrations/square/webhook", json=payload)
@@ -246,22 +327,6 @@ class TestSquareWebhookEndpoint:
         ).first()
         assert evt is not None
         assert evt.processed is False
-
-    def test_sync_failure_is_recorded_and_acknowledged(self, client, db, test_user):
-        cred = SquareCredential(
-            user_id=test_user.id,
-            merchant_id="MERCHANT_FAILED_SYNC",
-            access_token=encrypt_token("tok"),
-        )
-        db.add(cred)
-        db.commit()
-        payload = self._make_payload("MERCHANT_FAILED_SYNC", "inventory.count.updated")
-        with patch.object(SquareService, "sync", new=AsyncMock(side_effect=RuntimeError("sync failed"))):
-            resp = client.post("/api/v1/integrations/square/webhook", json=payload)
-        assert resp.status_code == 200
-        evt = db.query(ProviderWebhookEvent).filter_by(event_id=payload["event_id"]).one()
-        assert evt.processed is False
-        assert evt.error == "sync failed"
 
 
 # ─── Sync retry endpoint ──────────────────────────────────────────────────────

@@ -55,3 +55,6 @@ mobile/coverage/
 
 # Local Ordo execution records
 .ordo/
+
+# Local agent guidance (not shared)
+CLAUDE.md
