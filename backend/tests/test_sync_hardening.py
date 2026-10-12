@@ -311,6 +311,12 @@ class TestSquareWebhookEndpoint:
         # The Vendora account and its inventory item are untouched.
         assert db.get(InventoryItem, item.id) is not None
 
+    def test_ebay_deletion_tolerates_bad_payloads(self, client):
+        url = "/api/v1/integrations/ebay/deletion"
+        assert client.post(url, content=b"not json", headers={"Content-Type": "application/json"}).status_code == 200
+        assert client.post(url, json={"notification": {"data": {}}}).status_code == 200
+        assert client.post(url, json=None).status_code == 200
+
     def test_ebay_deletion_unknown_account_is_accepted(self, client):
         resp = client.post(
             "/api/v1/integrations/ebay/deletion",
