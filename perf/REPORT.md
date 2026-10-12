@@ -11,6 +11,18 @@ invoices, add item, quick sale. ~0.18 req/s per user. Step ramp +100 users/min.
 
 SLO: p95 â‰¤ 500 ms, p99 â‰¤ 1000 ms, errors â‰¤ 1%.
 
+## Published capacity limits
+
+Vendora runs on a single self-hosted server. Measured limits on that hardware:
+
+| | People online at once | Roughly equals daily active users |
+|---|---|---|
+| Current deployment | ~500 | ~5,000–10,000 |
+| With DB pool fix (this branch) | ~600 | ~6,000–12,000 |
+| With pool fix + 2 API processes | ~1,500 | ~15,000–30,000 |
+
+Daily-user estimates assume 5–10% of daily users are online in the busiest minute.
+
 ## Results
 
 | Configuration | Max sustainable users | RPS | p50 | p95 | p99 | Errors | Backend CPU | Backend mem | DB CPU | DB conns | First failure |
