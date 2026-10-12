@@ -11,6 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export const KEYS = {
   inventoryMirror: "offline:inventory_mirror", // id -> InventoryItem (+ _pending flags)
   outbox: "offline:outbox", // OutboxEntry[]
+  failed: "offline:failed", // FailedSync[] — changes the server rejected
   dashboardCache: "offline:cache:dashboard", // last Dashboard payload
   lastSync: "offline:last_sync", // ISO string of last successful server read
 } as const;
@@ -48,6 +49,7 @@ export async function clearOfflineData(): Promise<void> {
   await AsyncStorage.multiRemove([
     KEYS.inventoryMirror,
     KEYS.outbox,
+    KEYS.failed,
     KEYS.dashboardCache,
     KEYS.lastSync,
   ]);

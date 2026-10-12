@@ -9,23 +9,29 @@ import {
   subscribeNetwork,
   subscribeSync,
   getSyncState,
+  clearFailedSyncs,
 } from "../services/offline";
 
 interface NetworkState {
   online: boolean;
   pending: number; // queued offline writes awaiting sync
+  failed: number; // offline writes the server rejected
   lastSync: string | null;
+  dismissFailed: () => void;
 }
 
 const NetworkContext = createContext<NetworkState>({
   online: true,
   pending: 0,
+  failed: 0,
   lastSync: null,
+  dismissFailed: () => undefined,
 });
 
 export function NetworkProvider({ children }: { children: React.ReactNode }) {
   const [online, setOnline] = useState(readOnline());
   const [pending, setPending] = useState(0);
+  const [failed, setFailed] = useState(0);
   const [lastSync, setLastSync] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,6 +41,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     const refreshSync = () => {
       void getSyncState().then((s) => {
         setPending(s.pending);
+        setFailed(s.failed);
         setLastSync(s.lastSync);
       });
     };
@@ -49,7 +56,9 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <NetworkContext.Provider value={{ online, pending, lastSync }}>
+    <NetworkContext.Provider
+      value={{ online, pending, failed, lastSync, dismissFailed: () => void clearFailedSyncs() }}
+    >
       {children}
     </NetworkContext.Provider>
   );

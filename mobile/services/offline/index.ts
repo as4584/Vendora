@@ -16,6 +16,8 @@ export {
   flushOutbox,
   subscribeSync,
   getSyncState,
+  getFailedSyncs,
+  clearFailedSyncs,
   cacheDashboard,
   readCachedDashboard,
   isTempId,
