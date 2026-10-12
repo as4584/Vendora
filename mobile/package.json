@@ -59,7 +59,7 @@
     "jest-expo": "~54.0.17",
     "react-test-renderer": "19.1.0",
     "serve": "^14.2.6",
-    "typescript": "~5.9.2",
+    "typescript": "~7.0.2",
     "image-size": "file:./shims/image-size",
     "decode-uri-component": "file:./shims/decode-uri-component"
   },
