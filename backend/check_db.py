@@ -9,12 +9,12 @@ def check(user, password, port, dbname):
             port=port, 
             dbname=dbname
         )
-        print(f"SUCCESS: {user}:{password}@{port}/{dbname}")
+        print(f"SUCCESS: {user}@{port}/{dbname}")
         conn.close()
     except Exception as e:
         # Just grab the error msg
         err = str(e).strip().replace('\n', ' ')
-        print(f"FAILED: {user}:{password}@{port}/{dbname} -> {err}")
+        print(f"FAILED: {user}@{port}/{dbname} -> {err}")
 
 if __name__ == "__main__":
     print("Checking database connections...")

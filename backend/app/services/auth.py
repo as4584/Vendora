@@ -42,7 +42,13 @@ def create_password_reset_token() -> tuple[str, str, datetime]:
 
 
 def hash_password_reset_token(token: str) -> str:
-    """Hash a reset token so the usable token is never stored in the database."""
+    """Hash a reset token so the usable token is never stored in the database.
+
+    SHA-256 is deliberate: the input is a 48-byte random token from
+    secrets.token_urlsafe, not a user-chosen password, so it cannot be
+    brute-forced and does not need a slow password hash. User passwords go
+    through hash_password() (bcrypt).
+    """
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 

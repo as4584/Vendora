@@ -9,6 +9,10 @@ on:
   pull_request:
     branches: [main]
 
+# Jobs only read the repo; Expo publishing uses EXPO_TOKEN, not GITHUB_TOKEN.
+permissions:
+  contents: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   EXPO_TOKEN: ${{ secrets.EXPO_DEV_ACCESS_TOKEN }}
@@ -112,10 +116,13 @@ jobs:
 
       - name: Publish OTA update
         working-directory: mobile
+        # Pass the commit message through env, never interpolate it into the script.
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           eas update \
             --channel preview \
-            --message "ci: ${{ github.event.head_commit.message }}" \
+            --message "ci: ${COMMIT_MESSAGE}" \
             --non-interactive
 
   # ── OTA → production (store builds), requires approval ─────────────────────
@@ -145,8 +152,11 @@ jobs:
 
       - name: Publish OTA update
         working-directory: mobile
+        # Pass the commit message through env, never interpolate it into the script.
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           eas update \
             --channel production \
-            --message "ci: ${{ github.event.head_commit.message }}" \
+            --message "ci: ${COMMIT_MESSAGE}" \
             --non-interactive

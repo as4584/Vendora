@@ -13,7 +13,7 @@ from app.services.auth import (
 )
 from app.services.email import EmailDeliveryError
 from app.schemas.user import _validate_profile_picture
-from reset_management_password import TARGET_EMAIL, TARGET_PASSWORD, reset_account_password
+from reset_management_password import TARGET_EMAIL, reset_account_password
 
 
 class TestRegister:
@@ -296,7 +296,7 @@ class TestManagementPasswordReset:
         db.add(user)
         db.commit()
 
-        reset_account_password(db)
+        reset_account_password(db, "NewManagementPass1")
 
         old_login = client.post("/api/v1/auth/login", json={
             "email": TARGET_EMAIL,
@@ -306,7 +306,7 @@ class TestManagementPasswordReset:
 
         new_login = client.post("/api/v1/auth/login", json={
             "email": TARGET_EMAIL,
-            "password": TARGET_PASSWORD,
+            "password": "NewManagementPass1",
         })
         assert new_login.status_code == 200
 
