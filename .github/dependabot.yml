@@ -12,35 +12,33 @@ updates:
       mobile-minor-and-patch:
         update-types: [minor, patch]
     ignore:
+      # Anything compiled into the TestFlight binary moves only with an SDK
+      # upgrade + new build, never via Dependabot: even native patch bumps would
+      # be shipped over the air as JS to binaries built against the old version.
       - dependency-name: "expo"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "expo-*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "@expo/*"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
       - dependency-name: "react-native"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      # Native modules ship inside the TestFlight binary: only move them with
-      # an SDK upgrade (minor bumps like reanimated 4.1 -> 4.7 break SDK 54).
       - dependency-name: "react-native-*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@react-native/*"
+      - dependency-name: "@react-native-community/*"
       - dependency-name: "@react-native-async-storage/*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@react-navigation/*"
       - dependency-name: "react-test-renderer"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      # Test/lint tooling versioned with the SDK.
+      # Tooling versioned with the SDK.
+      - dependency-name: "jest-expo"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "jest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
       - dependency-name: "eslint-config-expo"
         update-types: ["version-update:semver-major"]
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      - dependency-name: "@react-navigation/*"
+      - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
-      # jest-expo is versioned with the SDK (jest-expo 54 for SDK 54).
-      - dependency-name: "jest-expo"
+      - dependency-name: "@testing-library/*"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: pip
