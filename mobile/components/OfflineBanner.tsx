@@ -19,7 +19,7 @@ export function OfflineBanner() {
     return (
       <View style={[styles.bar, { paddingTop: insets.top + 6, backgroundColor: COLORS.danger }]}>
         <Text style={styles.text}>
-          {failed} offline change{failed === 1 ? "" : "s"} couldn't be saved. Please check and re-enter.
+          {failed} offline change{failed === 1 ? "" : "s"} couldn&apos;t be saved. Please check and re-enter.
         </Text>
         <TouchableOpacity accessibilityRole="button" onPress={dismissFailed} hitSlop={10}>
           <Text style={[styles.text, styles.dismiss]}>Dismiss</Text>

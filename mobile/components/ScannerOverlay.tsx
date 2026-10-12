@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "../theme/tokens";
@@ -18,7 +18,7 @@ export function ScannerOverlay({
   hint?: string;
   onCancel?: () => void;
 }) {
-  const travel = useRef(new Animated.Value(0)).current;
+  const [travel] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -79,7 +79,7 @@ export function ScannerOverlay({
 
 const CORNER = 30;
 const styles = StyleSheet.create({
-  fill: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  fill: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
   center: { alignItems: "center" },
   frame: {
     width: FRAME,
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  rayGlow: { ...StyleSheet.absoluteFillObject, borderRadius: 8 },
+  rayGlow: { ...StyleSheet.absoluteFill, borderRadius: 8 },
   rayLine: {
     height: 2,
     alignSelf: "stretch",

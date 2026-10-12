@@ -20,7 +20,6 @@ import {
   StatCard,
 } from "../../components/ui";
 import { COLORS, GRADIENTS, RADII, SPACING } from "../../theme/tokens";
-import { downloadTextFile } from "../../utils/fileActions";
 
 function greeting(): string {
   const h = new Date().getHours();
