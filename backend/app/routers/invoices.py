@@ -11,6 +11,7 @@ import base64
 from decimal import Decimal
 from math import ceil
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -134,7 +135,7 @@ def list_invoices(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     status_filter: str = Query(None, alias="status"),
-    inventory_item_id: str | None = Query(None, description="Filter invoices linked to an inventory item"),
+    inventory_item_id: UUID | None = Query(None, description="Filter invoices linked to an inventory item"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -165,7 +166,7 @@ def list_invoices(
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
 def get_invoice(
-    invoice_id: str,
+    invoice_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -180,7 +181,7 @@ def get_invoice(
 
 @router.put("/{invoice_id}", response_model=InvoiceResponse)
 def update_invoice(
-    invoice_id: str,
+    invoice_id: UUID,
     payload: InvoiceUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -200,6 +201,13 @@ def update_invoice(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Paid or cancelled invoices cannot be edited",
+        )
+    if invoice.stripe_payment_intent_id:
+        # A customer may already be paying this total; changing it would let
+        # the old amount mark the new total as paid.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This invoice has a card payment in progress and can't be edited. Cancel it and create a new invoice.",
         )
 
     for item in payload.items:
@@ -252,7 +260,7 @@ def update_invoice(
 
 @router.patch("/{invoice_id}/status", response_model=InvoiceResponse)
 def update_invoice_status(
-    invoice_id: str,
+    invoice_id: UUID,
     payload: InvoiceStatusUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -280,7 +288,7 @@ def update_invoice_status(
 
 @router.post("/{invoice_id}/pay")
 def create_invoice_payment(
-    invoice_id: str,
+    invoice_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -297,7 +305,7 @@ def create_invoice_payment(
 
 @router.get("/{invoice_id}/pdf")
 def export_invoice_pdf(
-    invoice_id: str,
+    invoice_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

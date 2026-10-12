@@ -10,6 +10,7 @@ import logging
 import math
 from decimal import Decimal
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -150,7 +151,7 @@ def create_transaction(
 def list_transactions(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    item_id: str | None = Query(None, description="Filter by inventory item id"),
+    item_id: UUID | None = Query(None, description="Filter by inventory item id"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -176,7 +177,7 @@ def list_transactions(
 
 @router.get("/{txn_id}", response_model=TransactionResponse)
 def get_transaction(
-    txn_id: str,
+    txn_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -192,7 +193,7 @@ def get_transaction(
 
 @router.post("/{txn_id}/refund", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
 def refund_transaction(
-    txn_id: str,
+    txn_id: UUID,
     payload: RefundCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

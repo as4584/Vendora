@@ -20,6 +20,31 @@ def _make_event(event_type: str, data: dict) -> dict:
     }
 
 
+def _paid_event(client, invoice: dict) -> dict:
+    """A payment_intent.succeeded event that matches the invoice's own
+    PaymentIntent and full amount, as Stripe would send it."""
+    from decimal import Decimal
+
+    from app.models.invoice import Invoice
+
+    # Look the override up by name: some tests reload app.database, so the
+    # get_db function object can differ from a fresh import.
+    override = next(v for k, v in client.app.dependency_overrides.items() if k.__name__ == "get_db")
+    db = next(override())
+    model = db.get(Invoice, uuid.UUID(str(invoice["id"])))
+    pi_id = f"pi_{uuid.uuid4().hex}"
+    model.stripe_payment_intent_id = pi_id
+    db.flush()
+    return _make_event("payment_intent.succeeded", {
+        "object": {
+            "id": pi_id,
+            "amount_received": int(Decimal(str(model.total)) * 100),
+            "currency": "usd",
+            "metadata": {"invoice_id": str(invoice["id"]), "user_id": "any"},
+        },
+    })
+
+
 class TestWebhookDeduplication:
     def test_invalid_json_is_rejected(self, client):
         response = client.post("/api/v1/webhooks/stripe", content=b"not-json")
@@ -139,13 +164,7 @@ class TestPaymentIntentWebhook:
                      json={"status": "sent"}, headers=auth_headers)
 
         # Simulated Stripe webhook
-        pi_id = f"pi_{uuid.uuid4().hex}"
-        event = _make_event("payment_intent.succeeded", {
-            "object": {
-                "id": pi_id,
-                "metadata": {"invoice_id": str(invoice["id"]), "user_id": "any"},
-            },
-        })
+        event = _paid_event(client, invoice)
         resp = client.post("/api/v1/webhooks/stripe", content=json.dumps(event))
         assert resp.status_code == 200
         assert resp.json()["status"] == "processed"
@@ -203,13 +222,7 @@ class TestWebhookStockDeduction:
             headers=auth_headers,
         )
 
-        pi_id = f"pi_{uuid.uuid4().hex}"
-        event = _make_event("payment_intent.succeeded", {
-            "object": {
-                "id": pi_id,
-                "metadata": {"invoice_id": str(invoice["id"]), "user_id": "any"},
-            },
-        })
+        event = _paid_event(client, invoice)
         resp = client.post("/api/v1/webhooks/stripe", content=json.dumps(event))
         assert resp.status_code == 200, resp.text
         assert resp.json()["status"] == "processed"
