@@ -55,6 +55,25 @@ export default function ForgotPasswordScreen() {
                         <Text style={styles.successText}>
                             If a Vendora account exists for {email.trim()}, a reset link is on its way.
                         </Text>
+                        <Text style={styles.successText}>
+                            If there's no account for that email, we'll send it a short note saying so.
+                            Nothing at all? Check spam, or try another email you may have signed up with.
+                        </Text>
+                        <TouchableOpacity
+                            accessibilityRole="button"
+                            style={styles.secondaryButton}
+                            onPress={() => {
+                                setSubmitted(false);
+                                setEmail("");
+                            }}
+                        >
+                            <Text style={styles.secondaryButtonText}>Try a different email</Text>
+                        </TouchableOpacity>
+                        <Link href="/(auth)/register" asChild>
+                            <TouchableOpacity accessibilityRole="link" style={styles.backLink}>
+                                <Text style={styles.backText}>Create an account</Text>
+                            </TouchableOpacity>
+                        </Link>
                     </View>
                 ) : (
                     <>
@@ -135,7 +154,16 @@ const styles = StyleSheet.create({
         padding: 20,
     },
     successTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "700", marginBottom: 8 },
-    successText: { color: "#AAA", fontSize: 15, lineHeight: 22 },
+    successText: { color: "#AAA", fontSize: 15, lineHeight: 22, marginBottom: 10 },
+    secondaryButton: {
+        borderColor: "#6C5CE7",
+        borderWidth: 1,
+        borderRadius: 12,
+        paddingVertical: 14,
+        alignItems: "center",
+        marginTop: 8,
+    },
+    secondaryButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
     backLink: { alignItems: "center", marginTop: 24, paddingVertical: 8 },
     backText: { color: "#8F82FF", fontSize: 14, fontWeight: "600" },
 });

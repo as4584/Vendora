@@ -356,3 +356,15 @@ class TestSmtpFallback:
     def test_reset_link_appends_to_existing_query(self, monkeypatch):
         monkeypatch.setattr("app.services.email.settings.PASSWORD_RESET_URL", "vendora://reset-password?src=mail")
         assert build_password_reset_url("abc") == "vendora://reset-password?src=mail&token=abc"
+
+
+def test_production_rejects_custom_scheme_reset_link():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(ENVIRONMENT="production", PASSWORD_RESET_URL="vendora://reset-password")
+    ok = Settings(ENVIRONMENT="production", PASSWORD_RESET_URL="https://vendora.lexmakesit.com/reset-password")
+    assert ok.PASSWORD_RESET_URL.startswith("https://")

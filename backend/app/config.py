@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -65,5 +66,13 @@ class Settings(BaseSettings):
     # Set to the Signature Key shown in the Square Developer Console for your webhook endpoint.
     SQUARE_WEBHOOK_SIGNATURE_KEY: str = ""
     SQUARE_WEBHOOK_URL: str = ""
+    @model_validator(mode="after")
+    def _require_https_reset_link(self):
+        # Mail apps strip custom-scheme links (vendora://), leaving reset
+        # emails with nothing to tap. Production must use the HTTPS bridge page.
+        if self.ENVIRONMENT == "production" and not self.PASSWORD_RESET_URL.startswith("https://"):
+            raise ValueError("PASSWORD_RESET_URL must be an https:// URL in production")
+        return self
+
 
 settings = Settings()

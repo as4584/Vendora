@@ -200,15 +200,34 @@ class TestPasswordReset:
             "app.routers.auth.send_password_reset_email",
             lambda email, token: delivered.append((email, token)),
         )
+        notices = []
+        monkeypatch.setattr(
+            "app.routers.auth.send_no_account_email", notices.append
+        )
 
         resp = client.post(
             "/api/v1/auth/forgot-password",
-            json={"email": "missing@vendora.test"},
+            json={"email": " Missing@Vendora.test "},
         )
 
         assert resp.status_code == 202
         assert resp.json()["message"].startswith("If an account exists")
         assert delivered == []
+        assert notices == ["missing@vendora.test"]
+
+    def test_forgot_password_unknown_email_masks_notice_failure(
+        self, client, monkeypatch
+    ):
+        def fail(email):
+            raise EmailDeliveryError("down")
+
+        monkeypatch.setattr("app.routers.auth.send_no_account_email", fail)
+        resp = client.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": "missing@vendora.test"},
+        )
+        assert resp.status_code == 202
+        assert resp.json()["message"].startswith("If an account exists")
 
     def test_reset_password_changes_login_and_consumes_token(
         self, client, db, monkeypatch
