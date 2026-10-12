@@ -15,12 +15,23 @@ updates:
       - dependency-name: "expo"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "expo-*"
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "@expo/*"
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-native"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Native modules ship inside the TestFlight binary: only move them with
+      # an SDK upgrade (minor bumps like reanimated 4.1 -> 4.7 break SDK 54).
       - dependency-name: "react-native-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@react-native-async-storage/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-test-renderer"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Test/lint tooling versioned with the SDK.
+      - dependency-name: "jest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-expo"
         update-types: ["version-update:semver-major"]
       - dependency-name: "react"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
@@ -40,6 +51,16 @@ updates:
     groups:
       backend-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # SQLAlchemy 2.1 switches postgresql:// to psycopg 3; we run psycopg2.
+      - dependency-name: "sqlalchemy"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # bcrypt 5 breaks passlib 1.7.
+      - dependency-name: "bcrypt"
+        update-types: ["version-update:semver-major"]
+      # Stripe majors change object/API shapes; upgrade deliberately with live-mode testing.
+      - dependency-name: "stripe"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
