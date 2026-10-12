@@ -264,7 +264,7 @@ describe('api.ts — request()', () => {
     });
   });
 
-  it('clears the session when refresh transport or refresh status fails', async () => {
+  it('keeps the session when the refresh request cannot reach the server', async () => {
     await api.setSession('expired', 'refresh');
     const handler = jest.fn();
     api.onUnauthorized(handler);
@@ -273,8 +273,15 @@ describe('api.ts — request()', () => {
         makeFetchResponse({ status: 401, body: JSON.stringify({ detail: 'Expired' }) }),
       )
       .mockRejectedValueOnce(new Error('refresh network down'));
-    await expect(api.getMe()).rejects.toMatchObject({ status: 401 });
-    expect(handler).toHaveBeenCalled();
+    const error = await api.getMe().catch((e) => e);
+    expect(error).not.toBeInstanceOf(api.ApiError);
+    expect(handler).not.toHaveBeenCalled();
+    await expect(api.getToken()).resolves.toBe('expired');
+  });
+
+  it('clears the session when the server rejects the refresh token', async () => {
+    const handler = jest.fn();
+    api.onUnauthorized(handler);
 
     await api.setSession('expired-again', 'refresh-again');
     fetchSpy

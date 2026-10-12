@@ -32,6 +32,7 @@ from app.services.auth import (
     rotate_session,
     verify_password,
 )
+from app.services.stripe_service import cancel_user_subscriptions
 from app.services.email import (
     EmailDeliveryError,
     send_no_account_email,
@@ -236,6 +237,7 @@ def delete_account(
     """Permanently delete the account and user-owned data through DB cascades."""
     if not verify_password(payload.password, current_user.password_hash):
         raise HTTPException(status_code=401, detail="Password is incorrect.")
+    cancel_user_subscriptions(db, current_user)
     db.delete(current_user)
     db.commit()
     return MessageResponse(message="Account permanently deleted.")

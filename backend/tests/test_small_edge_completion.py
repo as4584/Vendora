@@ -54,6 +54,14 @@ def test_non_access_jwt_is_rejected():
     assert decode_access_token(token) is None
 
 
+def test_oauth_state_jwt_is_not_an_access_token():
+    from app.services.ebay import ebay_service
+    from app.services.lightspeed import lightspeed_service
+
+    for service in (ebay_service, lightspeed_service):
+        assert decode_access_token(service.build_state(uuid.uuid4())) is None
+
+
 def test_lightspeed_expiration_helper():
     token = LightspeedToken(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
     assert token.is_expired() is True

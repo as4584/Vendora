@@ -221,6 +221,34 @@ def create_billing_portal(db: Session, user: User) -> dict:
     return {"portal_url": session.url}
 
 
+def cancel_user_subscriptions(db: Session, user: User) -> None:
+    """Cancel the user's Stripe subscriptions before their account is deleted.
+
+    Raises 502 if Stripe refuses, so we never delete an account that would
+    keep being billed.
+    """
+    subscriptions = db.query(Subscription).filter(
+        Subscription.user_id == user.id,
+        Subscription.stripe_subscription_id.isnot(None),
+        Subscription.status.notin_(("canceled", "cancelled")),
+    ).all()
+    if not subscriptions:
+        return
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Billing is unavailable, so your subscription can't be cancelled yet. Please try again later.",
+        )
+    for subscription in subscriptions:
+        try:
+            stripe.Subscription.cancel(subscription.stripe_subscription_id)
+        except stripe.error.InvalidRequestError as exc:
+            # Already gone on Stripe's side: nothing left to bill.
+            if getattr(exc, "code", None) != "resource_missing":
+                raise HTTPException(status_code=502, detail="Could not cancel your subscription. Please try again.") from exc
+        except stripe.error.StripeError as exc:
+            raise HTTPException(status_code=502, detail="Could not cancel your subscription. Please try again.") from exc
+
 def handle_subscription_event(db: Session, event_type: str, event_data: dict) -> None:
     """Process subscription-related webhook events."""
     subscription_data = event_data.get("object", {})

@@ -471,6 +471,43 @@ class TestSessionsAndAccountLifecycle:
         db.expire_all()
         assert db.get(User, user_id) is None
 
+    def test_account_deletion_cancels_stripe_subscription(self, client, auth_headers, test_user, db, monkeypatch):
+        from app.models.subscription import Subscription
+        from app.services import stripe_service
+
+        db.add(Subscription(user_id=test_user.id, tier="pro", stripe_subscription_id="sub_test_1", stripe_customer_id="cus_1"))
+        db.flush()
+        cancelled = []
+        fake = type("FakeStripe", (), {})()
+        fake.Subscription = type("S", (), {"cancel": staticmethod(cancelled.append)})
+        monkeypatch.setattr(stripe_service, "stripe", fake)
+        monkeypatch.setattr(stripe_service, "STRIPE_AVAILABLE", True)
+
+        response = client.request(
+            "DELETE", "/api/v1/auth/account",
+            json={"password": "TestPass123", "confirmation": "DELETE"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert cancelled == ["sub_test_1"]
+
+    def test_account_deletion_keeps_account_if_billing_unavailable(self, client, auth_headers, test_user, db, monkeypatch):
+        from app.models.subscription import Subscription
+        from app.services import stripe_service
+
+        db.add(Subscription(user_id=test_user.id, tier="pro", stripe_subscription_id="sub_test_2"))
+        db.flush()
+        monkeypatch.setattr(stripe_service, "STRIPE_AVAILABLE", False)
+
+        response = client.request(
+            "DELETE", "/api/v1/auth/account",
+            json={"password": "TestPass123", "confirmation": "DELETE"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 503
+        db.expire_all()
+        assert db.get(User, test_user.id) is not None
+
     def test_profile_picture_rejects_more_than_five_megabytes(self, client, auth_headers):
         import base64
 

@@ -44,9 +44,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 } else {
                     setState((s) => ({ ...s, isLoading: false }));
                 }
-            } catch {
-                await api.clearToken();
-                setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
+            } catch (error) {
+                // Only a definite rejection signs the user out. Offline or a
+                // server error keeps the session so offline mode still works.
+                const rejected = error instanceof api.ApiError && error.status === 401;
+                const token = rejected ? null : await api.getToken();
+                const cached = token ? await api.getCachedUser() : null;
+                if (token && cached) {
+                    setState({ user: cached, token, isLoading: false, isAuthenticated: true });
+                } else {
+                    if (rejected) await api.clearToken();
+                    setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
+                }
             }
         })();
     }, []);

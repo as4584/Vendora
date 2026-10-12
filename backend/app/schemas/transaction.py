@@ -20,6 +20,8 @@ class TransactionCreate(BaseModel):
     quantity: int = Field(default=1, ge=1, description="Number of units sold (for inventory-backed items)")
     external_reference_id: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=500)
+    # Set by the app's offline outbox so a replayed sale is recorded only once.
+    client_request_id: Optional[str] = Field(None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
     @model_validator(mode="after")
     def check_amounts(self):

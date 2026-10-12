@@ -26,6 +26,8 @@ const API_BASE_URL =
 
 const TOKEN_KEY = "vendora_access_token";
 const REFRESH_TOKEN_KEY = "vendora_refresh_token";
+// Last profile fetched, so the app can open signed in without a connection.
+const CACHED_USER_KEY = "vendora_cached_user";
 
 async function secureStorageAvailable(): Promise<boolean> {
   return Platform.OS !== "web" && (await SecureStore.isAvailableAsync());
@@ -83,14 +85,29 @@ export async function setSession(accessToken: string, refreshToken: string): Pro
 }
 
 export async function clearToken(): Promise<void> {
-  await Promise.all([deleteSecret(TOKEN_KEY), deleteSecret(REFRESH_TOKEN_KEY)]);
+  await Promise.all([
+    deleteSecret(TOKEN_KEY),
+    deleteSecret(REFRESH_TOKEN_KEY),
+    AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => undefined),
+  ]);
+}
+
+export async function getCachedUser(): Promise<User | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHED_USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── HTTP Helpers ────────────────────────────────────
 
-let refreshInFlight: Promise<boolean> | null = null;
+// true = refreshed, false = server rejected the refresh token,
+// null = couldn't reach the server (keep the session; it may still be valid).
+let refreshInFlight: Promise<boolean | null> | null = null;
 
-async function refreshAccessToken(): Promise<boolean> {
+async function refreshAccessToken(): Promise<boolean | null> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
     const refreshToken = await getRefreshToken();
@@ -101,12 +118,13 @@ async function refreshAccessToken(): Promise<boolean> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
-      if (!response.ok) return false;
+      if (response.status === 401 || response.status === 403) return false;
+      if (!response.ok) return null;
       const session = (await response.json()) as TokenResponse;
       await setSession(session.access_token, session.refresh_token);
       return true;
     } catch {
-      return false;
+      return null;
     }
   })();
   try {
@@ -172,6 +190,11 @@ async function request<T>(
       if (allowRefresh && (!path.startsWith("/auth/") || path === "/auth/me")) {
         const refreshed = await refreshAccessToken();
         if (refreshed) return request<T>(path, options, false);
+        if (refreshed === null) {
+          // Offline or server hiccup: don't sign the user out. A plain Error
+          // is treated as a network failure by the offline layer.
+          throw new Error("Could not reach Vendora. Check your connection.");
+        }
       }
       await clearToken();
       _unauthorizedHandler?.();
@@ -298,7 +321,9 @@ export async function resetPassword(
 }
 
 export async function getMe(): Promise<User> {
-  return request<User>("/auth/me");
+  const user = await request<User>("/auth/me");
+  AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user)).catch(() => undefined);
+  return user;
 }
 
 export interface ProfilePatch {
@@ -729,6 +754,8 @@ export interface CreateTransactionPayload {
   quantity?: number;
   external_reference_id?: string;
   notes?: string;
+  /** Offline outbox id; the server records a replayed sale only once. */
+  client_request_id?: string;
 }
 
 export async function createTransaction(

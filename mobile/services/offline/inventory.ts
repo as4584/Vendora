@@ -229,12 +229,13 @@ export async function queueQuickSale(
       await writeMirror(m);
     }
   }
+  const entryId = tempId("ob");
   await enqueue({
-    id: tempId("ob"),
+    id: entryId,
     kind: "quick_sale",
     path: "/transactions",
     method: "POST",
-    body: payload,
+    body: { ...payload, client_request_id: entryId },
     createdAt: now,
     attempts: 0,
   });
