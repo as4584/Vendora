@@ -1,0 +1,9 @@
+# Experiment: same clone with 2 uvicorn processes. Pools sized so both fit in
+# Postgres' default 100 connections (2 x 40) while each still covers its
+# 40-thread worker pool.
+services:
+  backend:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    environment:
+      DB_POOL_SIZE: "10"
+      DB_MAX_OVERFLOW: "30"

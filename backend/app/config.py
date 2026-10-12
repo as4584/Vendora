@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     STOCKX_CLIENT_ID: str = ""
     STOCKX_CLIENT_SECRET: str = ""
     STOCKX_REDIRECT_URI: str = "https://vendora.lexmakesit.com/api/v1/integrations/stockx/callback"
+
+    # Sync endpoints run on AnyIO's 40-thread pool. The DB pool must hold at least
+    # that many connections, or threads waiting for a connection starve the
+    # requests that hold one and the whole API deadlocks under load.
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 30
+    DB_POOL_TIMEOUT: int = 10
     # Provider token encryption key (Fernet — 32-byte URL-safe base64).
     # Generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # If empty, a key is derived from SECRET_KEY via SHA-256 (acceptable for dev/test).

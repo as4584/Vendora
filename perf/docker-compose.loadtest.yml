@@ -1,0 +1,30 @@
+# Production-identical clone for load testing: same image, Postgres version and
+# ENVIRONMENT=production as docker-compose.prod.yml, but its own throwaway DB,
+# no Cloudflare edge network, and a separate local port.
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: vendora
+      POSTGRES_PASSWORD: loadtest
+      POSTGRES_DB: vendora
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vendora -d vendora"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://vendora:loadtest@db:5432/vendora
+      ENVIRONMENT: production
+      SECRET_KEY: loadtest-only-secret-key-0123456789abcdef
+      PASSWORD_RESET_URL: https://vendora.lexmakesit.com/reset-password
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      - "127.0.0.1:18090:8000"
