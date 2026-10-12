@@ -85,18 +85,51 @@ class TestStripePayments:
         )
 
         invoice = _invoice(db, test_user, status="sent")
+        invoice.stripe_payment_intent_id = "pi_ok"
+        db.commit()
         processed = []
-        monkeypatch.setattr(
-            stripe_service,
-            "process_invoice_payment",
-            lambda invoice_model, session: processed.append(str(invoice_model.id)),
-        )
-        stripe_service.handle_payment_intent_succeeded(
-            db, {"object": {"id": "pi_ok", "metadata": {"invoice_id": str(invoice.id)}}}
-        )
-        db.refresh(invoice)
+
+        def fake_process(invoice_model, session):
+            processed.append(str(invoice_model.id))
+            session.commit()
+
+        monkeypatch.setattr(stripe_service, "process_invoice_payment", fake_process)
+
+        def pay(pi_id, cents, currency="usd"):
+            stripe_service.handle_payment_intent_succeeded(db, {"object": {
+                "id": pi_id, "amount_received": cents, "currency": currency,
+                "metadata": {"invoice_id": str(invoice.id)},
+            }})
+            db.refresh(invoice)
+
+        pay("pi_stale", 1234)  # an older PaymentIntent
+        pay("pi_ok", 1000)  # partial amount
+        pay("pi_ok", 1234, "eur")  # wrong currency
+        assert invoice.status == "sent"
+        assert processed == []
+
+        pay("pi_ok", 1234)
         assert invoice.status == "paid"
         assert processed == [str(invoice.id)]
+
+    def test_failed_recording_leaves_invoice_unpaid_for_retry(self, db, test_user, monkeypatch):
+        invoice = _invoice(db, test_user, status="sent")
+        invoice.stripe_payment_intent_id = "pi_retry"
+        db.commit()
+
+        def boom(invoice_model, session):
+            raise RuntimeError("db hiccup")
+
+        monkeypatch.setattr(stripe_service, "process_invoice_payment", boom)
+        event = {"object": {"id": "pi_retry", "amount_received": 1234, "currency": "usd",
+                            "metadata": {"invoice_id": str(invoice.id)}}}
+        commits = []
+        monkeypatch.setattr(db, "commit", lambda: commits.append(1))
+        with pytest.raises(RuntimeError):
+            stripe_service.handle_payment_intent_succeeded(db, event)
+        # "paid" must never be committed on its own; the failed recording
+        # rolls it back and Stripe's retry processes the payment again.
+        assert commits == []
 
     def test_checkout_unavailable_and_success(self, db, test_user, monkeypatch):
         monkeypatch.setattr(stripe_service, "STRIPE_AVAILABLE", False)

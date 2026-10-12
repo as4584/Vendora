@@ -84,6 +84,10 @@ class ItemUpdate(BaseModel):
     photo_front_url: str | None = None
     photo_back_url: str | None = None
     quantity: int | None = Field(None, ge=0)
+    # The quantity the client saw when the edit started. When given, only the
+    # user's change (quantity - expected_quantity) is applied, so sales or
+    # syncs that happened meanwhile aren't overwritten.
+    expected_quantity: int | None = Field(None, ge=0)
     vendor_name: str | None = Field(None, max_length=255)
     notes: str | None = None
 

@@ -184,6 +184,7 @@ function ItemQuickSheetContent({
                 updated = await api.updateItem(item.id, {
                     name: trimmedName,
                     quantity,
+                    expected_quantity: item.quantity ?? undefined,
                     custom_attributes: customAttributes,
                 });
             }

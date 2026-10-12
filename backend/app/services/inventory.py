@@ -109,6 +109,14 @@ def check_availability(item: InventoryItem, requested_qty: int) -> None:
 
 # ─── Stock mutation ───────────────────────────────────────────────────────────
 
+def _lock_fresh(db: Session, item: InventoryItem) -> None:
+    """Lock the item row and reload its quantity, so two concurrent sales
+    (app, webhook, provider sync) can't both read the same stock and overwrite
+    each other. Pending changes are flushed first so they aren't discarded."""
+    db.flush()
+    db.refresh(item, with_for_update=True)
+
+
 def deduct_stock(
     db: Session,
     item: InventoryItem,
@@ -137,6 +145,7 @@ def deduct_stock(
         if existing:
             return existing
 
+    _lock_fresh(db, item)
     check_availability(item, quantity)
 
     new_qty = item.quantity - quantity
@@ -184,6 +193,7 @@ def restore_stock(
         if existing:
             return existing
 
+    _lock_fresh(db, item)
     new_qty = item.quantity + quantity
     item.quantity = new_qty
     if item.status == "sold" and new_qty > 0:

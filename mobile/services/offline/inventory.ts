@@ -188,13 +188,14 @@ export async function queueCreateItem(
 /** Edit an item offline: patch the mirror, queue the PUT. */
 export async function queueUpdateItem(
   id: string,
-  payload: Partial<CreateItemPayload>,
+  payload: Partial<CreateItemPayload> & { expected_quantity?: number },
 ): Promise<InventoryItem> {
   const m = await readMirror();
   const existing = m[id];
+  const { expected_quantity: _expected, ...fields } = payload;
   const merged: MirrorItem = {
     ...(existing as MirrorItem),
-    ...(payload as any),
+    ...(fields as any),
     id,
     updated_at: new Date().toISOString(),
     _pending: true,
@@ -322,15 +323,73 @@ export async function flushOutbox(): Promise<void> {
           await writeJSON(KEYS.outbox, q);
           break; // stop and retry on the next reconnect
         }
-        // Poison entry: drop it and keep draining.
-        q = q.slice(1);
+        // Rejected for good (4xx). Don't lose it silently: record it for the
+        // user, undo its optimistic change, and pull out anything queued
+        // after it that depends on an item that will now never exist.
+        const message = String((err as any)?.message ?? err);
+        const rejected = [q[0], ...dependentsOf(q[0], q.slice(1))];
+        const rejectedIds = new Set(rejected.map((e) => e.id));
+        q = q.filter((e) => !rejectedIds.has(e.id));
         await writeJSON(KEYS.outbox, q);
+        await recordFailures(rejected, message);
+        await revertOptimistic(rejected);
         notifySync();
       }
     }
   } finally {
     flushing = false;
   }
+}
+
+/** Entries queued after a rejected create that reference its temp id. */
+function dependentsOf(entry: OutboxEntry, rest: OutboxEntry[]): OutboxEntry[] {
+  if (entry.kind !== "create_item" || !entry.tempId) return [];
+  const temp = entry.tempId;
+  return rest.filter((e) => e.path.includes(temp) || e.body?.item_id === temp);
+}
+
+export interface FailedSync {
+  id: string;
+  kind: OutboxKind;
+  message: string;
+  createdAt: string;
+  failedAt: string;
+}
+
+const MAX_FAILED = 50;
+
+async function recordFailures(entries: OutboxEntry[], message: string): Promise<void> {
+  const failed = await readJSON<FailedSync[]>(KEYS.failed, []);
+  const now = new Date().toISOString();
+  for (const e of entries) {
+    failed.push({ id: e.id, kind: e.kind, message, createdAt: e.createdAt, failedAt: now });
+  }
+  await writeJSON(KEYS.failed, failed.slice(-MAX_FAILED));
+}
+
+/** Undo the local-only effects of changes the server will never apply. */
+async function revertOptimistic(entries: OutboxEntry[]): Promise<void> {
+  const m = await readMirror();
+  for (const e of entries) {
+    if (e.kind === "create_item" && e.tempId) {
+      delete m[e.tempId];
+    } else if (e.kind === "quick_sale" && e.body?.item_id && m[e.body.item_id]) {
+      const item = m[e.body.item_id];
+      item.quantity += e.body.quantity ?? 1;
+      if (item.status === "sold" && item.quantity > 0) item.status = "in_stock";
+    }
+    // update_item: the next server read replaces the mirror copy.
+  }
+  await writeMirror(m);
+}
+
+export async function getFailedSyncs(): Promise<FailedSync[]> {
+  return readJSON<FailedSync[]>(KEYS.failed, []);
+}
+
+export async function clearFailedSyncs(): Promise<void> {
+  await writeJSON(KEYS.failed, []);
+  notifySync();
 }
 
 /** Replace an offline-created temp record with the confirmed server item. */
@@ -359,11 +418,13 @@ export async function readCachedDashboard(): Promise<Dashboard | null> {
 // ─── Sync state (for UI) ─────────────────────────────
 export async function getSyncState(): Promise<{
   pending: number;
+  failed: number;
   lastSync: string | null;
 }> {
   const q = await readJSON<OutboxEntry[]>(KEYS.outbox, []);
+  const failed = await readJSON<FailedSync[]>(KEYS.failed, []);
   const lastSync = await readJSON<string | null>(KEYS.lastSync, null);
-  return { pending: q.length, lastSync };
+  return { pending: q.length, failed: failed.length, lastSync };
 }
 
 export { isTempId };

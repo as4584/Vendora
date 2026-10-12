@@ -637,7 +637,7 @@ async def get_market_price(
 
 @router.get("/{item_id}/pricing-suggestion")
 def get_pricing_suggestion(
-    item_id: str,
+    item_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -704,7 +704,7 @@ def get_pricing_suggestion(
 
 @router.get("/{item_id}", response_model=ItemResponse)
 def get_item(
-    item_id: str,
+    item_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -714,7 +714,7 @@ def get_item(
 
 @router.get("/{item_id}/activity", response_model=list[InventoryActivityEntry])
 def get_item_activity(
-    item_id: str,
+    item_id: UUID,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -732,7 +732,7 @@ def get_item_activity(
 
 @router.put("/{item_id}", response_model=ItemResponse)
 def update_item(
-    item_id: str,
+    item_id: UUID,
     payload: ItemUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -741,8 +741,13 @@ def update_item(
     item = _get_active_item(item_id, current_user.id, db)
 
     update_data = payload.model_dump(exclude_unset=True)
+    new_qty = update_data.pop("quantity", None)
+    expected_qty = update_data.pop("expected_quantity", None)
     for field, value in update_data.items():
         setattr(item, field, value)
+
+    if new_qty is not None:
+        _apply_quantity_edit(db, item, new_qty, expected_qty)
 
     db.add(item)
     db.commit()
@@ -750,9 +755,40 @@ def update_item(
     return item
 
 
+def _apply_quantity_edit(db: Session, item: InventoryItem, new_qty: int, expected_qty: int | None) -> None:
+    """Apply a manual stock edit through the ledger, keeping status in step.
+
+    With expected_qty, the edit is a delta on the current (locked) stock, so a
+    sale recorded since the client loaded the item isn't undone.
+    """
+    from app.models.inventory import InventoryStockLedger
+
+    db.flush()
+    db.refresh(item, with_for_update=True)
+    current = item.quantity or 0
+    target = new_qty if expected_qty is None else max(0, current + (new_qty - expected_qty))
+    if target == current:
+        return
+    item.quantity = target
+    if target == 0 and item.status in ("in_stock", "listed"):
+        item.status = "sold"
+    elif target > 0 and item.status == "sold":
+        item.status = "in_stock"
+        item.actual_sell_price = None
+    db.add(InventoryStockLedger(
+        inventory_item_id=item.id,
+        user_id=item.user_id,
+        delta_quantity=target - current,
+        quantity_after=target,
+        event_type="manual_adjust",
+        source_type="manual",
+        source_id=str(item.id),
+    ))
+
+
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_item(
-    item_id: str,
+    item_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -833,7 +869,7 @@ def bulk_delete_items(
 
 @router.patch("/{item_id}/photos", response_model=ItemResponse)
 def update_item_photos(
-    item_id: str,
+    item_id: UUID,
     payload: PhotoUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -852,7 +888,7 @@ def update_item_photos(
 
 @router.patch("/{item_id}/status", response_model=ItemResponse)
 def update_status(
-    item_id: str,
+    item_id: UUID,
     payload: StatusUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1039,7 +1075,7 @@ async def preview_import(
 
 @router.post("/imports/{job_id}/commit", response_model=ImportCommitResponse)
 def commit_import(
-    job_id: str,
+    job_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1154,7 +1190,7 @@ def commit_import(
 
 @router.get("/imports/{job_id}", response_model=ImportJobResponse)
 def get_import_job(
-    job_id: str,
+    job_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

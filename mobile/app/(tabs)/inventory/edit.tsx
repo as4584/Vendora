@@ -60,6 +60,8 @@ export default function EditItemScreen() {
 
     // Quantity + variants
     const [quantity, setQuantity] = useState(1);
+    // Stock when the screen loaded, so saving applies only this edit's change.
+    const [loadedQuantity, setLoadedQuantity] = useState<number | undefined>(undefined);
     const [variants, setVariants] = useState<api.SizeVariant[]>([]);
     const [newVariantSize, setNewVariantSize] = useState("");
 
@@ -102,6 +104,7 @@ export default function EditItemScreen() {
                         : ""
                 );
                 setQuantity(item.quantity ?? 1);
+                setLoadedQuantity(item.quantity ?? undefined);
 
                 const v = item.custom_attributes?.variants;
                 if (Array.isArray(v)) setVariants(v as api.SizeVariant[]);
@@ -255,7 +258,7 @@ export default function EditItemScreen() {
                 existingAttrs.variants = variants;
             }
 
-            const payload: Partial<api.CreateItemPayload> = {
+            const payload: api.UpdateItemPayload = {
                 name: name.trim(),
                 category: category.trim() || undefined,
                 sku: sku.trim() || undefined,
@@ -268,6 +271,7 @@ export default function EditItemScreen() {
                 actual_sell_price: actualPrice.trim() || undefined,
                 platform: platform.trim() || undefined,
                 quantity: totalQty,
+                expected_quantity: loadedQuantity,
                 custom_attributes: existingAttrs,
             };
 

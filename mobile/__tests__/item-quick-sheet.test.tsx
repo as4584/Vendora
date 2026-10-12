@@ -133,6 +133,7 @@ describe('ItemQuickSheet', () => {
     expect(mockedApi.updateItem).toHaveBeenCalledWith('item-1', {
       name: 'Updated Jordan',
       quantity: 2,
+      expected_quantity: 2,
       custom_attributes: {
         brand: 'New Brand',
         warehouse_bin: 'A1',

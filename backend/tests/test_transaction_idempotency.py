@@ -31,3 +31,34 @@ def test_sales_without_client_request_id_are_unchanged(client, auth_headers):
 def test_client_request_id_is_validated(client, auth_headers):
     bad = client.post("/api/v1/transactions", json=_sale(client_request_id="x"), headers=auth_headers)
     assert bad.status_code == 422
+
+
+def test_concurrent_replay_returns_the_winning_sale(client, auth_headers, db, monkeypatch):
+    """If another request inserts the same client_request_id between our
+    lookup and insert, the unique index fires and we return its sale."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.routers import transactions as txn_router
+
+    winner = client.post(
+        "/api/v1/transactions", json=_sale(client_request_id="ob_race_999999"), headers=auth_headers
+    ).json()
+
+    calls = {"n": 0}
+    real_find = txn_router._find_client_request
+
+    def find(db_, user_id, reference):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real_find(db_, user_id, reference)
+
+    def flush_conflict(*args, **kwargs):
+        raise IntegrityError("insert", {}, Exception("duplicate key"))
+
+    monkeypatch.setattr(txn_router, "_find_client_request", find)
+    monkeypatch.setattr(db, "rollback", lambda: None)
+    monkeypatch.setattr(db, "flush", flush_conflict)
+    resp = client.post(
+        "/api/v1/transactions", json=_sale(client_request_id="ob_race_999999"), headers=auth_headers
+    )
+    assert resp.status_code == 201
+    assert resp.json()["id"] == winner["id"]

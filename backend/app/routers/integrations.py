@@ -2,6 +2,7 @@
 import hashlib
 import hmac
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 import uuid
@@ -46,8 +47,9 @@ from app.services.lightspeed import lightspeed_service
 from app.services.square import square_service
 from app.services.clover import clover_service
 from app.services.ebay import ebay_service
-from app.services.providers.base import claim_webhook_event, is_duplicate_event
+from app.services.providers.base import claim_webhook_event
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 
@@ -264,12 +266,45 @@ def ebay_deletion_challenge(challenge_code: str = Query(...)):
 
 
 @router.post("/ebay/deletion", status_code=status.HTTP_200_OK)
-async def ebay_deletion_notify(request: Request):
-    """Acknowledge eBay marketplace account-deletion notifications with 200 OK."""
+async def ebay_deletion_notify(request: Request, db: Session = Depends(get_db)):
+    """Handle eBay marketplace account-deletion notifications.
+
+    eBay requires that we purge the eBay-linked data we hold for the deleted
+    eBay account. We match on the eBay username/userId in the payload and
+    remove only that account's eBay OAuth token and eBay inventory links —
+    never the Vendora account itself. Always answer 200 so eBay stops
+    retrying. (Full x-ebay-signature public-key verification is a follow-up;
+    the purge is scoped and idempotent, and only disconnects a re-linkable
+    integration.)
+    """
     try:
-        await request.body()  # drain the payload
+        payload = await request.json()
     except Exception:
-        pass
+        return {"ok": True}
+
+    data = ((payload or {}).get("notification") or {}).get("data") or {}
+    identifiers = {
+        str(data[k]) for k in ("username", "userId", "user_id") if data.get(k)
+    }
+    if not identifiers:
+        return {"ok": True}
+
+    from app.models.integration import EbayToken
+
+    tokens = (
+        db.query(EbayToken)
+        .filter(EbayToken.account_id.in_(identifiers))
+        .all()
+    )
+    for token in tokens:
+        db.query(InventoryExternalLink).filter(
+            InventoryExternalLink.user_id == token.user_id,
+            InventoryExternalLink.provider == "ebay",
+        ).delete(synchronize_session=False)
+        db.delete(token)
+    if tokens:
+        db.commit()
+        logger.info("Purged eBay data for %d account(s) on deletion notice.", len(tokens))
     return {"ok": True}
 
 
@@ -581,10 +616,6 @@ async def square_webhook(request: Request, db: Session = Depends(get_db)):
     if event_type in actionable and not event_id:
         raise HTTPException(status_code=400, detail="Webhook event is missing an id.")
 
-    # Idempotency — if we've seen this event_id before, return 200 immediately
-    if event_id and is_duplicate_event(db, "square", event_id):
-        return {"status": "duplicate", "event_id": event_id}
-
     # Resolve user from merchant_id
     user_id: Optional[uuid.UUID] = None
     if merchant_id:
@@ -603,8 +634,13 @@ async def square_webhook(request: Request, db: Session = Depends(get_db)):
             user_id=user_id,
         )
         if not created:
-            return {"status": "duplicate", "event_id": event_id}
-        db.commit()
+            # Retry only a redelivery whose earlier sync errored out. An
+            # already-processed event, or one still in flight from a concurrent
+            # claim (no error recorded yet), is a genuine duplicate.
+            if evt.processed or not evt.error:
+                return {"status": "duplicate", "event_id": event_id}
+        else:
+            db.commit()
     else:
         evt = None
 
@@ -618,14 +654,23 @@ async def square_webhook(request: Request, db: Session = Depends(get_db)):
                 triggered_by_event_id=evt.id,
             )
             evt.processed = True
+            evt.error = None
             evt.sync_run_id = result.run_id
             db.add(evt)
             db.commit()
         except Exception as exc:
-            evt.error = str(exc)[:2000]
-            db.add(evt)
-            db.commit()
-            # Return 200 — Square re-delivers on non-2xx; we've already logged it
+            # Clear the aborted transaction before recording the error, or the
+            # error write itself would raise and return a 500.
+            db.rollback()
+            evt = db.get(type(evt), evt.id)
+            if evt is not None:
+                evt.error = str(exc)[:2000]
+                evt.processed = False
+                db.add(evt)
+                db.commit()
+            logger.exception("Square webhook sync failed for event %s", event_id)
+            # 500 so Square redelivers; the next delivery retries the sync.
+            raise HTTPException(status_code=500, detail="sync_failed") from exc
     return {"status": "ok", "event_id": event_id}
 
 

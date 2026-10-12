@@ -5,6 +5,7 @@ Endpoints:
 """
 from decimal import Decimal
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/sellers", tags=["sellers"])
 
 @router.get("/{user_id}")
 def get_public_seller_profile(
-    user_id: str,
+    user_id: UUID,
     db: Session = Depends(get_db),
 ):
     """Get public seller profile. Only available for Partner users.

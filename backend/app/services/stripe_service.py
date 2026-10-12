@@ -6,6 +6,7 @@ Per ROADMAP Sprint 3:
     - Webhook handler (idempotent)
     - Event ID deduplication
 """
+import logging
 from decimal import Decimal
 from datetime import datetime, timezone
 
@@ -18,6 +19,8 @@ from app.models.subscription import Subscription, WebhookEvent
 from app.models.user import User
 from app.services.invoice import transition_invoice, process_invoice_payment
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 try:
     import stripe
@@ -137,17 +140,34 @@ def handle_payment_intent_succeeded(db: Session, event_data: dict) -> None:
     if not invoice_id:
         return
 
-    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    invoice = (
+        db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
+    )
     if not invoice or invoice.status == "paid":
         return
 
-    # Transition invoice to paid
+    # Only the invoice's current PaymentIntent, for the full amount, pays it.
+    # Stops a stale intent (created before the total was raised) or a
+    # partial payment from marking the invoice paid in full.
+    expected_cents = int(Decimal(str(invoice.total)) * 100)
+    received = payment_intent.get("amount_received", payment_intent.get("amount"))
+    if (
+        pi_id != invoice.stripe_payment_intent_id
+        or received != expected_cents
+        or str(payment_intent.get("currency", "usd")).lower() != "usd"
+    ):
+        logger.warning(
+            "Ignoring payment_intent %s for invoice %s: intent or amount mismatch "
+            "(expected %s cents, received %s).",
+            pi_id, invoice.id, expected_cents, received,
+        )
+        return
+
+    # Mark paid and record the sale in ONE commit (process_invoice_payment
+    # commits). If recording fails, nothing is committed and Stripe's retry
+    # processes it again instead of finding an already-"paid" invoice.
     invoice.status = "paid"
     db.add(invoice)
-    db.commit()
-    db.refresh(invoice)
-
-    # Process the payment (create transactions, update inventory)
     process_invoice_payment(invoice, db)
 
 
