@@ -28,6 +28,7 @@ from app.models.transaction import Transaction
 from app.security.token_encryption import encrypt_token
 from app.services.providers.base import record_webhook_event, is_duplicate_event
 from app.services.square import SquareService
+from tests.ebay_signing import signed_ebay_post
 
 
 # ─── Webhook idempotency ──────────────────────────────────────────────────────
@@ -300,9 +301,8 @@ class TestSquareWebhookEndpoint:
         ))
         db.commit()
 
-        resp = client.post(
-            "/api/v1/integrations/ebay/deletion",
-            json={"notification": {"data": {"username": "ebayuser1", "userId": "ebayuser1"}}},
+        resp = signed_ebay_post(
+            client, {"notification": {"data": {"username": "ebayuser1", "userId": "ebayuser1"}}}
         )
         assert resp.status_code == 200
         db.expire_all()
@@ -312,16 +312,12 @@ class TestSquareWebhookEndpoint:
         assert db.get(InventoryItem, item.id) is not None
 
     def test_ebay_deletion_tolerates_bad_payloads(self, client):
-        url = "/api/v1/integrations/ebay/deletion"
-        assert client.post(url, content=b"not json", headers={"Content-Type": "application/json"}).status_code == 200
-        assert client.post(url, json={"notification": {"data": {}}}).status_code == 200
-        assert client.post(url, json=None).status_code == 200
+        assert signed_ebay_post(client, b"not json").status_code == 200
+        assert signed_ebay_post(client, {"notification": {"data": {}}}).status_code == 200
+        assert signed_ebay_post(client, None).status_code == 200
 
     def test_ebay_deletion_unknown_account_is_accepted(self, client):
-        resp = client.post(
-            "/api/v1/integrations/ebay/deletion",
-            json={"notification": {"data": {"username": "nobody"}}},
-        )
+        resp = signed_ebay_post(client, {"notification": {"data": {"username": "nobody"}}})
         assert resp.status_code == 200
 
     def test_actionable_event_unknown_merchant_records_but_no_sync(self, client, db):

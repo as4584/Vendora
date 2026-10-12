@@ -19,6 +19,7 @@ from app.routers import export, features, sellers, integrations
 from app.routers import subscriptions, support, reset_bridge
 from app.config import settings
 from app.rate_limit import limiter
+from app.http_hardening import HardeningMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +56,16 @@ async def lifespan(app: FastAPI):
         logger.info("Alembic migrations applied.")
     yield
 
+# Interactive API docs are a development aid; production does not publish them.
+_docs_enabled = settings.ENVIRONMENT != "production"
+
 app = FastAPI(
     title="Vendora API",
     description="Reseller Operating System — Inventory + Payments + Profit + Trust",
     version="4.2.0",
-    docs_url="/api/v1/docs",
-    redoc_url="/api/v1/redoc",
-    openapi_url="/api/v1/openapi.json",
+    docs_url="/api/v1/docs" if _docs_enabled else None,
+    redoc_url="/api/v1/redoc" if _docs_enabled else None,
+    openapi_url="/api/v1/openapi.json" if _docs_enabled else None,
     lifespan=lifespan,
 )
 
@@ -101,6 +105,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Outermost: security headers on every response, request-size cap on every body.
+app.add_middleware(HardeningMiddleware)
+
 # Mount routers under /api/v1
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(inventory.router, prefix="/api/v1")
@@ -122,4 +129,3 @@ app.include_router(reset_bridge.router)
 def health_check():
     """Health check endpoint."""
     return {"status": "ok", "version": "4.2.0"}
-# trigger reload
