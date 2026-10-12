@@ -106,6 +106,17 @@ describe('authentication screens', () => {
       await waitFor(() => expect(screen.getByText('Check your email')).toBeTruthy());
       expect(mockedApi.requestPasswordReset).toHaveBeenCalledWith('tester@vendora.test');
       expect(screen.getByText(/If a Vendora account exists/)).toBeTruthy();
+      expect(screen.getByText(/try another email you may have signed up with/)).toBeTruthy();
+    });
+
+    it('lets the user retry with a different email', async () => {
+      const screen = render(<ForgotPasswordScreen />);
+      fireEvent.changeText(screen.getByLabelText('Email'), 'wrong@vendora.test');
+      fireEvent.press(screen.getByText('Send Reset Link'));
+      await waitFor(() => expect(screen.getByText('Try a different email')).toBeTruthy());
+      fireEvent.press(screen.getByText('Try a different email'));
+      expect(screen.getByLabelText('Email').props.value).toBe('');
+      expect(screen.getByText('Send Reset Link')).toBeTruthy();
     });
 
     it('shows reset-email delivery errors and restores the submit button', async () => {

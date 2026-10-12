@@ -32,7 +32,11 @@ from app.services.auth import (
     rotate_session,
     verify_password,
 )
-from app.services.email import EmailDeliveryError, send_password_reset_email
+from app.services.email import (
+    EmailDeliveryError,
+    send_no_account_email,
+    send_password_reset_email,
+)
 from app.rate_limit import limiter
 from app.services.tester_access import apply_tester_entitlements, persist_tester_entitlements
 from app.dependencies.auth import get_current_user
@@ -142,6 +146,10 @@ def forgot_password(
         .first()
     )
     if not user:
+        try:
+            send_no_account_email(normalized_email)
+        except EmailDeliveryError:
+            logger.exception("No-account notice delivery failed")
         return MessageResponse(message=RESET_REQUEST_MESSAGE)
 
     token, token_hash, expires_at = create_password_reset_token()
