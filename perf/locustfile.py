@@ -90,7 +90,7 @@ class Reseller(HttpUser):
     @task(2)
     def add_item(self):
         price = random.randint(10, 300)
-        resp = self.client.post(
+        with self.client.post(
             "/api/v1/inventory",
             json={
                 "name": f"Item {uuid.uuid4().hex[:6]}",
@@ -101,9 +101,14 @@ class Reseller(HttpUser):
             },
             headers=self.headers,
             name="POST /inventory",
-        )
-        if resp.ok:
-            self.item_ids.append(resp.json()["id"])
+            catch_response=True,
+        ) as resp:
+            if resp.ok:
+                self.item_ids.append(resp.json()["id"])
+            elif resp.status_code == 403:
+                # Free-plan accounts are capped at 25 items; long runs hit the
+                # cap. That is the app working, not a capacity failure.
+                resp.success()
 
     @task(2)
     def quick_sale(self):
@@ -141,13 +146,14 @@ from locust import LoadTestShape  # noqa: E402
 class StepRamp(LoadTestShape):
     """Breakpoint test: add STEP users every STEP_SECONDS up to MAX_USERS."""
 
+    start = int(os.environ.get("START", 0))
     step = int(os.environ.get("STEP", 100))
     step_seconds = int(os.environ.get("STEP_SECONDS", 90))
     max_users = int(os.environ.get("MAX_USERS", 3000))
     spawn_rate = float(os.environ.get("SPAWN_RATE", 20))
 
     def tick(self):
-        users = (int(self.get_run_time() // self.step_seconds) + 1) * self.step
+        users = self.start + (int(self.get_run_time() // self.step_seconds) + 1) * self.step
         if users > self.max_users:
             return None
         return users, self.spawn_rate

@@ -22,21 +22,27 @@ def users_at(ts):
     for t, n in ts_users:
         if t <= ts: u = n
     return u
+# Sum every replica of a group per sample, so N API replicas report total CPU/memory.
+samples = defaultdict(lambda: defaultdict(float))
 for line in open(metrics, errors="ignore"):
     parts = line.strip().split(",")
     if len(parts) < 3 or not parts[0].isdigit(): continue
-    u = users_at(int(parts[0]))
+    ts = int(parts[0])
     if parts[1] == "pg_connections" and parts[2].isdigit():
-        m[u]["pg"].append(int(parts[2]))
+        m[users_at(ts)]["pg"].append(int(parts[2]))
     elif len(parts) >= 4:
-        who = "be" if "backend" in parts[1] else "db"
-        m[u][who + "_cpu"].append(num(parts[2].rstrip("%")))
+        name = parts[1]
+        who = "be" if "backend" in name else "db" if name.endswith("-db-1") else "infra"
+        samples[(ts, who)]["cpu"] += num(parts[2].rstrip("%"))
         mem = re.match(r"([\d.]+)(\w+)", parts[3])
         if mem:
-            v = float(mem.group(1)) * {"GiB": 1024, "MiB": 1, "KiB": 1 / 1024}.get(mem.group(2), 1)
-            m[u][who + "_mem"].append(v)
+            samples[(ts, who)]["mem"] += float(mem.group(1)) * {"GiB": 1024, "MiB": 1, "KiB": 1 / 1024}.get(mem.group(2), 1)
+for (ts, who), v in samples.items():
+    u = users_at(ts)
+    m[u][who + "_cpu"].append(v["cpu"])
+    m[u][who + "_mem"].append(v["mem"])
 
-print(f"{'users':>6} {'rps':>7} {'p50':>6} {'p95':>6} {'p99':>6} {'err%':>6} {'beCPU%':>7} {'beMB':>6} {'dbCPU%':>7} {'dbMB':>6} {'pgconn':>6} SLO")
+print(f"{'users':>6} {'rps':>7} {'p50':>6} {'p95':>6} {'p99':>6} {'err%':>6} {'beCPU%':>7} {'beMB':>6} {'dbCPU%':>7} {'dbMB':>6} {'pgconn':>6} {'infCPU%':>7} SLO")
 first_fail = None
 prev = None
 for u in sorted(by_users):
@@ -51,5 +57,5 @@ for u in sorted(by_users):
     if not ok and first_fail is None:
         first_fail = u
     print(f"{u:>6} {rps:>7.1f} {p['50%']:>6.0f} {p['95%']:>6.0f} {p['99%']:>6.0f} {err*100:>6.2f} "
-          f"{f('be_cpu', st.median):>7.0f} {f('be_mem'):>6.0f} {f('db_cpu', st.median):>7.0f} {f('db_mem'):>6.0f} {f('pg'):>6} {'PASS' if ok else 'FAIL'}")
+          f"{f('be_cpu', st.median):>7.0f} {f('be_mem'):>6.0f} {f('db_cpu', st.median):>7.0f} {f('db_mem'):>6.0f} {f('pg'):>6} {f('infra_cpu', st.median):>7.0f} {'PASS' if ok else 'FAIL'}")
 print("first SLO failure at", first_fail, "users")

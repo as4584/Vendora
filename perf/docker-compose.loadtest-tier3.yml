@@ -1,0 +1,112 @@
+# Load-test clone of the Tier 3 production layout (docker-compose.prod.yml):
+# nginx -> N API replicas -> PgBouncer -> Postgres, plus Redis and the job
+# worker. Own throwaway DB, no Cloudflare edge network, local port 18090.
+x-env: &env
+  DATABASE_URL: postgresql://vendora:loadtest@pgbouncer:5432/vendora
+  REDIS_URL: redis://redis:6379/0
+  RUN_MIGRATIONS_ON_STARTUP: "false"
+  ENVIRONMENT: production
+  SECRET_KEY: loadtest-only-secret-key-0123456789abcdef
+  PASSWORD_RESET_URL: https://vendora.lexmakesit.com/reset-password
+  PYTHONDONTWRITEBYTECODE: "1"
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: vendora
+      POSTGRES_PASSWORD: loadtest
+      POSTGRES_DB: vendora
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vendora -d vendora"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_USER: vendora
+      DB_PASSWORD: loadtest
+      DB_NAME: vendora
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "75"
+      RESERVE_POOL_SIZE: "10"
+      # Safety nets: fail a request fast rather than queue it for minutes, and
+      # free a server connection a stuck client left mid-transaction.
+      QUERY_WAIT_TIMEOUT: "15"
+      IDLE_TRANSACTION_TIMEOUT: "30"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U $$DB_USER"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7.4.2-alpine
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  migrate:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *env
+      DATABASE_URL: postgresql://vendora:loadtest@db:5432/vendora
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    deploy:
+      replicas: ${VENDORA_API_REPLICAS:-4}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment: *env
+    ulimits:
+      nofile: 65536
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: ["rq", "worker", "--url", "redis://redis:6379/0", "outbound"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment: *env
+  lb:
+    image: nginx:1.28.0-alpine
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ../deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ulimits:
+      nofile: 65536
+    ports:
+      - "127.0.0.1:18090:8000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

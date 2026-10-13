@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
+from app.jobs import enqueue
 from app.models.support import SupportRequest
 from app.models.user import User
 from app.services.discord import DiscordNotifyError, send_support_notification
@@ -39,13 +40,13 @@ def create_support_request(
     db.refresh(ticket)
     discord_notified = True
     try:
-        send_support_notification(current_user.email, ticket.subject, ticket.message, priority)
+        enqueue(send_support_notification, current_user.email, ticket.subject, ticket.message, priority)
     except DiscordNotifyError:
         discord_notified = False
         logger.exception("Support Discord notification failed for ticket %s", ticket.id)
     email_queued = True
     try:
-        send_support_request_email(current_user.email, ticket.subject, ticket.message, priority)
+        enqueue(send_support_request_email, current_user.email, ticket.subject, ticket.message, priority)
     except EmailDeliveryError:
         email_queued = False
         logger.exception("Support email delivery failed for ticket %s", ticket.id)

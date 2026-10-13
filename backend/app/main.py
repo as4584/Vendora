@@ -20,6 +20,7 @@ from app.routers import subscriptions, support, reset_bridge
 from app.config import settings
 from app.rate_limit import limiter
 from app.http_hardening import HardeningMiddleware
+from app.request_limit import RequestLimitMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ async def lifespan(app: FastAPI):
     ):
         raise RuntimeError("Production SECRET_KEY must be a unique value of at least 32 characters.")
 
-    if settings.ENVIRONMENT != "testing":
+    if settings.ENVIRONMENT != "testing" and settings.RUN_MIGRATIONS_ON_STARTUP:
         alembic_path = Path(__file__).resolve().parents[1] / "alembic.ini"
         alembic_cfg = Config(str(alembic_path))
         alembic_command.upgrade(alembic_cfg, "head")
@@ -103,6 +104,14 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Admit only as many concurrent requests as the DB pool can serve, so the API
+# sheds load with 503s instead of deadlocking (app/request_limit.py).
+app.add_middleware(
+    RequestLimitMiddleware,
+    max_in_flight=settings.MAX_IN_FLIGHT_REQUESTS,
+    queue_timeout=settings.REQUEST_QUEUE_TIMEOUT,
 )
 
 # Outermost: security headers on every response, request-size cap on every body.

@@ -63,4 +63,12 @@ def get_current_user(
             detail="User not found or account deleted.",
         )
 
-    return persist_tester_entitlements(db, user)
+    user = persist_tester_entitlements(db, user)
+    # End the auth transaction before the endpoint runs. FastAPI runs this
+    # dependency and the endpoint as separate thread-pool jobs; an open
+    # transaction here pins a database connection while the request waits for
+    # a free thread, and once every thread is waiting for a connection the API
+    # deadlocks (found by load test behind PgBouncer, perf/REPORT.md). The
+    # endpoint reloads the user in its own short transaction.
+    db.commit()
+    return user

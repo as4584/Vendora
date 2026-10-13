@@ -38,6 +38,7 @@ from app.services.email import (
     send_no_account_email,
     send_password_reset_email,
 )
+from app.jobs import enqueue
 from app.rate_limit import limiter
 from app.services.tester_access import apply_tester_entitlements, persist_tester_entitlements
 from app.dependencies.auth import get_current_user
@@ -148,7 +149,7 @@ def forgot_password(
     )
     if not user:
         try:
-            send_no_account_email(normalized_email)
+            enqueue(send_no_account_email, normalized_email)
         except EmailDeliveryError:
             logger.exception("No-account notice delivery failed")
         return MessageResponse(message=RESET_REQUEST_MESSAGE)
@@ -160,7 +161,7 @@ def forgot_password(
     db.commit()
 
     try:
-        send_password_reset_email(user.email, token)
+        enqueue(send_password_reset_email, user.email, token)
     except EmailDeliveryError:
         # Preserve the same public response for existing and unknown accounts.
         logger.exception("Password reset email delivery failed")

@@ -18,10 +18,23 @@ def client_ip(request: Request) -> str:
     return forwarded or get_remote_address(request)
 
 
+def limiter_storage(redis_url: str) -> dict:
+    """Counters live in Redis so every API process enforces one shared limit.
+
+    Without Redis each process counts separately, and N processes would let a
+    client make N times its limit. If Redis goes down, limits fall back to
+    per-process memory instead of failing requests.
+    """
+    if not redis_url:
+        return {}
+    return {"storage_uri": redis_url, "in_memory_fallback_enabled": True}
+
+
 _is_testing = os.getenv("ENVIRONMENT") == "testing"
 _default_limits = [] if _is_testing else ["100/minute"]
 limiter = Limiter(
     key_func=client_ip,
     default_limits=_default_limits,
     enabled=not _is_testing,
+    **limiter_storage(os.getenv("REDIS_URL", "")),
 )

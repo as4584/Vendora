@@ -14,11 +14,61 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  # Transaction pooling: hundreds of app connections share a few real Postgres
+  # connections, so adding API replicas never exhausts max_connections.
+  # 75 + 10 reserve stays under Postgres' default max_connections of 100; the
+  # load test showed 40 was the first bottleneck at ~2,000 users.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "75"
+      RESERVE_POOL_SIZE: "10"
+      # Safety nets: fail a request fast rather than queue it for minutes, and
+      # free a server connection a stuck client left mid-transaction.
+      QUERY_WAIT_TIMEOUT: "15"
+      IDLE_TRANSACTION_TIMEOUT: "30"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U $$DB_USER"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Background job queue and shared rate-limit counters. Internal network only.
+  redis:
+    image: redis:7.4.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - vendora_redis_data:/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Applies database migrations once, directly against Postgres, before any
+  # API replica starts; replicas run with RUN_MIGRATIONS_ON_STARTUP=false.
+  migrate:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    restart: unless-stopped
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
@@ -27,7 +77,69 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       ENVIRONMENT: production
+    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    deploy:
+      replicas: ${VENDORA_API_REPLICAS:-4}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ${VENDORA_ENV_FILE:-.env.prod}
+    environment: &backend_env
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RUN_MIGRATIONS_ON_STARTUP: "false"
+      ENVIRONMENT: production
       PYTHONDONTWRITEBYTECODE: "1"
+    ulimits:
+      nofile: 65536
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Sends queued emails and Discord alerts, with retries (backend/app/jobs.py).
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["rq", "worker", "--url", "redis://redis:6379/0", "outbound"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - ${VENDORA_ENV_FILE:-.env.prod}
+    environment: *backend_env
+    security_opt:
+      - no-new-privileges:true
+
+  # Load balancer: the only API entry point. Keeps the old port and the
+  # vendora-backend alias, so the Cloudflare tunnel config is unchanged.
+  lb:
+    image: nginx:1.28.0-alpine
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ulimits:
+      nofile: 65536
     ports:
       - "127.0.0.1:18083:8000"
     networks:
@@ -38,13 +150,14 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
   vendora_db_data:
+  vendora_redis_data:
 
 networks:
   edge:

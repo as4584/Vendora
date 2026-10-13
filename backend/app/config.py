@@ -65,6 +65,16 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 20
     DB_MAX_OVERFLOW: int = 30
     DB_POOL_TIMEOUT: int = 10
+    # Requests one process works on at once (app/request_limit.py). Must not
+    # exceed DB_POOL_SIZE + DB_MAX_OVERFLOW; extra requests queue, then get 503.
+    MAX_IN_FLIGHT_REQUESTS: int = 40
+    REQUEST_QUEUE_TIMEOUT: float = 10.0
+    # Redis backs the background job queue (app/jobs.py) and rate-limit counters
+    # shared by every API process. Empty: jobs run inline, limits are per process.
+    REDIS_URL: str = ""
+    # With several API replicas, a one-shot `migrate` service applies migrations
+    # once before they start (docker-compose.prod.yml), so replicas skip it.
+    RUN_MIGRATIONS_ON_STARTUP: bool = True
     # Provider token encryption key (Fernet — 32-byte URL-safe base64).
     # Generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # If empty, a key is derived from SECRET_KEY via SHA-256 (acceptable for dev/test).

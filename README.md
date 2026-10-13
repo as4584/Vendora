@@ -34,6 +34,11 @@ Resellers (sneakers, electronics, clothing, etc.) use Vendora to run their busin
 | OTA Updates | EAS Update (Expo) |
 | CI/CD | GitHub Actions |
 | Containerization | Docker + docker-compose |
+| Load balancing | nginx (least-connections across API replicas) |
+| Connection pooling | PgBouncer (transaction mode) |
+| Background jobs | Redis + RQ worker (email, Discord alerts, with retries) |
+| Rate limiting | slowapi, counters shared in Redis |
+| Load testing | Locust, distributed, against a production clone |
 
 ---
 
@@ -66,6 +71,36 @@ Resellers (sneakers, electronics, clothing, etc.) use Vendora to run their busin
    (Alembic          (payments +
     migrations)       webhooks)
 ```
+
+### Production topology
+
+Everything runs on a single self-hosted machine behind a Cloudflare tunnel.
+
+```
+ iPhone app ──HTTPS──► Cloudflare ──tunnel──► nginx (load balancer)
+                                                 │ least_conn, keepalive,
+                                                 │ retries on a failed replica
+                          ┌──────────────┬───────┴──────┬──────────────┐
+                          ▼              ▼              ▼              ▼
+                     API replica 1  API replica 2  API replica 3  API replica 4
+                          │   (FastAPI/uvicorn, stateless)              │
+              ┌───────────┴───────────────┬─────────────────────────────┘
+              ▼                           ▼
+          PgBouncer ──► PostgreSQL      Redis ◄── RQ worker ──► Resend / Discord
+     (transaction pooling)        (job queue + shared
+                                   rate-limit counters)
+```
+
+- **Stateless API replicas** scale with one setting (`VENDORA_API_REPLICAS`).
+- **PgBouncer** lets hundreds of app connections share a few real Postgres
+  connections, so adding replicas never exhausts `max_connections`.
+- **Redis-backed rate limits**: N replicas still enforce one limit per client.
+  If Redis is down, limits fall back to per-process memory instead of failing.
+- **Background jobs**: emails and alerts leave the request path and retry on
+  provider errors. Without Redis they run inline, so an outage costs latency,
+  not delivery. Job logs never include arguments (reset tokens, addresses).
+- **One-shot migrations**: a `migrate` service applies Alembic migrations once
+  before replicas start, so replicas never race each other on schema changes.
 
 ### Inventory State Machine
 
@@ -177,6 +212,8 @@ npx playwright test
 
 **Tier enforcement middleware** — a FastAPI dependency (`tier_limiter`) checks the user's subscription tier before inventory creation. Free tier is capped at 25 items; Pro is unlimited.
 
+**Load-tested capacity** — breakpoint tests against a production clone (Locust, realistic reseller sessions) took the API from ~500 to ~3,500 concurrent users on the same hardware, with p99 under 100 ms and zero server errors. They also surfaced, and regression tests now guard, a thread-pool/connection-pool deadlock; requests past capacity now get a fast 503 instead of hanging the API. Details: [`perf/REPORT.md`](perf/REPORT.md).
+
 **OTA updates** — mobile updates ship to both `preview` (tester/internal builds) and `production` after smoke tests pass. Expo Go users should reopen the shared channel link to refresh a cached project.
 
 ---
@@ -186,7 +223,7 @@ npx playwright test
 The backend deploys to `https://vendora.lexmakesit.com` via Docker.
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d --build   # VENDORA_API_REPLICAS=4 by default
 ```
 
 Mobile OTA updates publish automatically via GitHub Actions on merge to `main`.
