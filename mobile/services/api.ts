@@ -1015,6 +1015,7 @@ export interface SubscriptionStatus {
   status: string;
   current_period_end: string | null;
   managed_billing: boolean;
+  provider?: "stripe" | "apple" | null;
 }
 
 export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {

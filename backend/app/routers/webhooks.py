@@ -24,6 +24,8 @@ from app.services.stripe_service import (
     STRIPE_AVAILABLE,
 )
 
+from app.services.revenuecat_service import handle_revenuecat_event, HANDLED as RC_HANDLED
+
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
@@ -104,3 +106,46 @@ async def stripe_webhook(
         raise
 
     return {"status": "processed", "type": event_type}
+
+
+@router.post("/revenuecat")
+async def revenuecat_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Apple in-app purchase events from RevenueCat (idempotent by event id)."""
+    import hmac
+    import json
+
+    expected = settings.REVENUECAT_WEBHOOK_AUTH
+    if not expected:
+        raise HTTPException(status_code=503, detail="RevenueCat webhook is not configured.")
+    supplied = request.headers.get("authorization", "")
+    if not hmac.compare_digest(supplied.encode(), expected.encode()) and not hmac.compare_digest(
+        supplied.encode(), f"Bearer {expected}".encode()
+    ):
+        raise HTTPException(status_code=401, detail="Invalid authorization")
+
+    try:
+        payload = json.loads(await request.body())
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    event = payload.get("event") or {}
+    event_type = event.get("type", "")
+    if event_type not in RC_HANDLED:
+        return {"status": "ignored", "type": event_type}
+    event_id = event.get("id")
+    if not event_id:
+        raise HTTPException(status_code=400, detail="Webhook event is missing an id.")
+
+    claim_id = f"rc:{event_id}"
+    if claim_event(db, claim_id, f"rc:{event_type}"[:100]) is None:
+        return {"status": "already_processed", "event_id": event_id}
+    try:
+        outcome = handle_revenuecat_event(db, event)
+        record_event(db, claim_id, f"rc:{event_type}"[:100])
+    except Exception:
+        db.rollback()
+        release_event_claim(db, claim_id)
+        raise
+    return {"status": outcome, "type": event_type}

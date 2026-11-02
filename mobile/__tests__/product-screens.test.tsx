@@ -129,3 +129,40 @@ describe('public seller product', () => {
   });
   it('does not request without a seller id', () => { mockSellerId = undefined; render(<SellerProfileScreen />); expect(api.getSellerProfile).not.toHaveBeenCalled(); });
 });
+
+describe('subscription product on iOS (Apple in-app purchase)', () => {
+  const plan = { id: '$rc_monthly', productId: 'com.vendora.pro.monthly', title: 'Pro', price: '$19.99', period: 'month', pkg: {} };
+  let iap: any;
+
+  beforeEach(() => {
+    iap = require('../services/purchases');
+    jest.spyOn(iap, 'iapEnabled').mockReturnValue(true);
+    jest.spyOn(iap, 'loadPlans').mockResolvedValue([plan]);
+    jest.spyOn(iap, 'buy').mockResolvedValue(true);
+    jest.spyOn(iap, 'restore').mockResolvedValue(false);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('sells through Apple, not Stripe, and shows required terms + restore', async () => {
+    (api.getSubscriptionStatus as jest.Mock)
+      .mockResolvedValueOnce(subscription)
+      .mockResolvedValue({ ...subscription, tier: 'pro', status: 'active', provider: 'apple' });
+    const screen = render(<SubscriptionScreen />);
+    await screen.findByText('Subscribe $19.99/month');
+    expect(screen.getByText('Restore Purchases')).toBeTruthy();
+    expect(screen.getByText('Terms of Use')).toBeTruthy();
+    expect(screen.getByText('Privacy Policy')).toBeTruthy();
+    expect(screen.queryByText('Upgrade to Pro')).toBeNull();
+
+    fireEvent.press(screen.getByText('Subscribe $19.99/month'));
+    await waitFor(() => expect(iap.buy).toHaveBeenCalledWith(plan));
+    await screen.findByText('Active');
+    expect(api.createSubscriptionCheckout).not.toHaveBeenCalled();
+  });
+
+  it('tells the user when there is nothing to restore', async () => {
+    const screen = render(<SubscriptionScreen />);
+    fireEvent.press(await screen.findByText('Restore Purchases'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Nothing to restore', expect.any(String)));
+  });
+});

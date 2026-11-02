@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     STRIPE_PRO_PRICE_ID: str = ""  # Stripe Price ID for Pro tier ($20/mo)
     STRIPE_PARTNER_PRICE_ID: str = ""  # Stripe Price ID for Partner add-on ($5/mo)
+    # RevenueCat (iOS in-app purchases). The webhook sends this exact value in
+    # the Authorization header; set the same string in the RevenueCat dashboard.
+    REVENUECAT_WEBHOOK_AUTH: str = ""
     SUPPORT_EMAIL: str = "support@lexmakesit.com"
     # Lightspeed Retail (R-Series)
     LIGHTSPEED_CLIENT_ID: str = ""
