@@ -11,7 +11,7 @@ Per STATE_MACHINES.md:
 """
 import uuid
 
-from sqlalchemy import Column, String, Numeric, Integer, ForeignKey, CheckConstraint, Index, Uuid
+from sqlalchemy import Column, String, Numeric, Integer, ForeignKey, CheckConstraint, Index, UniqueConstraint, Uuid
 # from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
@@ -27,6 +27,7 @@ class Invoice(Base, TimestampMixin):
         Index("ix_invoices_user_id", "user_id"),
         Index("ix_invoices_status", "status"),
         Index("ix_invoices_created_at", "created_at"),
+        UniqueConstraint("user_id", "number", name="uq_invoices_user_number"),
     )
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -35,6 +36,8 @@ class Invoice(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
+    # Per-user sequence, assigned once at creation and never reused or changed.
+    number = Column(Integer, nullable=False)
     customer_name = Column(String(255), nullable=False)
     customer_email = Column(String(255), nullable=True)
     status = Column(String(20), nullable=False, server_default="draft")
@@ -45,6 +48,10 @@ class Invoice(Base, TimestampMixin):
     total = Column(Numeric(10, 2), nullable=False, server_default="0.00")
     stripe_payment_intent_id = Column(String(255), nullable=True)
     notes = Column(String(1000), nullable=True)
+
+    @property
+    def invoice_number(self) -> str:
+        return f"INV{self.number:04d}" if self.number else ""
 
 
 class InvoiceItem(Base):

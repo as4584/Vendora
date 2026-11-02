@@ -14,6 +14,7 @@ from app.services import stripe_service
 def _invoice(db, user, *, status="sent", total=Decimal("12.34")):
     model = Invoice(
         user_id=user.id,
+        number=(db.query(Invoice).filter(Invoice.user_id == user.id).count() + 1),
         customer_name="Stripe Buyer",
         status=status,
         subtotal=total,
