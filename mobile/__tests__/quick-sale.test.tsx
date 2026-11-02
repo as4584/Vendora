@@ -18,7 +18,7 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ replace: mockReplace, push
 
 jest.mock('../services/api', () => ({
   listItems: jest.fn(),
-  createTransaction: jest.fn(),
+  createSaleOrder: jest.fn(),
 }));
 
 const ITEM = {
@@ -39,32 +39,35 @@ describe('QuickSaleScreen (multi-item cart)', () => {
       buttons?.[0]?.onPress?.();
     });
     (apiMock.listItems as jest.Mock).mockResolvedValue({ items: [ITEM, ITEM2], total: 2, page: 1, per_page: 100, pages: 1 });
-    (apiMock.createTransaction as jest.Mock).mockResolvedValue({ id: 'txn-1', gross_amount: '340.00', method: 'cash' });
+    (apiMock.createSaleOrder as jest.Mock).mockResolvedValue({
+      order_id: 'order-1', gross_amount: '550.00', fee_amount: '0.00', net_amount: '550.00', transactions: [],
+    });
   });
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('adds multiple items and logs one transaction per line', async () => {
+  it('logs the whole cart as ONE order (all-or-nothing on the server)', async () => {
     const screen = render(<QuickSaleScreen />);
     await screen.findByText('Jordan 1 Retro High');
 
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));
     fireEvent.press(screen.getByText('Sony WH-1000XM5'));
     // Toggle Sony off then back on (covers the cart remove/add branches).
-    // Once added the name appears in both the list and cart, so target the list row by label.
     fireEvent.press(screen.getByLabelText('Remove Sony WH-1000XM5'));
     fireEvent.press(screen.getByLabelText('Add Sony WH-1000XM5'));
-    // Cart shows both lines + a total (340 + 210 = 550).
     await waitFor(() => expect(screen.getByText(/Cart · 2 items/)).toBeTruthy());
 
     fireEvent.press(screen.getByText(/Log Sale/));
-    await waitFor(() => expect(apiMock.createTransaction).toHaveBeenCalledTimes(2));
-    expect(apiMock.createTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ item_id: 'item-1', quantity: 1, gross_amount: '340.00' }),
-    );
-    expect(apiMock.createTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ item_id: 'item-2', quantity: 1, gross_amount: '210.00' }),
-    );
+    await waitFor(() => expect(apiMock.createSaleOrder).toHaveBeenCalledTimes(1));
+    expect(apiMock.createSaleOrder).toHaveBeenCalledWith({
+      lines: [
+        { item_id: 'item-1', quantity: 1, unit_price: '340.00' },
+        { item_id: 'item-2', quantity: 1, unit_price: '210.00' },
+      ],
+      method: 'cash',
+      fee_amount: '0.00',
+      notes: undefined,
+    });
     expect(mockReplace).toHaveBeenCalledWith('/(tabs)/dashboard');
   });
 
@@ -79,10 +82,49 @@ describe('QuickSaleScreen (multi-item cart)', () => {
     fireEvent.changeText(screen.getByLabelText('Fee amount'), '5');
     fireEvent.press(screen.getByText(/Log Sale/));
     await waitFor(() =>
-      expect(apiMock.createTransaction).toHaveBeenCalledWith(
-        expect.objectContaining({ item_id: 'item-1', method: 'paypal', quantity: 2, gross_amount: '680.00', fee_amount: '5' }),
+      expect(apiMock.createSaleOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'paypal',
+          fee_amount: '5.00',
+          lines: [{ item_id: 'item-1', quantity: 2, unit_price: '340.00' }],
+        }),
       ),
     );
+  });
+
+  it('lets the seller haggle the price per line', async () => {
+    const screen = render(<QuickSaleScreen />);
+    await screen.findByText('Jordan 1 Retro High');
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.changeText(screen.getByLabelText('Sale price for Jordan 1 Retro High'), '300');
+    expect(screen.getByText(/Log Sale · \$300\.00/)).toBeTruthy();
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await waitFor(() =>
+      expect(apiMock.createSaleOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ lines: [{ item_id: 'item-1', quantity: 1, unit_price: '300.00' }] }),
+      ),
+    );
+  });
+
+  it('rejects a fee larger than the sale', async () => {
+    const screen = render(<QuickSaleScreen />);
+    await screen.findByText('Jordan 1 Retro High');
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.changeText(screen.getByLabelText('Fee amount'), '999');
+    fireEvent.press(screen.getByText(/Log Sale/));
+    expect(Alert.alert).toHaveBeenLastCalledWith('Check the fee', "The fee can't be more than the sale total.");
+    expect(apiMock.createSaleOrder).not.toHaveBeenCalled();
+  });
+
+  it('says when the order was queued offline', async () => {
+    (apiMock.createSaleOrder as jest.Mock).mockResolvedValueOnce({
+      order_id: 'tmp', gross_amount: '340.00', fee_amount: '0.00', net_amount: '340.00', transactions: [], pending: true,
+    });
+    const screen = render(<QuickSaleScreen />);
+    await screen.findByText('Jordan 1 Retro High');
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Sale queued offline', expect.any(String), expect.any(Array)));
   });
 
   it('blocks logging with an empty cart', async () => {
@@ -90,7 +132,7 @@ describe('QuickSaleScreen (multi-item cart)', () => {
     await screen.findByText('Jordan 1 Retro High');
     fireEvent.press(screen.getByText(/Log Sale/));
     expect(Alert.alert).toHaveBeenLastCalledWith('No items selected', 'Tap items above to add them to this sale.');
-    expect(apiMock.createTransaction).not.toHaveBeenCalled();
+    expect(apiMock.createSaleOrder).not.toHaveBeenCalled();
   });
 
   it('reports inventory load failures and filters by search', async () => {
@@ -109,7 +151,7 @@ describe('QuickSaleScreen (multi-item cart)', () => {
   });
 
   it('reports transaction failures', async () => {
-    (apiMock.createTransaction as jest.Mock).mockRejectedValueOnce(new Error('payment down'));
+    (apiMock.createSaleOrder as jest.Mock).mockRejectedValueOnce(new Error('payment down'));
     const screen = render(<QuickSaleScreen />);
     await screen.findByText('Jordan 1 Retro High');
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));

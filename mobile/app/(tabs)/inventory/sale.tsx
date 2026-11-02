@@ -18,7 +18,14 @@ import { formatCurrency, resolveQty } from "../../../utils/inventory";
 
 const PAYMENT_METHODS = ["cash", "venmo", "cashapp", "paypal", "zelle", "stripe", "other"];
 
-type CartLine = { item: api.InventoryItem; qty: number };
+// price: the agreed per-unit price as typed (defaults to the list price, editable to haggle).
+type CartLine = { item: api.InventoryItem; qty: number; price: string };
+
+const listPrice = (item: api.InventoryItem) => Number(item.expected_sell_price || 0).toFixed(2);
+const linePrice = (line: CartLine) => {
+  const n = parseFloat(line.price.replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+};
 
 export default function QuickSaleScreen() {
   const router = useRouter();
@@ -48,7 +55,7 @@ export default function QuickSaleScreen() {
   }, [items, query]);
 
   const cartLines = Object.values(cart);
-  const total = cartLines.reduce((sum, line) => sum + Number(line.item.expected_sell_price || 0) * line.qty, 0);
+  const total = cartLines.reduce((sum, line) => sum + linePrice(line) * line.qty, 0);
   const fee = parseFloat(feeAmount || "0") || 0;
   const net = total - fee;
 
@@ -56,7 +63,7 @@ export default function QuickSaleScreen() {
     setCart((prev) => {
       const next = { ...prev };
       if (next[item.id]) delete next[item.id];
-      else next[item.id] = { item, qty: 1 };
+      else next[item.id] = { item, qty: 1, price: listPrice(item) };
       return next;
     });
   };
@@ -70,29 +77,35 @@ export default function QuickSaleScreen() {
     });
   };
 
+  const changePrice = (id: string, price: string) => {
+    setCart((prev) => ({ ...prev, [id]: { ...prev[id], price } }));
+  };
+
   const handleSubmit = async () => {
     if (cartLines.length === 0) {
       Alert.alert("No items selected", "Tap items above to add them to this sale.");
       return;
     }
+    if (fee > total) {
+      Alert.alert("Check the fee", "The fee can't be more than the sale total.");
+      return;
+    }
     setSubmitting(true);
     try {
-      let logged = 0;
-      for (let i = 0; i < cartLines.length; i += 1) {
-        const line = cartLines[i];
-        const lineGross = (Number(line.item.expected_sell_price || 0) * line.qty).toFixed(2);
-        await api.createTransaction({
+      // One request for the whole checkout: the server records every line or
+      // none, and splits the fee across lines by value.
+      const order = await api.createSaleOrder({
+        lines: cartLines.map((line) => ({
           item_id: line.item.id,
-          method,
-          gross_amount: lineGross,
-          // The whole-order fee is attached to the first line item.
-          fee_amount: i === 0 ? (feeAmount.trim() || "0.00") : "0.00",
           quantity: line.qty,
-          notes: notes.trim() || undefined,
-        });
-        logged += 1;
-      }
-      const offline = !isOnline();
+          unit_price: linePrice(line).toFixed(2),
+        })),
+        method,
+        fee_amount: fee.toFixed(2),
+        notes: notes.trim() || undefined,
+      });
+      const logged = cartLines.length;
+      const offline = !!order.pending || !isOnline();
       Alert.alert(
         offline ? "Sale queued offline" : "Sale logged",
         `${logged} item${logged === 1 ? "" : "s"} • ${formatCurrency(total.toFixed(2))} captured.` +
@@ -155,14 +168,22 @@ export default function QuickSaleScreen() {
             <View key={line.item.id} style={styles.cartRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.itemName}>{line.item.name}</Text>
-                <Text style={styles.itemMeta}>{formatCurrency(line.item.expected_sell_price)} each</Text>
+                <Text style={styles.itemMeta}>List {formatCurrency(line.item.expected_sell_price)}</Text>
               </View>
+              <TextInput
+                accessibilityLabel={`Sale price for ${line.item.name}`}
+                style={styles.priceInput}
+                value={line.price}
+                onChangeText={(value) => changePrice(line.item.id, value)}
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+              />
               <View style={styles.qtyStepper}>
                 <TouchableOpacity accessibilityLabel={`Decrease ${line.item.name}`} style={styles.qtyBtn} onPress={() => changeQty(line.item.id, -1)}><Icon name="remove" size={16} color={COLORS.text} /></TouchableOpacity>
                 <Text style={styles.qtyValue}>{line.qty}</Text>
                 <TouchableOpacity accessibilityLabel={`Increase ${line.item.name}`} style={styles.qtyBtn} onPress={() => changeQty(line.item.id, 1)}><Icon name="add" size={16} color={COLORS.text} /></TouchableOpacity>
               </View>
-              <Text style={styles.lineTotal}>{formatCurrency((Number(line.item.expected_sell_price || 0) * line.qty).toFixed(2))}</Text>
+              <Text style={styles.lineTotal}>{formatCurrency((linePrice(line) * line.qty).toFixed(2))}</Text>
             </View>
           ))}
           <View style={styles.totalRow}>
@@ -250,4 +271,16 @@ const styles = StyleSheet.create({
   totalLabel: { color: COLORS.textMuted, fontSize: 14, fontWeight: "700" },
   totalValue: { color: COLORS.text, fontSize: 20, fontWeight: "800" },
   notesInput: { minHeight: 72, textAlignVertical: "top" },
+  priceInput: {
+    backgroundColor: COLORS.bgElevated,
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    color: COLORS.text,
+    fontWeight: "700",
+    minWidth: 72,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    textAlign: "right",
+  },
 });
