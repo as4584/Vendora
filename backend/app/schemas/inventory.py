@@ -2,7 +2,7 @@
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 

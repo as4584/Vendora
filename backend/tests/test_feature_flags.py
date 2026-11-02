@@ -2,7 +2,6 @@
 
 Tests feature flag service and endpoint.
 """
-import pytest
 
 
 class TestFeatureFlagService:

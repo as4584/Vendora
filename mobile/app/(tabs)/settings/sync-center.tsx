@@ -51,6 +51,8 @@ export default function SyncCenterScreen() {
     setRefreshing(false);
   }, []);
 
+  // Fetch-on-mount: load's state updates are the point of the effect.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
 
   const syncOne = async (key: ProviderKey) => {

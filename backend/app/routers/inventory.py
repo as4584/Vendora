@@ -47,7 +47,7 @@ from app.schemas.inventory import (
 )
 from app.dependencies.auth import get_current_user
 from app.dependencies.tier_limiter import TIER_LIMITS, enforce_item_limit
-from app.services.inventory import transition_item, get_available_quantity
+from app.services.inventory import transition_item
 from app.services.spreadsheet_import import (
     detect_format,
     google_sheet_candidate_csv_urls,
@@ -1105,7 +1105,6 @@ def commit_import(
 
     Creates or updates InventoryItem records based on the previewed rows.
     """
-    from app.services.inventory import restore_stock  # local import to avoid circular
 
     job = db.query(InventoryImportJob).filter(
         InventoryImportJob.id == job_id,

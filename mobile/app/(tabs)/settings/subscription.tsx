@@ -39,6 +39,8 @@ export default function SubscriptionScreen() {
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);
+    // Load once on mount; load() reads the latest user via closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openCheckout = async (plan: "pro" | "partner") => {

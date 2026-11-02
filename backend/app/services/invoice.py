@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 from app.models.invoice import Invoice, InvoiceItem
 from app.models.inventory import InventoryItem
 from app.models.transaction import Transaction
-from app.services.profit import calculate_net_amount
 from app.services.inventory import deduct_stock
 
 logger = logging.getLogger(__name__)

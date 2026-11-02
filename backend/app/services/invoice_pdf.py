@@ -14,7 +14,7 @@ from typing import Optional
 
 from fpdf import FPDF
 
-from app.models.invoice import Invoice, InvoiceItem
+from app.models.invoice import Invoice
 from app.models.user import User
 
 # ─── Colour palette ──────────────────────────────────────────────────────────

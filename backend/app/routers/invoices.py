@@ -8,7 +8,6 @@ Endpoints:
     POST   /api/v1/invoices/{id}/pay   — Create Stripe PaymentIntent (Pro only)
 """
 import base64
-from decimal import Decimal
 from math import ceil
 
 from uuid import UUID

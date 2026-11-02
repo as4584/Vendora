@@ -457,7 +457,6 @@ class TestSquareSyncResult:
         catalog = [_catalog_item("IT4", "Shoe", [_variation("VAR_D")])]
         counts = {"VAR_D": 1}
 
-        original_upsert = square_service._upsert_item
 
         def boom(db_, user_id_, variation, qty, parent_name, run):
             raise ValueError("Simulated DB error")

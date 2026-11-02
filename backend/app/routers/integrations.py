@@ -18,7 +18,7 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.inventory import InventoryExternalLink
-from app.models.provider import ProviderSyncRun, ReconciliationIssue, ProviderWebhookEvent
+from app.models.provider import ProviderSyncRun, ReconciliationIssue
 from app.models.square import SquareCredential
 from app.models.user import User
 from app.schemas.integration import (

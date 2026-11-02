@@ -22,9 +22,12 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
+
+if TYPE_CHECKING:
+    from app.models.provider import ProviderWebhookEvent
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -258,7 +261,6 @@ def record_webhook_event(
     Idempotent: if a row with the same (provider, event_id) already exists
     the function returns the existing row unchanged (no exception).
     """
-    from app.models.provider import ProviderWebhookEvent  # local import avoids circular ref at module level
 
     event, _ = claim_webhook_event(
         db, provider, event_id, event_type, raw_payload, user_id

@@ -2,7 +2,6 @@
 
 Tests seller page access, Partner gating, and content.
 """
-import pytest
 
 
 class TestPublicSellerPage:

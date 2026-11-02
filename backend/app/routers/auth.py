@@ -22,7 +22,6 @@ from app.schemas.user import (
     UserResponse,
 )
 from app.services.auth import (
-    create_access_token,
     create_password_reset_token,
     hash_password,
     hash_password_reset_token,

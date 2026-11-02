@@ -2,7 +2,6 @@
 
 Coverage: CRUD, state machine, payment processing, ownership.
 """
-import pytest
 
 
 SAMPLE_ITEM = {
