@@ -130,3 +130,22 @@ app.include_router(legal_pages.router)
 def health_check():
     """Health check endpoint."""
     return {"status": "ok", "version": "4.2.0"}
+
+
+# Web app (Expo web export) at "/". Registered last so every API and page
+# route above wins. Unknown non-API paths fall back to index.html for
+# client-side routing.
+from fastapi import HTTPException as _HTTPException  # noqa: E402
+from fastapi.responses import FileResponse as _FileResponse  # noqa: E402
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_web_app(full_path: str):
+    root = Path(settings.WEB_DIST_DIR).resolve() if settings.WEB_DIST_DIR else None
+    if root is None or not (root / "index.html").is_file() or full_path.startswith("api/"):
+        raise _HTTPException(status_code=404, detail="Not Found")
+    candidate = (root / full_path).resolve()
+    if full_path and candidate.is_relative_to(root) and candidate.is_file():
+        cache = "public, max-age=31536000, immutable" if full_path.startswith("_expo/static/") else "no-cache"
+        return _FileResponse(candidate, headers={"Cache-Control": cache})
+    return _FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})

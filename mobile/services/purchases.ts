@@ -21,6 +21,8 @@ export type StorePlan = {
   pkg: PurchasesPackage;
 };
 
+export const VENDORA_OFFERING = "vendora_default";
+
 let configuredFor: string | null = null;
 
 export function iapEnabled(): boolean {
@@ -49,7 +51,10 @@ export async function loadPlans(userId: string): Promise<StorePlan[]> {
   await ensureConfigured(userId);
   const Purchases = await sdk();
   const offerings = await Purchases.getOfferings();
-  const pkgs = offerings.current?.availablePackages ?? [];
+  // The RevenueCat project is shared with other Resqlo apps, so Vendora uses
+  // its own offering rather than the project's "current" one.
+  const offering = offerings.all[VENDORA_OFFERING] ?? offerings.current;
+  const pkgs = offering?.availablePackages ?? [];
   return pkgs.map((pkg) => ({
     id: pkg.identifier,
     productId: pkg.product.identifier,
