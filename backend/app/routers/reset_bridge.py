@@ -1,15 +1,16 @@
-"""HTTPS bridge from the password-reset email into the mobile app.
+"""HTTPS password-reset page with an optional handoff into the mobile app.
 
 Gmail and other mail clients often refuse to open custom ``vendora://``
-links, so the reset email links here first and this page hands the token to
-the app's reset-password screen.
+links, so the reset email links here first. Users may reset in their browser
+or open the app's reset-password screen.
 
 The page is fully static: the token is never interpolated into the HTML or
 the script. The script reads it in the browser from the URL fragment
 (``#token=...``, used by new emails; never sent to the server) or the query
 string (``?token=...``, links sent before the fragment change), checks its
-shape, strips it from the address bar, and opens
-``vendora://reset-password?token=...``. Expired or already-used tokens are
+shape and strips it from the address bar. It submits the token directly to the
+same-origin API or passes it to ``vendora://reset-password?token=...``.
+Expired or already-used tokens are
 rejected by ``POST /api/v1/auth/reset-password``, and the app then offers to
 request a new link.
 """
@@ -26,8 +27,9 @@ TOKEN_PATTERN = r"^[A-Za-z0-9_-]{32,512}$"
 _STYLE = (
     "body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;"
     "max-width:34rem;margin:15vh auto;padding:1.5rem;color:#17172a}"
-    "a.btn{display:inline-block;padding:.8rem 1rem;border-radius:.6rem;"
+    "a.btn,button{display:inline-block;padding:.8rem 1rem;border:0;border-radius:.6rem;"
     "background:#5b45ff;color:#fff;text-decoration:none;font-size:1rem}"
+    "label{display:block;margin-top:1rem}input{box-sizing:border-box;width:100%;padding:.7rem;font-size:1rem}"
     "p{line-height:1.5;color:#4a4a5a}[hidden]{display:none}"
 )
 
@@ -43,7 +45,19 @@ _SCRIPT = (
     "document.getElementById('invalid').hidden=false;return;}"
     "var appUrl='vendora://reset-password?token='+encodeURIComponent(token);"
     "document.getElementById('open-app').setAttribute('href',appUrl);"
-    "window.setTimeout(function(){window.location.href=appUrl;},150);"
+    "var form=document.getElementById('reset-form');"
+    "form.addEventListener('submit',async function(e){e.preventDefault();"
+    "var password=document.getElementById('password').value;"
+    "var confirm=document.getElementById('confirm').value;"
+    "var message=document.getElementById('message');"
+    "if(password.length<8||new TextEncoder().encode(password).length>72){message.textContent='Use at least 8 characters and no more than 72 UTF-8 bytes.';return;}"
+    "if(password!==confirm){message.textContent='Passwords do not match.';return;}"
+    "var button=document.getElementById('submit-reset');button.disabled=true;message.textContent='Resetting password…';"
+    "try{var response=await fetch('/api/v1/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token,password:password})});"
+    "if(!response.ok){message.textContent=response.status===400?'This link is invalid or expired. Request a new one in Vendora.':'Could not reset your password. Please try again.';button.disabled=false;return;}"
+    "token='';form.reset();form.hidden=true;document.getElementById('open-app').hidden=true;message.textContent='Your password has been reset. Open Vendora and sign in with your new password.';"
+    "}catch(err){message.textContent='Could not reach Vendora. Check your connection and try again.';button.disabled=false;}"
+    "});"
     "})();"
 )
 
@@ -57,7 +71,7 @@ CONTENT_SECURITY_POLICY = (
     "default-src 'none'; "
     f"script-src {_csp_hash(_SCRIPT)}; "
     f"style-src {_csp_hash(_STYLE)}; "
-    "img-src 'none'; connect-src 'none'; "
+    "img-src 'none'; connect-src 'self'; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
 
@@ -79,15 +93,20 @@ PAGE = f"""<!doctype html>
 </head><body>
 <section id="valid">
 <h1>Reset your Vendora password</h1>
-<p>Tap the button below to open Vendora and choose a new password.</p>
+<p>Choose a new password here, or open Vendora to reset it in the app.</p>
+<form id="reset-form">
+<label for="password">New password</label><input id="password" type="password" autocomplete="new-password" required>
+<label for="confirm">Confirm password</label><input id="confirm" type="password" autocomplete="new-password" required>
+<p><button id="submit-reset" type="submit">Reset password</button></p>
+</form>
+<p id="message" role="status" aria-live="polite"></p>
 <p><a class="btn" id="open-app" href="#">Open Vendora</a></p>
-<p>If the app does not open, make sure Vendora is installed from TestFlight, then tap the button again.</p>
 </section>
 <section id="invalid" hidden>
 <h1>This reset link is not valid</h1>
 <p>The link is incomplete or damaged. Open Vendora, tap <strong>Forgot password?</strong> on the sign-in screen, and request a new email.</p>
 </section>
-<noscript><p>Turn on JavaScript to open Vendora from this page, or request a new reset email from the Vendora app.</p></noscript>
+<noscript><p>Turn on JavaScript to reset your password from this page, or request a new reset email from the Vendora app.</p></noscript>
 <script>{_SCRIPT}</script>
 </body></html>"""
 
