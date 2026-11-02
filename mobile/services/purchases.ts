@@ -29,9 +29,10 @@ export function iapEnabled(): boolean {
   return Platform.OS === "ios" && IOS_KEY.length > 0;
 }
 
-async function sdk() {
-  const mod = await import("react-native-purchases");
-  return mod.default;
+// Loaded lazily so web/Android bundles never touch the native module.
+async function sdk(): Promise<typeof import("react-native-purchases").default> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("react-native-purchases").default;
 }
 
 export async function ensureConfigured(userId: string): Promise<void> {
