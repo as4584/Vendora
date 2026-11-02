@@ -49,6 +49,8 @@ def _invoice_to_response(invoice: Invoice, db: Session) -> InvoiceResponse:
     return InvoiceResponse(
         id=invoice.id,
         user_id=invoice.user_id,
+        number=invoice.number,
+        invoice_number=invoice.invoice_number,
         customer_name=invoice.customer_name,
         customer_email=invoice.customer_email,
         status=invoice.status,
@@ -95,9 +97,15 @@ def create_invoice(
         payload.items, payload.tax, payload.shipping, payload.discount
     )
 
-    # Create invoice
+    # Create invoice with the next number for this user. Locking the user row
+    # serialises concurrent creates so two invoices never share a number.
+    db.query(User).filter(User.id == current_user.id).with_for_update().first()
+    next_number = (
+        db.query(func.max(Invoice.number)).filter(Invoice.user_id == current_user.id).scalar() or 0
+    ) + 1
     invoice = Invoice(
         user_id=current_user.id,
+        number=next_number,
         customer_name=payload.customer_name,
         customer_email=payload.customer_email,
         subtotal=totals["subtotal"],
@@ -321,17 +329,7 @@ def export_invoice_pdf(
 
     items = db.query(InvoiceItem).filter(InvoiceItem.invoice_id == invoice.id).all()
 
-    # Compute a sequential invoice number for this user
-    inv_seq = (
-        db.query(func.count(Invoice.id))
-        .filter(
-            Invoice.user_id == invoice.user_id,
-            Invoice.created_at <= invoice.created_at,
-        )
-        .scalar()
-        or 1
-    )
-    inv_number = f"INV{inv_seq:04d}"
+    inv_number = invoice.invoice_number
 
     pdf_bytes = generate_invoice_pdf(invoice, items, current_user, inv_number)
     pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
