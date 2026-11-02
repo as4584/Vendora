@@ -27,7 +27,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npx serve dist -p 3001 --no-clipboard',
+    command: 'npx serve dist-web -p 3001 --no-clipboard',
     port: 3001,
     timeout: 30_000,
     reuseExistingServer: !process.env.CI,

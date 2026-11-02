@@ -8,6 +8,14 @@
  */
 import { test, expect } from '@playwright/test';
 
+// The static test server has no backend. The app's reachability probe hits
+// same-origin /api/v1/health, so answer it like a healthy server would.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/health', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"ok"}' })
+  );
+});
+
 test.describe('Login screen', () => {
   test('renders without white page', async ({ page }) => {
     await page.goto('/');
