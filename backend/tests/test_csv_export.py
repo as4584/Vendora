@@ -101,7 +101,7 @@ class TestCSVExportContent:
         assert resp.headers["content-type"] == "text/csv; charset=utf-8"
 
         # Parse CSV — canonical worksheet: first column is now "id"
-        reader = csv.reader(io.StringIO(resp.text))
+        reader = csv.reader(io.StringIO(resp.content.decode("utf-8-sig")))
         rows = list(reader)
         assert rows[0][0] == "id"           # canonical worksheet header
         assert "name" in rows[0]
@@ -128,7 +128,7 @@ class TestCSVExportContent:
         resp = client.get("/api/v1/export/inventory", headers=pro_headers)
         assert resp.status_code == 200
 
-        rows = list(csv.DictReader(io.StringIO(resp.text)))
+        rows = list(csv.DictReader(io.StringIO(resp.content.decode("utf-8-sig"))))
         assert len(rows) == 1
         row = rows[0]
         assert row["photo_front_url"] == "https://cdn.example/front.jpg"
@@ -156,7 +156,7 @@ class TestCSVExportContent:
         resp = client.get("/api/v1/export/inventory?template=warehouse", headers=pro_headers)
         assert resp.status_code == 200
         assert "vendora_inventory_warehouse.csv" in resp.headers["content-disposition"]
-        rows = list(csv.reader(io.StringIO(resp.text)))
+        rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8-sig"))))
 
         assert rows[0][0] == "The Cotton Wreath Hoodie Black"
         assert rows[1][0:2] == ["Size", "QTY"]
@@ -201,7 +201,7 @@ class TestCSVExportContent:
         resp = client.get("/api/v1/export/transactions", headers=pro_headers)
         assert resp.status_code == 200
 
-        reader = csv.reader(io.StringIO(resp.text))
+        reader = csv.reader(io.StringIO(resp.content.decode("utf-8-sig")))
         rows = list(reader)
         assert rows[0][0] == "Date"  # Header
         assert len(rows) == 2  # header + 1 transaction
@@ -210,6 +210,6 @@ class TestCSVExportContent:
         """Empty inventory returns header-only CSV."""
         resp = client.get("/api/v1/export/inventory", headers=pro_headers)
         assert resp.status_code == 200
-        reader = csv.reader(io.StringIO(resp.text))
+        reader = csv.reader(io.StringIO(resp.content.decode("utf-8-sig")))
         rows = list(reader)
         assert len(rows) == 1  # header only

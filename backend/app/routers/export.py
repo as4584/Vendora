@@ -69,7 +69,7 @@ def export_inventory(
         filename = "vendora_inventory.csv"
 
     return StreamingResponse(
-        io.BytesIO(csv_content.encode("utf-8")),
+        io.BytesIO(csv_content.encode("utf-8-sig")),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
@@ -86,7 +86,7 @@ def export_transactions(
     csv_content = export_transactions_csv(db, current_user.id)
 
     return StreamingResponse(
-        io.BytesIO(csv_content.encode("utf-8")),
+        io.BytesIO(csv_content.encode("utf-8-sig")),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=vendora_transactions.csv"},
     )

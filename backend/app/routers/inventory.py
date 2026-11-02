@@ -9,6 +9,7 @@ import io
 import ipaddress
 import math
 import socket
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
@@ -244,7 +245,23 @@ def _find_import_match(
     user_id,
     payload: dict,
     external_id: str,
+    item_id: str | None = None,
 ) -> InventoryItem | None:
+    # A Vendora export carries each item's id: that is the strongest match,
+    # and lets renamed items or manual items without SKU/UPC update in place.
+    if item_id:
+        try:
+            parsed_id = uuid.UUID(item_id)
+        except ValueError:
+            parsed_id = None
+        if parsed_id is not None:
+            match = db.query(InventoryItem).filter(
+                InventoryItem.user_id == user_id,
+                InventoryItem.deleted_at.is_(None),
+                InventoryItem.id == parsed_id,
+            ).first()
+            if match:
+                return match
     if payload.get("upc"):
         match = db.query(InventoryItem).filter(
             InventoryItem.user_id == user_id,
@@ -309,7 +326,9 @@ def _import_inventory_content(
             continue
 
         result["rows_importable"] += 1
-        match = _find_import_match(db, current_user.id, parsed_row.payload, parsed_row.external_id)
+        match = _find_import_match(
+            db, current_user.id, parsed_row.payload, parsed_row.external_id, parsed_row.item_id
+        )
         if match:
             result["updated"] += 1
         else:
@@ -345,6 +364,9 @@ def _import_inventory_content(
                 **payload,
             )
             db.add(item)
+            # Make the new row visible to _find_import_match so a SKU/UPC that
+            # repeats later in the same file updates it instead of colliding.
+            db.flush()
 
     if not dry_run:
         db.commit()
