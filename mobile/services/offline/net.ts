@@ -7,6 +7,18 @@
  * drilling. NetInfo is bundled in Expo Go, so this works without a dev build.
  */
 import NetInfo from "@react-native-community/netinfo";
+import { Platform } from "react-native";
+
+// On web, NetInfo's default reachability check fetches a Google URL
+// cross-origin, which the browser blocks, so every visitor looked "offline".
+// Probe our own same-origin health endpoint instead.
+if (Platform.OS === "web" && typeof NetInfo.configure === "function") {
+  NetInfo.configure({
+    reachabilityUrl: "/api/v1/health",
+    reachabilityTest: async (response) => response.status === 200,
+    reachabilityMethod: "GET",
+  });
+}
 
 type Listener = (online: boolean) => void;
 
