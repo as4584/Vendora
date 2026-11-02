@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 function renderTabIcon(name: IconName, nameActive: IconName) {
   const TabIcon = ({ focused }: { focused: boolean }) => (
-    <Icon name={focused ? nameActive : name} size={23} color={focused ? COLORS.primaryBright : COLORS.textSoft} />
+    <Icon name={focused ? nameActive : name} size={24} color={focused ? COLORS.primaryBright : COLORS.textSoft} />
   );
   TabIcon.displayName = `TabIcon(${String(name)})`;
   return TabIcon;
@@ -45,17 +45,17 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: COLORS.primaryBright,
         tabBarInactiveTintColor: COLORS.textSoft,
-        tabBarLabelStyle: { fontSize: 10.5, fontWeight: "700" },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "700", letterSpacing: 0.1 },
         tabBarItemStyle: { paddingVertical: 2 },
       }}
     >
       <Tabs.Screen
         name="dashboard"
-        options={{ title: "Dash", headerShown: false, tabBarIcon: renderTabIcon("home-outline", "home") }}
+        options={{ title: "Home", headerShown: false, tabBarIcon: renderTabIcon("home-outline", "home") }}
       />
       <Tabs.Screen
         name="inventory/index"
-        options={{ title: "Invent", headerTitle: "Inventory", tabBarIcon: renderTabIcon("cube-outline", "cube") }}
+        options={{ title: "Inventory", headerShown: false, tabBarIcon: renderTabIcon("cube-outline", "cube") }}
       />
       <Tabs.Screen
         name="inventory/add"
@@ -76,8 +76,11 @@ export default function TabsLayout() {
 
       {/* Hidden routes — reachable via More or in-app navigation */}
       <Tabs.Screen name="inventory/invoices" options={{ href: null, headerTitle: "Invoices" }} />
-      <Tabs.Screen name="settings" options={{ href: null, headerTitle: "Settings" }} />
+      <Tabs.Screen name="settings" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="inventory/[id]" options={{ href: null, headerTitle: "Inventory Detail" }} />
+      <Tabs.Screen name="inventory/edit" options={{ href: null, headerTitle: "Edit Item" }} />
+      <Tabs.Screen name="inventory/invoice-preview" options={{ href: null, headerTitle: "Invoice Preview" }} />
+      <Tabs.Screen name="inventory/components/ItemQuickSheet" options={{ href: null }} />
       <Tabs.Screen name="inventory/import" options={{ href: null, headerTitle: "Import Inventory" }} />
       <Tabs.Screen name="settings/sync-center" options={{ href: null, headerTitle: "Sync Center" }} />
       <Tabs.Screen name="settings/subscription" options={{ href: null, headerTitle: "Plans & Billing" }} />

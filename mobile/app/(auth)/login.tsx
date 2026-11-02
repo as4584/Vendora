@@ -17,6 +17,7 @@ import {
 import { Link } from "expo-router";
 import { useAuth } from "../../context/auth";
 import { COLORS } from "../../theme/tokens";
+import { Icon } from "../../components/ui";
 
 export default function LoginScreen() {
     const { signIn } = useAuth();
@@ -91,7 +92,7 @@ export default function LoginScreen() {
                             onPress={() => setShowPassword((v) => !v)}
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         >
-                            <Text style={styles.eyeIcon}>{showPassword ? "🙈" : "👁️"}</Text>
+                            <Icon name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={COLORS.textMuted} />
                         </TouchableOpacity>
                     </View>
 
