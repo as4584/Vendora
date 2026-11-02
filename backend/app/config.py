@@ -32,12 +32,22 @@ class Settings(BaseSettings):
     # app/routers/reset_bridge.py opens the app's vendora:// reset screen.
     PASSWORD_RESET_URL: str = "https://vendora.lexmakesit.com/reset-password"
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+    # Apple Developer Team ID. When set, /.well-known/apple-app-site-association
+    # lets iOS open reset links straight in the app (Universal Links).
+    APPLE_TEAM_ID: str = ""
+    IOS_BUNDLE_ID: str = "com.vendora.app"
     INTEGRATION_SUCCESS_URL: str = "vendora://settings?integration=lightspeed&status=connected"
     # Stripe
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
     STRIPE_PRO_PRICE_ID: str = ""  # Stripe Price ID for Pro tier ($20/mo)
     STRIPE_PARTNER_PRICE_ID: str = ""  # Stripe Price ID for Partner add-on ($5/mo)
+    # RevenueCat (iOS in-app purchases). The webhook sends this exact value in
+    # the Authorization header; set the same string in the RevenueCat dashboard.
+    REVENUECAT_WEBHOOK_AUTH: str = ""
+    # Directory holding the Expo web export (mobile `expo export --platform web`).
+    # When it exists, the backend serves the web app at "/" (SPA fallback).
+    WEB_DIST_DIR: str = ""
     SUPPORT_EMAIL: str = "support@lexmakesit.com"
     # Lightspeed Retail (R-Series)
     LIGHTSPEED_CLIENT_ID: str = ""

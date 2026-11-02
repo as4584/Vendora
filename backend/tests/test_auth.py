@@ -16,6 +16,17 @@ from app.schemas.user import _validate_profile_picture
 from reset_management_password import TARGET_EMAIL, reset_account_password
 
 
+@pytest.mark.parametrize("password", ["a" * 73, "é" * 37])
+@pytest.mark.parametrize("path,payload", [
+    ("/api/v1/auth/register", {"email": "long@vendora.test"}),
+    ("/api/v1/auth/login", {"email": "long@vendora.test"}),
+    ("/api/v1/auth/reset-password", {"token": "a" * 64}),
+])
+def test_auth_rejects_passwords_over_bcrypt_byte_limit(client, path, payload, password):
+    response = client.post(path, json={**payload, "password": password})
+    assert response.status_code == 422
+
+
 class TestRegister:
     def test_register_success(self, client):
         resp = client.post("/api/v1/auth/register", json={

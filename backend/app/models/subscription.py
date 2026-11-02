@@ -26,6 +26,11 @@ class Subscription(Base, TimestampMixin):
         ),
         Index("ix_subscriptions_user_id", "user_id"),
         Index("ix_subscriptions_stripe_id", "stripe_subscription_id"),
+        Index("ix_subscriptions_user_provider_product", "user_id", "provider", "store_product_id"),
+        CheckConstraint(
+            "provider IN ('stripe', 'apple')",
+            name="ck_subscriptions_provider",
+        ),
     )
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -41,6 +46,12 @@ class Subscription(Base, TimestampMixin):
     price_monthly = Column(Numeric(10, 2), nullable=False, server_default="0.00")
     status = Column(String(20), nullable=False, server_default="active")
     current_period_end = Column(DateTime(timezone=True), nullable=True)
+    # Where the subscription was bought: "stripe" (web) or "apple" (iOS in-app
+    # purchase, reported by RevenueCat). Both feed the same user entitlements.
+    provider = Column(String(20), nullable=False, server_default="stripe")
+    # Apple/RevenueCat product id (e.g. com.vendora.pro.monthly); one row per
+    # user + product so renewals update in place.
+    store_product_id = Column(String(255), nullable=True)
 
 
 class WebhookEvent(Base, TimestampMixin):

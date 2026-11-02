@@ -23,13 +23,19 @@ def get_subscription_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    subscription = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
+    subscription = (
+        db.query(Subscription)
+        .filter(Subscription.user_id == current_user.id)
+        .order_by(Subscription.status != "active", Subscription.updated_at.desc())
+        .first()
+    )
     return {
         "tier": current_user.subscription_tier,
         "is_partner": current_user.is_partner,
         "status": subscription.status if subscription else "none",
         "current_period_end": subscription.current_period_end if subscription else None,
         "managed_billing": bool(subscription and subscription.stripe_customer_id),
+        "provider": subscription.provider if subscription else None,
     }
 
 

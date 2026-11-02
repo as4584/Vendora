@@ -98,7 +98,7 @@ describe('router layouts', () => {
 
   it('registers visible and hidden tab routes with safe-area padding', () => {
     render(<TabsLayout />);
-    expect(mockTabsScreen).toHaveBeenCalledTimes(13);
+    expect(mockTabsScreen).toHaveBeenCalledTimes(16);
     const routeNames = mockTabsScreen.mock.calls.map(([props]) => props.name);
     expect(routeNames).toEqual([
       'dashboard',
@@ -109,6 +109,9 @@ describe('router layouts', () => {
       'inventory/invoices',
       'settings',
       'inventory/[id]',
+      'inventory/edit',
+      'inventory/invoice-preview',
+      'inventory/components/ItemQuickSheet',
       'inventory/import',
       'settings/sync-center',
       'settings/subscription',
@@ -126,6 +129,10 @@ describe('router layouts', () => {
     const fab = render(add.options.tabBarButton({ onPress: onFabPress }));
     fireEvent.press(fab.getByLabelText('Add stock'));
     expect(onFabPress).toHaveBeenCalled();
+    // Non-tab routes must never leak into the tab bar.
+    for (const name of ['inventory/edit', 'inventory/invoice-preview', 'inventory/components/ItemQuickSheet']) {
+      expect(mockTabsScreen.mock.calls.find(([props]) => props.name === name)?.[0].options.href).toBeNull();
+    }
     const dashboard = mockTabsScreen.mock.calls[0][0];
     expect(dashboard.options.tabBarIcon({ focused: true })).toBeTruthy();
   });

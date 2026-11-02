@@ -13,8 +13,9 @@ import {
   Modal,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../../services/api";
-import { ActionButton, Card, HeaderTitle, Icon, Pill } from "../../../components/ui";
+import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
@@ -117,6 +118,7 @@ function InventoryCard({
 
 export default function InventoryListScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<api.InventoryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -335,7 +337,7 @@ export default function InventoryListScreen() {
             onToggleSelect={() => toggleSelect(item.id)}
           />
         )}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.sm }]}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
         onEndReached={onLoadMore}
         onEndReachedThreshold={0.35}
@@ -392,8 +394,14 @@ export default function InventoryListScreen() {
         }
         ListEmptyComponent={
           <Card>
-            <Text style={styles.emptyTitle}>No inventory matches this view.</Text>
-            <Text style={styles.emptyText}>Change the filters or add a new stock item to continue.</Text>
+            <View style={styles.empty}>
+              <IconCircle name="cube-outline" size={56} />
+              <Text style={styles.emptyTitle}>No inventory matches this view.</Text>
+              <Text style={styles.emptyText}>Change the filters or add a new stock item to continue.</Text>
+              <View style={styles.emptyCta}>
+                <ActionButton label="Add an item" onPress={() => router.push("/inventory/add" as any)} />
+              </View>
+            </View>
           </Card>
         }
       />
@@ -565,7 +573,9 @@ const styles = StyleSheet.create({
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs },
   sizeLine: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
   secondaryLine: { color: COLORS.textMuted, fontSize: 12 },
-  emptyTitle: { color: COLORS.text, fontSize: 16, fontWeight: "800", marginBottom: 6 },
-  emptyText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 18 },
+  empty: { alignItems: "center", paddingVertical: SPACING.lg, gap: SPACING.xs },
+  emptyTitle: { color: COLORS.text, fontSize: 16, fontWeight: "800", marginTop: SPACING.sm, textAlign: "center" },
+  emptyText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, textAlign: "center", maxWidth: 260 },
+  emptyCta: { marginTop: SPACING.sm, alignSelf: "stretch" },
   footerLoader: { paddingVertical: SPACING.md },
 });

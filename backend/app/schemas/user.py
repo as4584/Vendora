@@ -21,6 +21,13 @@ def _normalize_email(value: str) -> str:
     return normalized
 
 
+def _validate_password_bytes(value: str) -> str:
+    # bcrypt accepts at most 72 UTF-8 bytes, which can be fewer than 72 characters.
+    if len(value.encode("utf-8")) > 72:
+        raise ValueError("Password must be 72 UTF-8 bytes or fewer")
+    return value
+
+
 def _validate_profile_picture(value: str | None) -> str | None:
     if value is None:
         return None
@@ -42,6 +49,7 @@ class UserCreate(BaseModel):
     business_name: str | None = Field(None, max_length=255)
 
     _normalize = field_validator("email", mode="before")(_normalize_email)
+    _password_bytes = field_validator("password")(_validate_password_bytes)
 
 
 class UserLogin(BaseModel):
@@ -49,6 +57,7 @@ class UserLogin(BaseModel):
     password: str = Field(..., min_length=1, max_length=128)
 
     _normalize = field_validator("email", mode="before")(_normalize_email)
+    _password_bytes = field_validator("password")(_validate_password_bytes)
 
 
 class PasswordResetRequest(BaseModel):
@@ -60,6 +69,8 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str = Field(..., min_length=32, max_length=512)
     password: str = Field(..., min_length=8, max_length=128)
+
+    _password_bytes = field_validator("password")(_validate_password_bytes)
 
 
 class MessageResponse(BaseModel):

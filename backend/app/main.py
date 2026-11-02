@@ -16,7 +16,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.routers import auth, inventory, transactions, dashboard, invoices, webhooks
 from app.routers import export, features, sellers, integrations
-from app.routers import subscriptions, support, reset_bridge
+from app.routers import subscriptions, support, reset_bridge, legal_pages
 from app.config import settings
 from app.rate_limit import limiter
 from app.http_hardening import HardeningMiddleware
@@ -123,9 +123,48 @@ app.include_router(subscriptions.router, prefix="/api/v1")
 app.include_router(support.router, prefix="/api/v1")
 # The password-reset email bridge page lives at the site root, outside /api/v1.
 app.include_router(reset_bridge.router)
+app.include_router(legal_pages.router)
 
 
 @app.get("/api/v1/health", tags=["health"])
 def health_check():
     """Health check endpoint."""
     return {"status": "ok", "version": "4.2.0"}
+
+
+# Web app (Expo web export) at "/". Registered last so every API and page
+# route above wins. Unknown non-API paths fall back to index.html for
+# client-side routing.
+from fastapi import HTTPException as _HTTPException  # noqa: E402
+from fastapi.responses import FileResponse as _FileResponse  # noqa: E402
+
+
+_web_index: dict = {"key": None, "files": {}}
+
+
+def _web_files(root: Path) -> dict[str, Path]:
+    """Map of servable relative paths -> files, rebuilt when the export changes.
+
+    Requests are only ever looked up in this map, so a request path never
+    reaches the filesystem (no traversal possible).
+    """
+    key = (str(root), (root / "index.html").stat().st_mtime_ns)
+    if _web_index["key"] != key:
+        _web_index["files"] = {
+            f.relative_to(root).as_posix(): f for f in root.rglob("*") if f.is_file()
+        }
+        _web_index["key"] = key
+    return _web_index["files"]
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_web_app(full_path: str):
+    root = Path(settings.WEB_DIST_DIR).resolve() if settings.WEB_DIST_DIR else None
+    if root is None or not (root / "index.html").is_file() or full_path.startswith("api/"):
+        raise _HTTPException(status_code=404, detail="Not Found")
+    files = _web_files(root)
+    match = files.get(full_path) if full_path else None
+    if match is not None:
+        cache = "public, max-age=31536000, immutable" if full_path.startswith("_expo/static/") else "no-cache"
+        return _FileResponse(match, headers={"Cache-Control": cache})
+    return _FileResponse(files["index.html"], headers={"Cache-Control": "no-cache"})

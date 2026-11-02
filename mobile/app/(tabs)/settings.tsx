@@ -15,6 +15,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/auth";
 import * as api from "../../services/api";
 import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/backgroundSync";
@@ -68,6 +69,7 @@ function ProviderCard({
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user, signOut, refreshUser } = useAuth();
   const [health, setHealth] = useState<api.ProviderHealthEntry[]>([]);
   const [lsStatus, setLsStatus] = useState<api.LightspeedStatus | null>(null);
@@ -327,7 +329,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView testID="settings-content" style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView testID="settings-content" style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.sm }]}>
       <HeaderTitle title="Settings" subtitle="Account profile, provider sync, and readiness signals for the seeded inventory workflow." />
 
       <Card style={{ gap: SPACING.md }}>

@@ -1,6 +1,7 @@
 /**
  * Auth Context — manages JWT token + user state across the app.
  */
+import { resetPurchases } from "../services/purchases";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import * as api from "../services/api";
 import { clearOfflineData } from "../services/offline";
@@ -82,6 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signOut = async () => {
         await api.logoutSession();
         await clearOfflineData();
+        await resetPurchases();
         setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
     };
 

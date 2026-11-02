@@ -18,6 +18,11 @@ import InventoryListScreen, { fuzzyMatch } from '../app/(tabs)/inventory/index';
 
 const mockPush = jest.fn();
 
+jest.mock('react-native-safe-area-context', () => ({
+  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
+
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('../__mocks__/async-storage'),
 );

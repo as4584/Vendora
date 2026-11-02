@@ -28,6 +28,10 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       ENVIRONMENT: production
       PYTHONDONTWRITEBYTECODE: "1"
+      WEB_DIST_DIR: /srv/web
+    volumes:
+      # Expo web export, built with: cd mobile && npm run build:web
+      - ./mobile/dist-web:/srv/web:ro
     ports:
       - "127.0.0.1:18083:8000"
     networks:
