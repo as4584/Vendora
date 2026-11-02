@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-    ActivityIndicator,
     Alert,
     KeyboardAvoidingView,
     Platform,
@@ -14,6 +13,8 @@ import { Link } from "expo-router";
 
 import { requestPasswordReset } from "../../services/api";
 
+import { COLORS } from "../../theme/tokens";
+import { Button } from "../../components/Button";
 export default function ForgotPasswordScreen() {
     const [email, setEmail] = useState("");
     const [loading, setLoading] = useState(false);
@@ -89,18 +90,7 @@ export default function ForgotPasswordScreen() {
                             autoCapitalize="none"
                             autoCorrect={false}
                         />
-                        <TouchableOpacity
-                            accessibilityRole="button"
-                            style={[styles.button, loading && styles.buttonDisabled]}
-                            onPress={handleSubmit}
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <Text style={styles.buttonText}>Send Reset Link</Text>
-                            )}
-                        </TouchableOpacity>
+                        <Button label="Send Reset Link" onPress={handleSubmit} loading={loading} size="lg" fullWidth style={styles.buttonSpacing} />
                     </>
                 )}
 
@@ -138,12 +128,13 @@ const styles = StyleSheet.create({
         borderColor: "#2A2A4A",
     },
     button: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 12,
         paddingVertical: 16,
         alignItems: "center",
         marginTop: 20,
     },
+    buttonSpacing: { marginTop: 20 },
     buttonDisabled: { opacity: 0.6 },
     buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
     successCard: {
@@ -156,7 +147,7 @@ const styles = StyleSheet.create({
     successTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "700", marginBottom: 8 },
     successText: { color: "#AAA", fontSize: 15, lineHeight: 22, marginBottom: 10 },
     secondaryButton: {
-        borderColor: "#6C5CE7",
+        borderColor: COLORS.primary,
         borderWidth: 1,
         borderRadius: 12,
         paddingVertical: 14,

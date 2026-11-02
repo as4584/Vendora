@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-    ActivityIndicator,
     Alert,
     KeyboardAvoidingView,
     Platform,
@@ -14,6 +13,8 @@ import { Link, router, useLocalSearchParams } from "expo-router";
 
 import { resetPassword } from "../../services/api";
 
+import { COLORS } from "../../theme/tokens";
+import { Button } from "../../components/Button";
 export default function ResetPasswordScreen() {
     const params = useLocalSearchParams<{ token?: string | string[] }>();
     const token = Array.isArray(params.token) ? params.token[0] : params.token;
@@ -102,18 +103,7 @@ export default function ResetPasswordScreen() {
                     autoCapitalize="none"
                 />
 
-                <TouchableOpacity
-                    accessibilityRole="button"
-                    style={[styles.button, loading && styles.buttonDisabled]}
-                    onPress={handleReset}
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.buttonText}>Reset Password</Text>
-                    )}
-                </TouchableOpacity>
+                <Button label="Reset Password" onPress={handleReset} loading={loading} size="lg" fullWidth style={styles.buttonSpacing} />
             </View>
         </KeyboardAvoidingView>
     );
@@ -145,12 +135,13 @@ const styles = StyleSheet.create({
         borderColor: "#2A2A4A",
     },
     button: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 12,
         paddingVertical: 16,
         alignItems: "center",
         marginTop: 24,
     },
+    buttonSpacing: { marginTop: 24 },
     buttonDisabled: { opacity: 0.6 },
     buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
 });

@@ -11,7 +11,6 @@ import {
     KeyboardAvoidingView,
     Platform,
     Alert,
-    ActivityIndicator,
     Image,
 } from "react-native";
 import { Link } from "expo-router";
@@ -19,6 +18,7 @@ import { useAuth } from "../../context/auth";
 import { COLORS } from "../../theme/tokens";
 import { Icon } from "../../components/ui";
 
+import { Button } from "../../components/Button";
 export default function LoginScreen() {
     const { signIn } = useAuth();
     const [email, setEmail] = useState("");
@@ -78,7 +78,7 @@ export default function LoginScreen() {
                     <View style={styles.passwordRow}>
                         <TextInput
                             accessibilityLabel="Password"
-                            style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                            style={[styles.input, styles.inputInRow]}
                             placeholder="••••••••"
                             placeholderTextColor="#555"
                             value={password}
@@ -106,18 +106,7 @@ export default function LoginScreen() {
                         </TouchableOpacity>
                     </Link>
 
-                    <TouchableOpacity
-                        accessibilityRole="button"
-                        style={[styles.button, loading && styles.buttonDisabled]}
-                        onPress={handleLogin}
-                        disabled={loading}
-                    >
-                        {loading ? (
-                            <ActivityIndicator color="#fff" />
-                        ) : (
-                            <Text style={styles.buttonText}>Sign In</Text>
-                        )}
-                    </TouchableOpacity>
+                    <Button label="Sign In" onPress={handleLogin} loading={loading} size="lg" fullWidth style={styles.buttonSpacing} />
 
                     <Link href="/(auth)/register" asChild>
                         <TouchableOpacity accessibilityRole="link" style={styles.linkContainer}>
@@ -160,7 +149,7 @@ const styles = StyleSheet.create({
     },
     tagline: {
         fontSize: 14,
-        color: "#6C5CE7",
+        color: COLORS.primary,
         marginTop: 4,
         letterSpacing: 1,
     },
@@ -186,6 +175,8 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#2A2A4A",
     },
+    // The row draws the border; the field inside must not draw a second one.
+    inputInRow: { flex: 1, marginBottom: 0, borderWidth: 0, backgroundColor: "transparent" },
     passwordRow: {
         flexDirection: "row",
         alignItems: "center",
@@ -219,6 +210,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginTop: 24,
     },
+    buttonSpacing: { marginTop: 24 },
     buttonDisabled: {
         opacity: 0.6,
     },
@@ -236,7 +228,7 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     linkHighlight: {
-        color: "#6C5CE7",
+        color: COLORS.primary,
         fontWeight: "600",
     },
 });

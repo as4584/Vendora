@@ -1,3 +1,4 @@
+import { Button } from "./Button";
 import React from "react";
 import {
   View,
@@ -189,46 +190,36 @@ export function Pill({
   );
 }
 
+/**
+ * Legacy name kept for existing screens; renders the shared Button.
+ * New code should import Button from components/Button directly.
+ */
 export function ActionButton({
   label,
   onPress,
   tone = "primary",
   disabled = false,
   compact = false,
+  loading = false,
 }: {
   label: string;
   onPress: () => void;
-  tone?: "primary" | "secondary" | "success" | "ghost";
+  tone?: "primary" | "secondary" | "success" | "ghost" | "destructive";
   disabled?: boolean;
   compact?: boolean;
+  loading?: boolean;
 }) {
-  const tones = {
-    primary: { bg: COLORS.primary, border: COLORS.primary, text: COLORS.text },
-    secondary: { bg: COLORS.cardAlt, border: COLORS.border, text: COLORS.text },
-    success: { bg: COLORS.success, border: COLORS.success, text: COLORS.bg },
-    ghost: { bg: "transparent", border: COLORS.border, text: COLORS.textMuted },
-  }[tone];
-
+  const variant = tone === "success" ? "primary" : tone;
   return (
-    <TouchableOpacity
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+    <Button
+      label={label}
       onPress={onPress}
-      activeOpacity={0.82}
+      variant={variant}
+      size={compact ? "sm" : "md"}
       disabled={disabled}
-      style={[
-        styles.actionButton,
-        compact && styles.actionButtonCompact,
-        {
-          backgroundColor: tones.bg,
-          borderColor: tones.border,
-          opacity: disabled ? 0.55 : 1,
-        },
-      ]}
-    >
-      <Text style={[styles.actionButtonText, { color: tones.text }]}>{label}</Text>
-    </TouchableOpacity>
+      loading={loading}
+      haptic={tone === "success" ? "success" : undefined}
+    />
   );
 }
 
@@ -425,22 +416,6 @@ const styles = StyleSheet.create({
   },
   pillText: {
     fontSize: 11,
-    fontWeight: "700",
-  },
-  actionButton: {
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionButtonCompact: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  actionButtonText: {
-    fontSize: 14,
     fontWeight: "700",
   },
   metricCard: {
