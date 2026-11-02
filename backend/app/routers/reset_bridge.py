@@ -17,8 +17,10 @@ request a new link.
 import base64
 import hashlib
 
-from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
+
+from app.config import settings
 
 router = APIRouter()
 
@@ -30,7 +32,7 @@ _STYLE = (
     "a.btn,button{display:inline-block;padding:.8rem 1rem;border:0;border-radius:.6rem;"
     "background:#5b45ff;color:#fff;text-decoration:none;font-size:1rem}"
     "label{display:block;margin-top:1rem}input{box-sizing:border-box;width:100%;padding:.7rem;font-size:1rem}"
-    "p{line-height:1.5;color:#4a4a5a}[hidden]{display:none}"
+    "p{line-height:1.5;color:#4a4a5a}[hidden]{display:none!important}"
 )
 
 _SCRIPT = (
@@ -53,10 +55,12 @@ _SCRIPT = (
     "if(password.length<8||new TextEncoder().encode(password).length>72){message.textContent='Use at least 8 characters and no more than 72 UTF-8 bytes.';return;}"
     "if(password!==confirm){message.textContent='Passwords do not match.';return;}"
     "var button=document.getElementById('submit-reset');button.disabled=true;message.textContent='Resetting password…';"
-    "try{var response=await fetch('/api/v1/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token,password:password})});"
+    "var ctrl=window.AbortController?new AbortController():null;var timer=setTimeout(function(){if(ctrl)ctrl.abort();},20000);"
+    "try{var response=await fetch('/api/v1/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token,password:password}),signal:ctrl?ctrl.signal:undefined});"
+    "clearTimeout(timer);"
     "if(!response.ok){message.textContent=response.status===400?'This link is invalid or expired. Request a new one in Vendora.':'Could not reset your password. Please try again.';button.disabled=false;return;}"
-    "token='';form.reset();form.hidden=true;document.getElementById('open-app').hidden=true;message.textContent='Your password has been reset. Open Vendora and sign in with your new password.';"
-    "}catch(err){message.textContent='Could not reach Vendora. Check your connection and try again.';button.disabled=false;}"
+    "token='';form.reset();form.hidden=true;var open=document.getElementById('open-app');open.hidden=true;open.setAttribute('href','#');message.textContent='Your password has been reset. Open Vendora and sign in with your new password.';"
+    "}catch(err){clearTimeout(timer);message.textContent=(err&&err.name==='AbortError')?'Vendora took too long to respond. Please try again.':'Could not reach Vendora. Check your connection and try again.';button.disabled=false;}"
     "});"
     "})();"
 )
@@ -109,6 +113,21 @@ PAGE = f"""<!doctype html>
 <noscript><p>Turn on JavaScript to reset your password from this page, or request a new reset email from the Vendora app.</p></noscript>
 <script>{_SCRIPT}</script>
 </body></html>"""
+
+
+@router.get("/.well-known/apple-app-site-association", include_in_schema=False)
+def apple_app_site_association() -> JSONResponse:
+    """Let iOS open /reset-password links directly in the app (Universal Links).
+
+    Without APPLE_TEAM_ID this 404s, and links keep landing on the web page.
+    """
+    if not settings.APPLE_TEAM_ID:
+        raise HTTPException(status_code=404, detail="Not Found")
+    app_id = f"{settings.APPLE_TEAM_ID}.{settings.IOS_BUNDLE_ID}"
+    return JSONResponse(
+        {"applinks": {"details": [{"appIDs": [app_id], "components": [{"/": "/reset-password"}]}]}},
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.get("/reset-password", response_class=HTMLResponse, include_in_schema=False)

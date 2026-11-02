@@ -23,7 +23,8 @@ function RootLayoutNav() {
 
         if (!isAuthenticated && !inAuthGroup && !inPublicSeller) {
             replace("/(auth)/login");
-        } else if (isAuthenticated && inAuthGroup) {
+        } else if (isAuthenticated && inAuthGroup && (segments as string[])[1] !== "reset-password") {
+            // A reset link must open the reset screen even while signed in.
             replace("/(tabs)/dashboard");
         }
     }, [isAuthenticated, isLoading, replace, segments]);

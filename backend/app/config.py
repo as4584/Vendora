@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # app/routers/reset_bridge.py opens the app's vendora:// reset screen.
     PASSWORD_RESET_URL: str = "https://vendora.lexmakesit.com/reset-password"
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+    # Apple Developer Team ID. When set, /.well-known/apple-app-site-association
+    # lets iOS open reset links straight in the app (Universal Links).
+    APPLE_TEAM_ID: str = ""
+    IOS_BUNDLE_ID: str = "com.vendora.app"
     INTEGRATION_SUCCESS_URL: str = "vendora://settings?integration=lightspeed&status=connected"
     # Stripe
     STRIPE_SECRET_KEY: str = ""

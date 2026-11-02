@@ -10,6 +10,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vendora.app",
+      "associatedDomains": [
+        "applinks:vendora.lexmakesit.com"
+      ],
       "config": {
         "usesNonExemptEncryption": false
       }

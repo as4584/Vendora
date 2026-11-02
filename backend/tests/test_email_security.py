@@ -368,3 +368,18 @@ def test_production_rejects_custom_scheme_reset_link():
         Settings(ENVIRONMENT="production", PASSWORD_RESET_URL="vendora://reset-password")
     ok = Settings(ENVIRONMENT="production", PASSWORD_RESET_URL="https://vendora.lexmakesit.com/reset-password")
     assert ok.PASSWORD_RESET_URL.startswith("https://")
+
+
+class TestAppleAppSiteAssociation:
+    def test_404_without_team_id(self, client, monkeypatch):
+        monkeypatch.setattr("app.routers.reset_bridge.settings.APPLE_TEAM_ID", "")
+        assert client.get("/.well-known/apple-app-site-association").status_code == 404
+
+    def test_serves_reset_path_for_app(self, client, monkeypatch):
+        monkeypatch.setattr("app.routers.reset_bridge.settings.APPLE_TEAM_ID", "ABCDE12345")
+        resp = client.get("/.well-known/apple-app-site-association")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/json")
+        detail = resp.json()["applinks"]["details"][0]
+        assert detail["appIDs"] == ["ABCDE12345.com.vendora.app"]
+        assert detail["components"] == [{"/": "/reset-password"}]
