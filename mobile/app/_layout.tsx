@@ -10,6 +10,7 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { COLORS } from "../theme/tokens";
 function RootLayoutNav() {
     const { isAuthenticated, isLoading } = useAuth();
     const segments = useSegments();
@@ -32,7 +33,7 @@ function RootLayoutNav() {
     if (isLoading) {
         return (
             <View style={styles.loader}>
-                <ActivityIndicator size="large" color="#6C5CE7" />
+                <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
         );
     }

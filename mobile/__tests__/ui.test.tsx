@@ -49,7 +49,7 @@ describe('shared UI primitives', () => {
     fireEvent.press(screen.getByLabelText('Action primary'));
     fireEvent.press(screen.getByLabelText('Tile. Tile helper'));
     fireEvent.press(screen.getByLabelText('Plain tile'));
-    expect(screen.getByLabelText('Disabled').props.accessibilityState).toEqual({ disabled: true });
+    expect(screen.getByLabelText('Disabled').props.accessibilityState).toMatchObject({ disabled: true, busy: false });
     expect(onPress).toHaveBeenCalledTimes(3);
     expect(screen.getByText('D')).toBeTruthy();
     expect(screen.getByText('I')).toBeTruthy();

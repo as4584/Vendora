@@ -27,6 +27,7 @@ import {
 import { useRouter } from "expo-router";
 import * as api from "../../../../services/api";
 
+import { COLORS } from "../../../../theme/tokens";
 // ─── Clothing / Size-variant detection ──────────────────────────────────────
 const CLOTHING_KEYWORDS = [
     "clothing", "apparel", "shirt", "pants", "jeans", "dress", "jacket",
@@ -70,7 +71,7 @@ const STATUS_COLORS: Record<string, string> = {
     listed: "#0984E3",
     sold: "#E17055",
     shipped: "#FDCB6E",
-    paid: "#6C5CE7",
+    paid: COLORS.primary,
     archived: "#636E72",
 };
 
@@ -661,7 +662,7 @@ const styles = StyleSheet.create({
         paddingVertical: 5,
     },
     brandChipActive: {
-        borderColor: "#6C5CE7",
+        borderColor: COLORS.primary,
         backgroundColor: "#1E1B3A",
     },
     brandChipText: {
@@ -670,9 +671,9 @@ const styles = StyleSheet.create({
         fontWeight: "700",
     },
     brandChipTextActive: {
-        color: "#6C5CE7",
+        color: COLORS.primary,
     },
-    category: { color: "#6C5CE7", fontSize: 11, fontWeight: "600", textTransform: "uppercase" },
+    category: { color: COLORS.primary, fontSize: 11, fontWeight: "600", textTransform: "uppercase" },
     statusRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
     statusDot: { width: 7, height: 7, borderRadius: 4 },
     statusLabel: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
@@ -701,7 +702,7 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     sectionTitle: {
-        color: "#6C5CE7",
+        color: COLORS.primary,
         fontSize: 12,
         fontWeight: "800",
         textTransform: "uppercase",
@@ -754,7 +755,7 @@ const styles = StyleSheet.create({
         borderColor: "#2A2A4A",
     },
     addSizeBtn: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 10,
         paddingHorizontal: 14,
         paddingVertical: 10,
@@ -785,7 +786,7 @@ const styles = StyleSheet.create({
     // Actions
     actions: { gap: 10, marginTop: 4 },
     saveBtn: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 12,
         paddingVertical: 14,
         alignItems: "center",
