@@ -26,6 +26,7 @@ class Subscription(Base, TimestampMixin):
         ),
         Index("ix_subscriptions_user_id", "user_id"),
         Index("ix_subscriptions_stripe_id", "stripe_subscription_id"),
+        Index("ix_subscriptions_user_provider_product", "user_id", "provider", "store_product_id"),
         CheckConstraint(
             "provider IN ('stripe', 'apple')",
             name="ck_subscriptions_provider",

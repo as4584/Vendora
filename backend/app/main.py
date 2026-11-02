@@ -139,13 +139,32 @@ from fastapi import HTTPException as _HTTPException  # noqa: E402
 from fastapi.responses import FileResponse as _FileResponse  # noqa: E402
 
 
+_web_index: dict = {"key": None, "files": {}}
+
+
+def _web_files(root: Path) -> dict[str, Path]:
+    """Map of servable relative paths -> files, rebuilt when the export changes.
+
+    Requests are only ever looked up in this map, so a request path never
+    reaches the filesystem (no traversal possible).
+    """
+    key = (str(root), (root / "index.html").stat().st_mtime_ns)
+    if _web_index["key"] != key:
+        _web_index["files"] = {
+            f.relative_to(root).as_posix(): f for f in root.rglob("*") if f.is_file()
+        }
+        _web_index["key"] = key
+    return _web_index["files"]
+
+
 @app.get("/{full_path:path}", include_in_schema=False)
 def serve_web_app(full_path: str):
     root = Path(settings.WEB_DIST_DIR).resolve() if settings.WEB_DIST_DIR else None
     if root is None or not (root / "index.html").is_file() or full_path.startswith("api/"):
         raise _HTTPException(status_code=404, detail="Not Found")
-    candidate = (root / full_path).resolve()
-    if full_path and candidate.is_relative_to(root) and candidate.is_file():
+    files = _web_files(root)
+    match = files.get(full_path) if full_path else None
+    if match is not None:
         cache = "public, max-age=31536000, immutable" if full_path.startswith("_expo/static/") else "no-cache"
-        return _FileResponse(candidate, headers={"Cache-Control": cache})
-    return _FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
+        return _FileResponse(match, headers={"Cache-Control": cache})
+    return _FileResponse(files["index.html"], headers={"Cache-Control": "no-cache"})
