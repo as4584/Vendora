@@ -7,7 +7,6 @@ Per ROADMAP Sprint 2 success criteria:
 """
 import time
 
-import pytest
 
 
 class TestGoldenFrameAddSellProfit:

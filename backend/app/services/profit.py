@@ -11,10 +11,10 @@ Must run on:
 This is Core Engine code — 100% test coverage required.
 """
 from decimal import Decimal
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, and_, case
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from app.models.transaction import Transaction

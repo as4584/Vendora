@@ -2,7 +2,6 @@
 
 Coverage: empty dashboard, after sales, after refunds, inventory valuation.
 """
-import pytest
 
 
 SAMPLE_ITEM = {

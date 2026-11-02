@@ -457,12 +457,6 @@ class SquareService(ProviderAdapter):
         }
         txn_status = status_map.get(sq_status, "completed")
 
-        created_at_str = payment.get("created_at", "")
-        try:
-            created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            created_at = datetime.now(timezone.utc)
-
         existing = (
             db.query(Transaction)
             .filter_by(
@@ -507,7 +501,6 @@ class SquareService(ProviderAdapter):
         Step 3: Batch-fetch IN_STOCK inventory counts.
         Step 4: Upsert each variation into the canonical inventory tables.
         """
-        from app.models.provider import ProviderSyncRun  # local import avoids circular
 
         cred = self._get_credential(db, user_id)
         if cred is None:

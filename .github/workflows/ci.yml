@@ -82,9 +82,19 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      - name: Lint (ruff, correctness rules)
+        working-directory: backend
+        run: python -m ruff check app tests
+
       - name: Verify migrations and Python imports
         working-directory: backend
         run: |
+          # Exactly one head, so parallel branches can't fork the schema.
+          test "$(alembic heads | wc -l)" -eq 1
+          alembic upgrade head
+          alembic check
+          # Every migration must be reversible: down to empty, back up.
+          alembic downgrade base
           alembic upgrade head
           alembic check
           python -m compileall -q app alembic

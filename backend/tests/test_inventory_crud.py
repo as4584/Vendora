@@ -3,7 +3,6 @@
 Coverage: create, list (paginated), get, update, soft-delete, ownership enforcement.
 Soft-delete 404 rule: deleted items must return 404.
 """
-import pytest
 
 
 SAMPLE_ITEM = {

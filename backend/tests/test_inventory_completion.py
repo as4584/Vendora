@@ -144,7 +144,7 @@ class TestMarketAndPricing:
     def test_pricing_suggestion_name_category_margin_and_no_data(
         self, client, auth_headers, db, test_user
     ):
-        name_history = _item(
+        _item(
             db,
             test_user,
             name="Shared Product Name sold",
@@ -527,7 +527,7 @@ class TestInventoryImportRouteEdges:
         assert mapped == {} and "quantity" in error
 
     def test_import_matches_existing_upc_and_skips_unusable_rows(self, client, auth_headers):
-        existing = client.post(
+        client.post(
             "/api/v1/inventory",
             json={"name": "Existing UPC", "upc": "123456789", "quantity": 1},
             headers=auth_headers,
@@ -548,7 +548,7 @@ class TestInventoryImportRouteEdges:
         assert skipped.status_code == 200
         assert skipped.json()["skipped"] == 1
 
-        existing_sku = client.post(
+        client.post(
             "/api/v1/inventory",
             json={"name": "Existing SKU", "sku": "SKU-MATCH", "quantity": 1},
             headers=auth_headers,

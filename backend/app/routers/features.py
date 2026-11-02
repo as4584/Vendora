@@ -5,9 +5,7 @@ Endpoints:
     GET /api/v1/features/tiers — Get tier comparison info
 """
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
-from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.services.feature_flags import get_feature_flags, get_tier_info, FEATURES

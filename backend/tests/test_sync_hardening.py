@@ -20,7 +20,6 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-import pytest
 
 from app.models.provider import ProviderSyncRun, ReconciliationIssue, ProviderWebhookEvent
 from app.models.square import SquareCredential

@@ -9,7 +9,7 @@ Covers the eBay-specific logic:
   - _upsert_transaction: create + idempotent update
 """
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from urllib.parse import urlparse
 
@@ -17,7 +17,6 @@ import pytest
 from fastapi import HTTPException
 
 from app.models.inventory import (
-    InventoryItem,
     InventoryExternalLink,
     InventoryStockLedger,
 )

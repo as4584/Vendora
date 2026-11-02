@@ -5,8 +5,6 @@ Per MONETIZATION_AND_LIMITS:
   Pro tier: unlimited
   Soft-deleted items do NOT count against the limit.
 """
-import pytest
-from app.models.user import User
 
 
 class TestFreeTierLimit:

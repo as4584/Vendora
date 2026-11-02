@@ -12,7 +12,6 @@ Tests _upsert_inventory_item directly (no HTTP mocking needed) to verify:
 """
 import uuid
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
@@ -96,7 +95,6 @@ class TestLightspeedOAuthState:
 
 
 
-from app.services.lightspeed import lightspeed_service
 
 
 # ─── Test data helpers ────────────────────────────────────────────────────────

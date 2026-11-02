@@ -8,7 +8,7 @@ from pathlib import Path
 from alembic.config import Config
 from alembic import command as alembic_command
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.middleware import SlowAPIMiddleware

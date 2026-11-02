@@ -5,7 +5,6 @@ without going through API endpoints.
 """
 from decimal import Decimal
 
-import pytest
 
 from app.services.profit import (
     calculate_net_amount,
