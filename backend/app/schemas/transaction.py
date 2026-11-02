@@ -52,8 +52,40 @@ class TransactionResponse(BaseModel):
     notes: Optional[str] = None
     is_refund: bool
     original_transaction_id: Optional[UUID] = None
+    order_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
+
+
+class SaleOrderLine(BaseModel):
+    item_id: UUID
+    quantity: int = Field(default=1, ge=1)
+    # Price actually agreed per unit (haggled), not necessarily the list price.
+    unit_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+
+
+class SaleOrderCreate(BaseModel):
+    """One checkout with one or more items, recorded all-or-nothing."""
+    lines: list[SaleOrderLine] = Field(min_length=1, max_length=100)
+    method: PAYMENT_METHODS
+    fee_amount: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2)
+    notes: Optional[str] = Field(None, max_length=500)
+    client_request_id: Optional[str] = Field(None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+    @model_validator(mode="after")
+    def check_amounts(self):
+        gross = sum(line.unit_price * line.quantity for line in self.lines)
+        if self.fee_amount > gross:
+            raise ValueError("Fee cannot exceed the order total")
+        return self
+
+
+class SaleOrderResponse(BaseModel):
+    order_id: UUID
+    gross_amount: Decimal
+    fee_amount: Decimal
+    net_amount: Decimal
+    transactions: list[TransactionResponse]
 
 class TransactionListResponse(BaseModel):
     items: list[TransactionResponse]

@@ -28,6 +28,7 @@ class Transaction(Base, TimestampMixin):
         Index("ix_transactions_item_id", "item_id"),
         Index("ix_transactions_created_at", "created_at"),
         Index("ix_transactions_invoice_id", "invoice_id"),
+        Index("ix_transactions_order_id", "order_id"),
         Index(
             "uq_transactions_user_source_external",
             "user_id",
@@ -70,5 +71,7 @@ class Transaction(Base, TimestampMixin):
     )
     # Number of inventory units this transaction covers
     quantity = Column(sa.Integer, nullable=False, server_default="1")
+    # Shared by every line of one multi-item sale (POST /transactions/order).
+    order_id = Column(Uuid, nullable=True)
     # Integration tracking
     source = Column(String(50), nullable=True, index=True)  # e.g. "lightspeed", "manual"

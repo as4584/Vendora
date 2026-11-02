@@ -17,6 +17,7 @@ import {
   queueCreateItem,
   queueUpdateItem,
   queueQuickSale,
+  queueSaleOrder,
   cacheDashboard,
   readCachedDashboard,
 } from "./offline";
@@ -739,8 +740,36 @@ export interface Transaction {
   notes: string | null;
   is_refund: boolean;
   original_transaction_id: string | null;
+  /** Shared by every line of one multi-item checkout. */
+  order_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SaleOrderLine {
+  item_id: string;
+  quantity: number;
+  /** Agreed price per unit (after haggling), as "0.00". */
+  unit_price: string;
+}
+
+export interface CreateSaleOrderPayload {
+  lines: SaleOrderLine[];
+  method: string;
+  fee_amount?: string;
+  notes?: string;
+  /** Offline outbox id; the server records a replayed order only once. */
+  client_request_id?: string;
+}
+
+export interface SaleOrder {
+  order_id: string;
+  gross_amount: string;
+  fee_amount: string;
+  net_amount: string;
+  transactions: Transaction[];
+  /** True when queued on the device and not yet confirmed by the server. */
+  pending?: boolean;
 }
 
 export interface PaginatedTransactions {
@@ -774,6 +803,20 @@ export async function createTransaction(
     });
   } catch (e) {
     if (isNetworkError(e)) return queueQuickSale(payload);
+    throw e;
+  }
+}
+
+/** Record a multi-item checkout all-or-nothing (queued as one unit offline). */
+export async function createSaleOrder(payload: CreateSaleOrderPayload): Promise<SaleOrder> {
+  if (!isOnline()) return queueSaleOrder(payload);
+  try {
+    return await request<SaleOrder>("/transactions/order", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    if (isNetworkError(e)) return queueSaleOrder(payload);
     throw e;
   }
 }
