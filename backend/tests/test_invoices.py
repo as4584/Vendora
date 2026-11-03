@@ -383,3 +383,44 @@ class TestInvoiceStockValidation:
         updated = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
         assert updated["quantity"] == 1
         assert updated["status"] == "in_stock"  # still in_stock — not fully depleted
+
+
+class TestInvoiceNumbers:
+    """Invoice numbers are stored once and never change (audit/tax requirement)."""
+
+    def _create(self, client, headers, name="Buyer"):
+        resp = client.post("/api/v1/invoices", json={
+            "customer_name": name,
+            "items": [{"description": "Item", "quantity": 1, "unit_price": "10.00"}],
+        }, headers=headers)
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    def test_sequential_per_user_and_stable(self, client, auth_headers):
+        first = self._create(client, auth_headers)
+        second = self._create(client, auth_headers)
+        assert (first["number"], first["invoice_number"]) == (1, "INV0001")
+        assert (second["number"], second["invoice_number"]) == (2, "INV0002")
+        # Cancelling an earlier invoice must not renumber later ones.
+        client.patch(f"/api/v1/invoices/{first['id']}/status", json={"status": "cancelled"}, headers=auth_headers)
+        again = client.get(f"/api/v1/invoices/{second['id']}", headers=auth_headers).json()
+        assert again["invoice_number"] == "INV0002"
+
+    def test_pdf_uses_stored_number(self, client, auth_headers):
+        self._create(client, auth_headers)
+        inv = self._create(client, auth_headers)
+        resp = client.get(f"/api/v1/invoices/{inv['id']}/pdf", headers=auth_headers)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["filename"] == "invoice-INV0002.pdf"
+
+    def test_numbers_are_independent_between_users(self, client, auth_headers, db):
+        from app.services.auth import create_access_token
+        from app.models.user import User
+
+        self._create(client, auth_headers)
+        self._create(client, auth_headers)
+        other = User(email="second-seller@example.com", password_hash="x")
+        db.add(other)
+        db.commit()
+        other_headers = {"Authorization": f"Bearer {create_access_token(data={'sub': str(other.id)})}"}
+        assert self._create(client, other_headers)["invoice_number"] == "INV0001"

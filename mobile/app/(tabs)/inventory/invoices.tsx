@@ -450,7 +450,7 @@ export default function InvoicesScreen() {
             <Card style={styles.previewCard}>
               <View style={styles.previewHeader}>
                 <View style={{ flex: 1 }}>
-                  <SectionLabel>Open Invoice</SectionLabel>
+                  <SectionLabel>{selectedInvoice.invoice_number ? `Invoice ${selectedInvoice.invoice_number}` : "Open Invoice"}</SectionLabel>
                   <Text style={styles.previewTitle}>{selectedInvoice.customer_name}</Text>
                   <Text style={styles.helperText}>
                     {selectedInvoice.customer_email || "No customer email"} - {formatCompactDate(selectedInvoice.created_at)}
@@ -524,7 +524,7 @@ export default function InvoicesScreen() {
                 <View style={styles.invoiceSummary}>
                   <Text style={styles.optionTitle}>{invoice.customer_name}</Text>
                   <Text style={styles.optionMeta}>
-                    {invoice.items.length} item lines - {formatCompactDate(invoice.created_at)}
+                    {invoice.invoice_number ? `${invoice.invoice_number} - ` : ""}{invoice.items.length} item lines - {formatCompactDate(invoice.created_at)}
                   </Text>
                   {invoice.customer_email ? (
                     <Text style={styles.optionMeta}>{invoice.customer_email}</Text>

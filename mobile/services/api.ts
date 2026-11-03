@@ -868,6 +868,10 @@ export interface InvoiceItem {
 export interface InvoiceData {
   id: string;
   user_id: string;
+  /** Per-seller sequence, fixed at creation. */
+  number?: number;
+  /** Display form, e.g. "INV0042". */
+  invoice_number?: string;
   customer_name: string;
   customer_email: string | null;
   status: string;

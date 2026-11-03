@@ -40,6 +40,7 @@ class TestInvoiceServiceEdges:
         db.flush()
         invoice = Invoice(
             user_id=test_user.id,
+            number=1,
             customer_name="Coverage Buyer",
             status="paid",
             subtotal=Decimal("20.00"),

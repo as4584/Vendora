@@ -52,6 +52,8 @@ class InvoiceResponse(BaseModel):
 
     id: UUID
     user_id: UUID
+    number: int
+    invoice_number: str
     customer_name: str
     customer_email: Optional[str] = None
     status: str
