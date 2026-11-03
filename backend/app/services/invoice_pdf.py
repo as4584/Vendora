@@ -275,8 +275,13 @@ def generate_invoice_pdf(
         pdf.set_xy(tx + tl, y)
         pdf.cell(tv, 6, value, align="R")
 
-    paid_amt: float = float(invoice.total) if invoice.status == "paid" else 0.0
-    balance:  float = float(invoice.total) - paid_amt
+    # Recorded payments are the source of truth; legacy "paid" rows predate
+    # amount_paid and count as paid in full.
+    recorded = getattr(invoice, "amount_paid", None)
+    paid_amt: float = float(recorded or 0)
+    if invoice.status == "paid" and paid_amt == 0:
+        paid_amt = float(invoice.total)
+    balance:  float = max(float(invoice.total) - paid_amt, 0.0)
 
     dy: float = 0
     _trow("SUBTOTAL:", f"${float(invoice.subtotal):.2f}", y_totals + dy)

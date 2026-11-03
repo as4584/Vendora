@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as api from "../../../services/api";
+import { invoiceLabel, invoiceBalance, invoicePaid } from "../../../utils/invoices";
 import { useAuth } from "../../../context/auth";
 import { ActionButton } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency } from "../../../utils/inventory";
+import { invoiceStatusLabel, methodLabel } from "../../../components/InvoicePayments";
 
 const DEFAULT_ACCENT = "#3B7BDB";
 
@@ -44,6 +46,8 @@ export default function InvoicePreviewScreen() {
     );
   }
 
+  const paid = invoicePaid(invoice);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.topbar}>
@@ -79,7 +83,8 @@ export default function InvoicePreviewScreen() {
             </View>
             <View>
               <MetaLine label="DATE" value={formatCompactDate(invoice.created_at)} accent={accent} />
-              <MetaLine label="STATUS" value={invoice.status.toUpperCase()} accent={accent} />
+              <MetaLine label="NO." value={invoiceLabel(invoice)} accent={accent} />
+              <MetaLine label="STATUS" value={invoiceStatusLabel(invoice)} accent={accent} />
             </View>
           </View>
 
@@ -109,14 +114,30 @@ export default function InvoicePreviewScreen() {
             {Number(invoice.shipping) > 0 && <TotalLine label="Shipping" value={formatCurrency(invoice.shipping)} />}
             {Number(invoice.discount) > 0 && <TotalLine label="Discount" value={`-${formatCurrency(invoice.discount)}`} />}
             <TotalLine label="Total" value={formatCurrency(invoice.total)} bold />
+            <TotalLine label="Paid" value={formatCurrency(paid.toFixed(2))} />
           </View>
 
           <View style={styles.balanceBar}>
             <Text style={styles.balanceText}>BALANCE DUE</Text>
-            <Text style={styles.balanceText}>
-              {formatCurrency(invoice.status === "paid" ? "0" : invoice.total)}
+            <Text style={styles.balanceText} testID="preview-balance-due">
+              {formatCurrency(invoiceBalance(invoice).toFixed(2))}
             </Text>
           </View>
+
+          {(invoice.payments ?? []).length > 0 ? (
+            <View style={styles.payments}>
+              <Text style={[styles.label, { color: accent }]}>PAYMENTS</Text>
+              {(invoice.payments ?? []).map((p) => (
+                <View key={p.id} style={styles.paymentRow}>
+                  <Text style={styles.paymentMeta} numberOfLines={1}>
+                    {formatCompactDate(p.created_at)} · {methodLabel(p.method)}
+                    {p.note ? ` · ${p.note}` : ""}
+                  </Text>
+                  <Text style={styles.td}>{formatCurrency(p.amount)}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           {!!invoice.notes && <Text style={styles.notes}>Notes: {invoice.notes}</Text>}
         </View>
@@ -178,5 +199,8 @@ const styles = StyleSheet.create({
   bold: { fontWeight: "800", color: INK },
   balanceBar: { flexDirection: "row", justifyContent: "space-between", backgroundColor: "#000", padding: 10, borderRadius: 4, marginTop: SPACING.md },
   balanceText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  paymentMeta: { color: MID, fontSize: 11, flex: 1, minWidth: 0 },
+  payments: { marginTop: SPACING.md, gap: 4 },
+  paymentRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: SPACING.sm },
   notes: { color: MID, fontSize: 11, marginTop: SPACING.md, fontStyle: "italic" },
 });

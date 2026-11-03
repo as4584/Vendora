@@ -5,9 +5,11 @@ Endpoints:
     GET    /api/v1/invoices          — List user's invoices
     GET    /api/v1/invoices/{id}     — Get single invoice
     PATCH  /api/v1/invoices/{id}/status — Transition invoice status
+    POST   /api/v1/invoices/{id}/payments — Record a partial/full payment
     POST   /api/v1/invoices/{id}/pay   — Create Stripe PaymentIntent (Pro only)
 """
 import base64
+from decimal import Decimal
 from math import ceil
 
 from uuid import UUID
@@ -18,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.user import User
-from app.models.invoice import Invoice, InvoiceItem
+from app.models.invoice import Invoice, InvoiceItem, InvoicePayment
 from app.models.inventory import InventoryItem
 from app.schemas.invoice import (
     InvoiceCreate,
@@ -27,12 +29,15 @@ from app.schemas.invoice import (
     InvoiceListResponse,
     InvoiceItemResponse,
     InvoiceStatusUpdate,
+    InvoicePaymentCreate,
+    InvoicePaymentResponse,
 )
 from app.services.invoice import (
     calculate_invoice_totals,
     check_invoice_item_availability,
     transition_invoice,
     process_invoice_payment,
+    record_invoice_payment,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.stripe_service import create_payment_intent
@@ -62,6 +67,15 @@ def _invoice_to_response(invoice: Invoice, db: Session) -> InvoiceResponse:
         stripe_payment_intent_id=invoice.stripe_payment_intent_id,
         notes=invoice.notes,
         items=[InvoiceItemResponse.model_validate(i) for i in items],
+        amount_paid=invoice.amount_paid if invoice.amount_paid is not None else Decimal("0.00"),
+        balance_due=invoice.balance_due,
+        payments=[
+            InvoicePaymentResponse.model_validate(p)
+            for p in db.query(InvoicePayment)
+            .filter(InvoicePayment.invoice_id == invoice.id)
+            .order_by(InvoicePayment.created_at)
+            .all()
+        ],
         created_at=invoice.created_at,
         updated_at=invoice.updated_at,
     )
@@ -76,7 +90,17 @@ def create_invoice(
     """Create an invoice with line items.
 
     Pro tier required for Stripe features, but all tiers can create invoices.
+    Replays with the same client_request_id (offline outbox) return the
+    invoice the first request made, with its server-assigned number.
     """
+    if payload.client_request_id:
+        existing = db.query(Invoice).filter(
+            Invoice.user_id == current_user.id,
+            Invoice.client_request_id == payload.client_request_id,
+        ).first()
+        if existing:
+            return _invoice_to_response(existing, db)
+
     # Validate inventory items ownership and availability if linked
     for item in payload.items:
         if item.inventory_item_id:
@@ -114,6 +138,7 @@ def create_invoice(
         discount=payload.discount,
         total=totals["total"],
         notes=payload.notes,
+        client_request_id=payload.client_request_id,
     )
     db.add(invoice)
     db.flush()
@@ -204,10 +229,10 @@ def update_invoice(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    if invoice.status in ("paid", "cancelled"):
+    if invoice.status in ("paid", "cancelled", "partially_paid"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Paid or cancelled invoices cannot be edited",
+            detail="Paid, partly paid or cancelled invoices cannot be edited",
         )
     if invoice.stripe_payment_intent_id:
         # A customer may already be paying this total; changing it would let
@@ -293,6 +318,38 @@ def update_invoice_status(
     return _invoice_to_response(updated, db)
 
 
+@router.post(
+    "/{invoice_id}/payments",
+    response_model=InvoiceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_invoice_payment(
+    invoice_id: UUID,
+    payload: InvoicePaymentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record a cash/card/etc. payment. Partial payments move the invoice to
+    partially_paid; the payment that clears the balance moves it to paid.
+    Overpayment is rejected."""
+    invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.user_id == current_user.id,
+    ).with_for_update().first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    record_invoice_payment(
+        invoice,
+        payload.amount,
+        payload.method,
+        db,
+        note=payload.note,
+        client_request_id=payload.client_request_id,
+    )
+    db.refresh(invoice)
+    return _invoice_to_response(invoice, db)
+
+
 @router.post("/{invoice_id}/pay")
 def create_invoice_payment(
     invoice_id: UUID,
@@ -306,6 +363,12 @@ def create_invoice_payment(
     ).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice.amount_paid and invoice.amount_paid > 0:
+        # A Stripe intent is for the full total; it can't settle a balance.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This invoice already has payments. Record the rest as a payment instead.",
+        )
 
     return create_payment_intent(db, invoice, current_user)
 

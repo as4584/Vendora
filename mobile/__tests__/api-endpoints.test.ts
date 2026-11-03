@@ -206,7 +206,15 @@ describe('API endpoint contracts', () => {
       call: () => api.createInvoice({ customer_name: 'Sam', items: [] }),
       path: '/invoices',
       method: 'POST',
-      body: { customer_name: 'Sam', items: [] },
+      // Always carries an idempotency key so a retried create never duplicates.
+      body: { customer_name: 'Sam', items: [], client_request_id: expect.stringMatching(/^inv_/) },
+    },
+    {
+      name: 'record invoice payment',
+      call: () => api.recordInvoicePayment('inv-1', { amount: '20.00', method: 'card', client_request_id: 'pay-key-1' }),
+      path: '/invoices/inv-1/payments',
+      method: 'POST',
+      body: { amount: '20.00', method: 'card', client_request_id: 'pay-key-1' },
     },
     { name: 'invoice', call: () => api.getInvoice('inv-1'), path: '/invoices/inv-1' },
     {

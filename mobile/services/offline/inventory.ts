@@ -23,6 +23,8 @@ import type {
   SaleOrder,
   Transaction,
   Dashboard,
+  CreateInvoicePayload,
+  InvoiceData,
 } from "../api";
 import { isOnline } from "./net";
 import { centsToString, computeCheckout, sameBarcode, toCents } from "../../utils/checkout";
@@ -40,7 +42,7 @@ import {
 type MirrorItem = InventoryItem & { _pending?: boolean };
 type Mirror = Record<string, MirrorItem>;
 
-type OutboxKind = "create_item" | "update_item" | "quick_sale" | "sale_order";
+type OutboxKind = "create_item" | "update_item" | "quick_sale" | "sale_order" | "create_invoice";
 interface OutboxEntry {
   id: string;
   kind: OutboxKind;
@@ -329,11 +331,99 @@ function adjustVariant(item: InventoryItem, size: string | undefined, delta: num
   item.custom_attributes = { ...item.custom_attributes, variants: next };
 }
 
-/** Item ids an outbox entry refers to (sale orders carry several). */
+// ─── Offline invoices ────────────────────────────────
+// An invoice made offline has no number yet: the server assigns INV0001-style
+// numbers under a lock, so the client never guesses one. It shows as
+// "Pending sync" until the outbox replays it (idempotently, by
+// client_request_id) and the real invoice replaces it.
+
+async function readPendingInvoices(): Promise<InvoiceData[]> {
+  return readJSON<InvoiceData[]>(KEYS.pendingInvoices, []);
+}
+
+/** Invoices created offline and not yet confirmed by the server, newest first. */
+export async function getPendingInvoices(): Promise<InvoiceData[]> {
+  return readPendingInvoices();
+}
+
+export async function getPendingInvoice(id: string): Promise<InvoiceData | null> {
+  return (await readPendingInvoices()).find((i) => i.id === id) ?? null;
+}
+
+function money(n: number): string {
+  return (Math.round(n * 100) / 100).toFixed(2);
+}
+
+/** Create an invoice offline: keep a local copy, queue the POST. Stock is
+ * untouched (an invoice only takes stock when it is paid). */
+export async function queueCreateInvoice(payload: CreateInvoicePayload): Promise<InvoiceData> {
+  const id = tempId();
+  const entryId = tempId("ob");
+  const now = new Date().toISOString();
+  const lines = payload.items.map((line, index) => ({
+    id: `${id}_line${index}`,
+    invoice_id: id,
+    inventory_item_id: line.inventory_item_id ?? null,
+    size_label: line.size_label ?? null,
+    description: line.description,
+    quantity: line.quantity,
+    unit_price: line.unit_price,
+    line_total: money(Number(line.unit_price) * line.quantity),
+  }));
+  const subtotal = lines.reduce((s, l) => s + Number(l.line_total), 0);
+  const total = Math.max(
+    0,
+    subtotal + Number(payload.tax ?? 0) + Number(payload.shipping ?? 0) - Number(payload.discount ?? 0),
+  );
+  const invoice: InvoiceData = {
+    id,
+    user_id: "",
+    invoice_number: "",
+    customer_name: payload.customer_name,
+    customer_email: payload.customer_email ?? null,
+    status: "draft",
+    subtotal: money(subtotal),
+    tax: money(Number(payload.tax ?? 0)),
+    shipping: money(Number(payload.shipping ?? 0)),
+    discount: money(Number(payload.discount ?? 0)),
+    total: money(total),
+    amount_paid: "0.00",
+    balance_due: money(total),
+    payments: [],
+    stripe_payment_intent_id: null,
+    notes: payload.notes ?? null,
+    items: lines,
+    created_at: now,
+    updated_at: now,
+    _pending: true,
+  };
+  const pending = await readPendingInvoices();
+  await writeJSON(KEYS.pendingInvoices, [invoice, ...pending]);
+  await enqueue({
+    id: entryId,
+    kind: "create_invoice",
+    path: "/invoices",
+    method: "POST",
+    // Reuse the key of an online attempt that may have reached the server.
+    body: { ...payload, client_request_id: payload.client_request_id ?? entryId },
+    tempId: id,
+    createdAt: now,
+    attempts: 0,
+  });
+  return invoice;
+}
+
+async function dropPendingInvoice(id: string): Promise<void> {
+  const pending = await readPendingInvoices();
+  await writeJSON(KEYS.pendingInvoices, pending.filter((i) => i.id !== id));
+}
+
+/** Item ids an outbox entry refers to (sale orders and invoices carry several). */
 function referencedItemIds(entry: OutboxEntry): string[] {
   const body = entry.body;
   if (!body || typeof body !== "object") return [];
   if (Array.isArray(body.lines)) return body.lines.map((l: any) => l?.item_id).filter(Boolean);
+  if (Array.isArray(body.items)) return body.items.map((l: any) => l?.inventory_item_id).filter(Boolean);
   return body.item_id ? [body.item_id] : [];
 }
 
@@ -353,6 +443,14 @@ function applyRemap(entry: OutboxEntry, remap: Record<string, string>): OutboxEn
       body = {
         ...body,
         lines: body.lines.map((l: any) => (l?.item_id === temp ? { ...l, item_id: real } : l)),
+      };
+    }
+    if (body && typeof body === "object" && Array.isArray(body.items)) {
+      body = {
+        ...body,
+        items: body.items.map((l: any) =>
+          l?.inventory_item_id === temp ? { ...l, inventory_item_id: real } : l,
+        ),
       };
     }
   }
@@ -392,6 +490,10 @@ export async function flushOutbox(): Promise<void> {
           await reconcileCreated(entry.tempId, res);
         } else if (entry.kind === "update_item" && res?.id) {
           await reconcileServerItem(res);
+        } else if (entry.kind === "create_invoice" && entry.tempId) {
+          // The server copy (with its real number) is fetched on the next list.
+          if (res?.id) remap[entry.tempId] = res.id;
+          await dropPendingInvoice(entry.tempId);
         }
         // quick_sale / sale_order: server recomputes stock; nothing to reconcile.
         q = q.slice(1);
@@ -471,6 +573,9 @@ async function revertOptimistic(entries: OutboxEntry[]): Promise<void> {
     // update_item: the next server read replaces the mirror copy.
   }
   await writeMirror(m);
+  for (const e of entries) {
+    if (e.kind === "create_invoice" && e.tempId) await dropPendingInvoice(e.tempId);
+  }
 }
 
 export async function getFailedSyncs(): Promise<FailedSync[]> {

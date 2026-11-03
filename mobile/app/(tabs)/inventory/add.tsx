@@ -28,8 +28,11 @@ import * as api from "../../../services/api";
 import { isTempId } from "../../../services/offline";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 import { Button, IconButton } from "../../../components/Button";
+import { LiveBoxScanner, type LiveScanResult } from "../../../components/LiveBoxScanner";
 import {
     isLabelReaderAvailable,
+    isLiveScanAvailable,
+    mergeFields,
     readLabel,
     rememberScan,
     resolveScan,
@@ -110,9 +113,22 @@ export default function AddItemScreen() {
     const pendingBarcode = useRef<string>("");
     const styleCodeRef = useRef<string | undefined>(undefined);
 
+    // Live scanner (VisionKit, A12+): barcode and label read together.
+    const [liveSupported, setLiveSupported] = useState(false);
+    const [liveOpen, setLiveOpen] = useState(false);
+
     // Bring this account's barcode memory onto the phone so scans work offline.
     useEffect(() => {
         syncScanMemory().catch(() => undefined);
+        let alive = true;
+        isLiveScanAvailable()
+            .then((ok) => {
+                if (alive) setLiveSupported(ok);
+            })
+            .catch(() => undefined);
+        return () => {
+            alive = false;
+        };
     }, []);
 
     // â”€â”€ Photo picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -187,6 +203,53 @@ export default function AddItemScreen() {
                 return;
             }
         }
+        if (liveSupported) {
+            setLiveOpen(true);
+            return;
+        }
+        scanLock.current = false;
+        setScanned(false);
+        setScannerOpen(true);
+    };
+
+    /** Live scan finished: memory first, then what the camera read. */
+    const onLiveFinish = async (result: LiveScanResult) => {
+        setLiveOpen(false);
+        const { barcode, ...read } = result;
+        if (!barcode && Object.keys(read).length === 0) {
+            setScanNote("Nothing was read. Try again with the label in good light, or type the details.");
+            return;
+        }
+        let fields: ScanFields = read;
+        let note = "Read live from the box on your phone. Check it, fix anything, and save. Vendora will remember it.";
+        if (barcode) {
+            setUpc(barcode);
+            try {
+                const hit = await resolveScan(barcode, read.style_code);
+                if (hit.match === "memory" || hit.match === "inventory") {
+                    // Remembered beats read.
+                    fields = mergeFields(hit.fields, read);
+                    note =
+                        hit.match === "memory"
+                            ? "Filled from your scan memory. Check it and save."
+                            : "Filled from an item you already have. Check it and save.";
+                } else if (hit.match) {
+                    // Same shoe, new size: the box's size wins.
+                    fields = { ...read, ...hit.fields, size: read.size ?? hit.fields.size };
+                }
+            } catch {
+                // Memory unavailable: use what was read.
+            }
+        }
+        applyScanFields(fields);
+        setScanNote(note);
+    };
+
+    const onLiveUnavailable = (message: string) => {
+        // Fall back to the tap-to-read scanner for the rest of this session.
+        setLiveOpen(false);
+        setLiveSupported(false);
+        setScanNote(message);
         scanLock.current = false;
         setScanned(false);
         setScannerOpen(true);
@@ -706,6 +769,16 @@ export default function AddItemScreen() {
                         </View>
                     )}
                 </View>
+            </Modal>
+
+            <Modal visible={liveOpen} animationType="slide" onRequestClose={() => setLiveOpen(false)}>
+                {liveOpen ? (
+                    <LiveBoxScanner
+                        onFinish={onLiveFinish}
+                        onCancel={() => setLiveOpen(false)}
+                        onUnavailable={onLiveUnavailable}
+                    />
+                ) : null}
             </Modal>
         </KeyboardAvoidingView>
     );
