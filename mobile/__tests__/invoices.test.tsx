@@ -25,6 +25,7 @@ jest.mock('../services/api', () => ({
   listItems: jest.fn(),
   createInvoice: jest.fn(),
   exportInvoicePdf: jest.fn(),
+  recordInvoicePayment: jest.fn(),
 }));
 
 jest.mock('../utils/fileActions', () => ({
@@ -227,6 +228,56 @@ describe('InvoicesScreen', () => {
 
     fireEvent.press(screen.getByText('Create Invoice'));
     expect(screen.getByText('Customer')).toBeTruthy();
+  });
+
+  it('records a payment from history and shows offline invoices as pending sync', async () => {
+    const pending = { ...CREATED_INVOICE, id: 'local_1', invoice_number: '', _pending: true };
+    const partial = {
+      ...CREATED_INVOICE,
+      invoice_number: 'INV0001',
+      status: 'partially_paid',
+      amount_paid: '40.00',
+      balance_due: '300.00',
+      payments: [{ id: 'p1', invoice_id: 'inv-1', amount: '40.00', method: 'cash', note: null, created_at: '2026-04-25T12:00:00Z' }],
+    };
+    (apiMock.listInvoices as jest.Mock).mockResolvedValue({
+      items: [pending, CREATED_INVOICE], total: 2, page: 1, per_page: 20, pages: 1,
+    });
+    (apiMock.recordInvoicePayment as jest.Mock).mockResolvedValue(partial);
+    const screen = render(<InvoicesScreen />);
+    await waitFor(() => expect(screen.getByText('Recent Invoices')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(screen.getByText('Recent Invoices'));
+    });
+    expect(screen.getByText('PENDING SYNC')).toBeTruthy();
+    expect(screen.getByText(/Pending sync -/)).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(screen.getAllByText('Open Invoice')[1]);
+    });
+    fireEvent.press(screen.getByText('Record payment'));
+    fireEvent.changeText(screen.getByLabelText('Payment amount'), '40');
+    await act(async () => {
+      fireEvent.press(screen.getByText('Save payment'));
+    });
+    expect(apiMock.recordInvoicePayment).toHaveBeenCalledWith('inv-1', { amount: '40.00', method: 'cash', note: undefined });
+    expect(screen.getAllByText('PART PAID').length).toBe(2);
+    expect(screen.getByText('$300.00 due')).toBeTruthy();
+  });
+
+  it('says an invoice made offline was saved offline', async () => {
+    (apiMock.createInvoice as jest.Mock).mockResolvedValue({ ...CREATED_INVOICE, id: 'local_2', _pending: true });
+    const screen = render(<InvoicesScreen />);
+    await waitFor(() => expect(screen.getByLabelText('Customer Name')).toBeTruthy());
+    fireEvent.changeText(screen.getByLabelText('Customer Name'), 'Alex');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 description'), 'Cap');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 unit price'), '20');
+    const createButtons = screen.getAllByText('Create Invoice');
+    await act(async () => {
+      fireEvent.press(createButtons[createButtons.length - 1]);
+    });
+    expect(Alert.alert).toHaveBeenCalledWith('Saved offline', expect.stringMatching(/invoice number when you're back online/));
+    expect(screen.getAllByText('Pending sync').length).toBeGreaterThan(0);
   });
 
   it('lets users leave the invoice screen with the close button', async () => {

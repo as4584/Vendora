@@ -133,7 +133,7 @@ export default function InvoicePreviewScreen() {
                     {formatCompactDate(p.created_at)} · {methodLabel(p.method)}
                     {p.note ? ` · ${p.note}` : ""}
                   </Text>
-                  <Text style={styles.td}>{formatCurrency(p.amount)}</Text>
+                  <Text style={styles.paymentAmount}>{formatCurrency(p.amount)}</Text>
                 </View>
               ))}
             </View>
@@ -200,6 +200,7 @@ const styles = StyleSheet.create({
   balanceBar: { flexDirection: "row", justifyContent: "space-between", backgroundColor: "#000", padding: 10, borderRadius: 4, marginTop: SPACING.md },
   balanceText: { color: "#fff", fontWeight: "800", fontSize: 13 },
   paymentMeta: { color: MID, fontSize: 11, flex: 1, minWidth: 0 },
+  paymentAmount: { color: INK, fontSize: 12, fontWeight: "700" },
   payments: { marginTop: SPACING.md, gap: 4 },
   paymentRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: SPACING.sm },
   notes: { color: MID, fontSize: 11, marginTop: SPACING.md, fontStyle: "italic" },
