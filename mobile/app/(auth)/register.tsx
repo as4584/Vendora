@@ -13,6 +13,7 @@ import {
     Alert,
     ScrollView,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { useAuth } from "../../context/auth";
 
@@ -61,7 +62,7 @@ export default function RegisterScreen() {
             >
                 {/* Brand */}
                 <View style={styles.brandContainer}>
-                    <Text style={styles.brandIcon}>📦</Text>
+                    <Ionicons name="cube-outline" size={28} color="#EDEDF2" />
                     <Text style={styles.brandName}>Join Vendora</Text>
                     <Text style={styles.tagline}>Start selling smarter</Text>
                 </View>
@@ -73,7 +74,7 @@ export default function RegisterScreen() {
                         accessibilityLabel="Business Name"
                         style={styles.input}
                         placeholder="My Resale Shop"
-                        placeholderTextColor="#555"
+                        placeholderTextColor="#8C8C96"
                         value={businessName}
                         onChangeText={setBusinessName}
                     />
@@ -83,7 +84,7 @@ export default function RegisterScreen() {
                         accessibilityLabel="Email"
                         style={styles.input}
                         placeholder="you@example.com"
-                        placeholderTextColor="#555"
+                        placeholderTextColor="#8C8C96"
                         value={email}
                         onChangeText={setEmail}
                         keyboardType="email-address"
@@ -96,7 +97,7 @@ export default function RegisterScreen() {
                         accessibilityLabel="Password"
                         style={styles.input}
                         placeholder="Min 8 characters"
-                        placeholderTextColor="#555"
+                        placeholderTextColor="#8C8C96"
                         value={password}
                         onChangeText={setPassword}
                         secureTextEntry
@@ -107,7 +108,7 @@ export default function RegisterScreen() {
                         accessibilityLabel="Confirm Password"
                         style={styles.input}
                         placeholder="Re-enter password"
-                        placeholderTextColor="#555"
+                        placeholderTextColor="#8C8C96"
                         value={confirmPassword}
                         onChangeText={setConfirmPassword}
                         secureTextEntry
@@ -117,7 +118,7 @@ export default function RegisterScreen() {
 
                     {/* Tier info */}
                     <View style={styles.tierBadge}>
-                        <Text style={styles.tierText}>🆓 Free Tier — 25 items, no credit card needed</Text>
+                        <Text style={styles.tierText}>Free plan: 25 items, no card needed</Text>
                     </View>
 
                     <Link href="/(auth)/login" asChild>
@@ -137,7 +138,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#0A0A1A",
+        backgroundColor: "#0E0E11",
     },
     content: {
         flexGrow: 1,
@@ -155,36 +156,33 @@ const styles = StyleSheet.create({
     },
     brandName: {
         fontSize: 28,
-        fontWeight: "800",
+        fontWeight: "600",
         color: "#FFFFFF",
-        letterSpacing: 1,
     },
     tagline: {
-        fontSize: 14,
-        color: COLORS.primary,
+        fontSize: 15,
+        color: COLORS.textMuted,
         marginTop: 4,
     },
     form: {
         gap: 4,
     },
     label: {
-        color: "#999",
+        color: "#A6A6B0",
         fontSize: 13,
         fontWeight: "600",
         marginBottom: 6,
         marginTop: 12,
-        textTransform: "uppercase",
-        letterSpacing: 1,
     },
     input: {
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
         color: "#FFFFFF",
         fontSize: 16,
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
     },
     button: {
         backgroundColor: COLORS.primary,
@@ -200,15 +198,15 @@ const styles = StyleSheet.create({
     buttonText: {
         color: "#FFFFFF",
         fontSize: 16,
-        fontWeight: "700",
+        fontWeight: "600",
     },
     tierBadge: {
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 8,
         padding: 12,
         marginTop: 16,
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
         alignItems: "center",
     },
     tierText: {
@@ -221,7 +219,7 @@ const styles = StyleSheet.create({
         marginTop: 16,
     },
     linkText: {
-        color: "#888",
+        color: "#A6A6B0",
         fontSize: 14,
     },
     linkHighlight: {

@@ -28,6 +28,10 @@ function greeting(): string {
   return "Good evening";
 }
 
+function todayLabel(): string {
+  return new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+}
+
 function money(v: string | number | null | undefined): string {
   const n = Number(v ?? 0);
   return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -135,40 +139,40 @@ export default function DashboardScreen() {
         <RefreshControl refreshing={view.refreshing} onRefresh={() => fetchAll("refresh")} tintColor={COLORS.primary} />
       }
     >
-      {/* Greeting header */}
+      {/* Header: the context (business + date), not a greeting */}
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.greeting}>{`${greeting()}, ${name} 👋`}</Text>
-          <Text style={styles.greetingSub}>Here&apos;s what&apos;s happening today.</Text>
+          <Text accessibilityRole="header" style={styles.greeting}>{`${greeting()}, ${name}`}</Text>
+          <Text style={styles.greetingSub}>{todayLabel()}</Text>
         </View>
       </View>
 
-      {/* Hero: today's profit */}
+      {/* Hero: today's profit, the one figure that matters */}
       <GradientCard colors={GRADIENTS.hero}>
-        <Text style={styles.heroLabel}>Today&apos;s Profit</Text>
+        <Text style={styles.heroLabel}>Profit today</Text>
         <Text style={styles.heroValue}>{money(data.net_profit_today)}</Text>
-        {heroDelta ? <Text style={styles.heroDelta}>{heroDelta.text}</Text> : null}
+        {heroDelta ? <Text style={[styles.heroDelta, { color: heroDelta.tone === "up" ? COLORS.success : COLORS.danger }]}>{heroDelta.text}</Text> : null}
         {showHeroSpark ? (
           <View style={styles.heroSparkWrap}>
-            <Sparkline data={heroSpark} height={64} stroke="#FFFFFF" fillOpacity={0.22} />
+            <Sparkline data={heroSpark} height={64} stroke={COLORS.primaryBright} fillOpacity={0.14} />
           </View>
         ) : null}
       </GradientCard>
 
       {/* 2x2 stat grid */}
       <View style={styles.grid}>
-        <StatCard label="Inventory Value" value={money(data.total_inventory_value)} icon="cube-outline" delta={`${data.items_in_stock} in stock`} deltaTone="muted" />
-        <StatCard label="Total Items" value={String(data.total_items)} icon="layers-outline" delta={`${data.items_listed} listed`} deltaTone="muted" />
+        <StatCard label="Inventory value" value={money(data.total_inventory_value)} delta={`${data.items_in_stock} in stock`} deltaTone="muted" />
+        <StatCard label="Total items" value={String(data.total_items)} delta={`${data.items_listed} listed`} deltaTone="muted" />
       </View>
       <View style={styles.grid}>
-        <StatCard label="Low Stock" value={String(lowStock)} icon="alert-circle-outline" delta="View items" deltaTone={lowStock > 0 ? "down" : "muted"} onPress={() => router.push("/inventory" as any)} />
-        <StatCard label="Refunds" value={String(data.total_refunds)} icon="return-down-back-outline" delta="All time" deltaTone="muted" />
+        <StatCard label="Low stock" value={String(lowStock)} delta="View items" deltaTone={lowStock > 0 ? "down" : "muted"} onPress={() => router.push("/inventory" as any)} />
+        <StatCard label="Refunds" value={String(data.total_refunds)} delta="All time" deltaTone="muted" />
       </View>
 
       {/* Business overview */}
       <Card style={styles.overviewCard}>
         <View style={styles.overviewHead}>
-          <Text style={styles.overviewTitle}>Business Overview</Text>
+          <Text style={styles.overviewTitle}>Business overview</Text>
           <View style={styles.periodPill}>
             <Text style={styles.periodPillText}>Last 30 days</Text>
             <Icon name="chevron-down" size={13} color={COLORS.textMuted} />
@@ -182,7 +186,7 @@ export default function DashboardScreen() {
           </View>
           <View style={styles.overviewDivider} />
           <View style={styles.overviewStat}>
-            <Text style={styles.overviewStatLabel}>Net Profit</Text>
+            <Text style={styles.overviewStatLabel}>Net profit</Text>
             <Text style={styles.overviewStatValue}>{money(analytics?.net ?? data.net_profit_month)}</Text>
             {netDelta ? <Text style={[styles.overviewStatDelta, { color: netDelta.tone === "up" ? COLORS.success : COLORS.danger }]}>{netDelta.text}</Text> : null}
           </View>
@@ -208,10 +212,10 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     gap: SPACING.md,
   },
-  errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "700" },
+  errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "600" },
   headerRow: { flexDirection: "row", alignItems: "center", gap: SPACING.md },
-  greeting: { color: COLORS.text, fontSize: 24, fontWeight: "800", letterSpacing: -0.4 },
-  greetingSub: { color: COLORS.textMuted, fontSize: 13, marginTop: 3 },
+  greeting: { color: COLORS.text, fontSize: 28, lineHeight: 34, fontWeight: "600" },
+  greetingSub: { color: COLORS.textMuted, fontSize: 15, marginTop: 4 },
   bell: {
     width: 40,
     height: 40,
@@ -222,14 +226,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  heroLabel: { color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: "600" },
-  heroValue: { color: "#FFFFFF", fontSize: 34, fontWeight: "800", letterSpacing: -0.5, marginTop: 4 },
-  heroDelta: { color: "rgba(255,255,255,0.9)", fontSize: 12.5, fontWeight: "700", marginTop: 4 },
+  heroLabel: { color: COLORS.textMuted, fontSize: 14, fontWeight: "500" },
+  heroValue: { color: COLORS.text, fontSize: 44, lineHeight: 52, fontWeight: "600", marginTop: 4, fontVariant: ["tabular-nums"] },
+  heroDelta: { fontSize: 13, fontWeight: "500", marginTop: 4 },
   heroSparkWrap: { marginTop: 10, marginHorizontal: -SPACING.lg, marginBottom: -SPACING.lg },
   grid: { flexDirection: "row", gap: SPACING.sm },
   overviewCard: { gap: SPACING.md, marginTop: SPACING.xs },
   overviewHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  overviewTitle: { color: COLORS.text, fontSize: 16, fontWeight: "800" },
+  overviewTitle: { color: COLORS.text, fontSize: 17, fontWeight: "600" },
   periodPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -239,20 +243,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  periodPillText: { color: COLORS.textMuted, fontSize: 12, fontWeight: "700" },
+  periodPillText: { color: COLORS.textMuted, fontSize: 13, fontWeight: "500" },
   overviewStats: { flexDirection: "row", alignItems: "center" },
   overviewStat: { flex: 1, gap: 4 },
   overviewStatLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: "600" },
-  overviewStatValue: { color: COLORS.text, fontSize: 22, fontWeight: "800", letterSpacing: -0.3 },
-  overviewStatDelta: { fontSize: 12, fontWeight: "700" },
+  overviewStatValue: { color: COLORS.text, fontSize: 24, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  overviewStatDelta: { fontSize: 12, fontWeight: "600" },
   overviewDivider: { width: 1, height: 40, backgroundColor: COLORS.border, marginHorizontal: SPACING.md },
   overviewChart: { marginHorizontal: -SPACING.sm },
   sectionLabel: {
     color: COLORS.textSoft,
     fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    fontWeight: "600",
     marginTop: SPACING.xs,
   },
   actionsRow: { gap: SPACING.sm, paddingRight: SPACING.lg },

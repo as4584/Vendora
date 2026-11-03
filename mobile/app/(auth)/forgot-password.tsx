@@ -77,7 +77,7 @@ export default function ForgotPasswordScreen() {
                             accessibilityLabel="Email"
                             style={styles.input}
                             placeholder="you@example.com"
-                            placeholderTextColor="#555"
+                            placeholderTextColor="#8C8C96"
                             value={email}
                             onChangeText={setEmail}
                             keyboardType="email-address"
@@ -99,27 +99,25 @@ export default function ForgotPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#0A0A1A" },
+    container: { flex: 1, backgroundColor: "#0E0E11" },
     content: { flex: 1, justifyContent: "center", paddingHorizontal: 32 },
-    title: { color: "#FFFFFF", fontSize: 30, fontWeight: "800", marginBottom: 12 },
-    subtitle: { color: "#999", fontSize: 16, lineHeight: 23, marginBottom: 28 },
+    title: { color: "#FFFFFF", fontSize: 30, fontWeight: "600", marginBottom: 12 },
+    subtitle: { color: "#A6A6B0", fontSize: 16, lineHeight: 23, marginBottom: 28 },
     label: {
-        color: "#999",
+        color: "#A6A6B0",
         fontSize: 13,
         fontWeight: "600",
         marginBottom: 8,
-        textTransform: "uppercase",
-        letterSpacing: 1,
     },
     input: {
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
         color: "#FFFFFF",
         fontSize: 16,
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
     },
     button: {
         backgroundColor: COLORS.primary,
@@ -130,16 +128,16 @@ const styles = StyleSheet.create({
     },
     buttonSpacing: { marginTop: 20 },
     buttonDisabled: { opacity: 0.6 },
-    buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+    buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" },
     successCard: {
-        backgroundColor: "#15152A",
+        backgroundColor: "#141418",
         borderColor: "#3E356F",
         borderWidth: 1,
         borderRadius: 14,
         padding: 20,
     },
-    successTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "700", marginBottom: 8 },
-    successText: { color: "#AAA", fontSize: 15, lineHeight: 22, marginBottom: 10 },
+    successTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "600", marginBottom: 8 },
+    successText: { color: "#A6A6B0", fontSize: 15, lineHeight: 22, marginBottom: 10 },
     secondaryButton: {
         borderColor: COLORS.primary,
         borderWidth: 1,
@@ -148,7 +146,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginTop: 8,
     },
-    secondaryButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
+    secondaryButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
     backLink: { alignItems: "center", marginTop: 24, paddingVertical: 8 },
     backText: { color: "#8F82FF", fontSize: 14, fontWeight: "600" },
 });

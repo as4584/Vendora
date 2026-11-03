@@ -13,6 +13,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as api from "../../../services/api";
+import { Ionicons } from "@expo/vector-icons";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
@@ -214,7 +215,8 @@ export default function ItemDetailScreen() {
             <Image source={{ uri: currentPhoto }} style={styles.heroPhoto} resizeMode="cover" />
           ) : (
             <View style={[styles.heroPhoto, styles.photoFallback]}>
-              <Text style={styles.photoFallbackText}>Tap to add {activePhoto} photo</Text>
+              <Ionicons name="camera-outline" size={28} color={COLORS.textSoft} />
+              <Text style={styles.photoFallbackText}>{`Add ${activePhoto} photo`}</Text>
             </View>
           )}
           {photoUploading ? (
@@ -229,7 +231,7 @@ export default function ItemDetailScreen() {
                 <Image source={{ uri: photo.uri }} style={[styles.thumbPhoto, activePhoto === photo.key && styles.thumbPhotoActive]} resizeMode="cover" />
               ) : (
                 <View style={[styles.thumbPhoto, styles.photoFallback, activePhoto === photo.key && styles.thumbPhotoActive]}>
-                  <Text style={styles.photoFallbackText}>{photo.key}</Text>
+                  <Text style={styles.photoFallbackText}>{photo.key === "front" ? "Front" : "Back"}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -272,7 +274,7 @@ export default function ItemDetailScreen() {
       })()}
 
       <Card>
-        <SectionLabel>Stock Summary</SectionLabel>
+        <SectionLabel>Stock summary</SectionLabel>
         <View style={styles.summaryGrid}>
           <View style={styles.summaryBlock}>
             <Text style={styles.summaryLabel}>Status</Text>
@@ -292,11 +294,11 @@ export default function ItemDetailScreen() {
           </View>
         </View>
 
-        <View style={styles.pillRow}>
-          <Pill label={STATUS_LABELS[item.status] || item.status} tone={qty === 0 ? "danger" : "success"} />
-          <Pill label={qty === 0 ? "Out of stock" : `Stock ${qty}`} tone={qty === 0 ? "danger" : qty <= 3 ? "warning" : "success"} />
-          <Pill label={sourceLabel} tone="info" />
-        </View>
+        {qty === 0 ? (
+          <View style={styles.pillRow}>
+            <Pill label="Out of stock" tone="danger" />
+          </View>
+        ) : null}
 
         <Text style={styles.detailLine}>Sizes: {sizeBreakdown(item)}</Text>
         <Text style={styles.detailLine}>Buy {formatCurrency(item.buy_price)} • Last updated {formatCompactDate(item.updated_at)}</Text>
@@ -411,7 +413,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: SPACING.lg, paddingBottom: 48, gap: SPACING.md },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg, padding: SPACING.lg, gap: SPACING.sm },
-  errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "800" },
+  errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "600" },
   errorText: { color: COLORS.textMuted, fontSize: 13, textAlign: "center", marginBottom: SPACING.sm },
   photoHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: SPACING.sm },
   photoSwitchRow: { flexDirection: "row", gap: SPACING.xs },
@@ -427,14 +429,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(7,11,22,0.35)",
     borderRadius: 18,
   },
-  photoFallback: { alignItems: "center", justifyContent: "center" },
-  photoFallbackText: { color: COLORS.textMuted, fontWeight: "700", textTransform: "capitalize" },
+  photoFallback: { alignItems: "center", justifyContent: "center", gap: 8 },
+  photoFallbackText: { color: COLORS.textMuted, fontSize: 13, fontWeight: "500" },
   photoThumbRow: { flexDirection: "row", gap: SPACING.sm, marginTop: SPACING.sm },
   thumbPhoto: { width: 64, height: 64, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardAlt },
   thumbPhotoActive: { borderColor: COLORS.primary, borderWidth: 2 },
   metricStrip: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   metricCell: { flex: 1, alignItems: "center", gap: 3 },
-  metricCellValue: { color: COLORS.text, fontSize: 16, fontWeight: "800" },
+  metricCellValue: { color: COLORS.text, fontSize: 16, fontWeight: "600" },
   metricCellLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: "600" },
   metricCellDivider: { width: 1, height: 30, backgroundColor: COLORS.border },
   summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm, marginBottom: SPACING.sm },
@@ -448,7 +450,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   summaryLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: "600" },
-  summaryValue: { color: COLORS.text, fontSize: 18, fontWeight: "800", marginTop: 6 },
+  summaryValue: { color: COLORS.text, fontSize: 18, fontWeight: "600", marginTop: 6 },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, marginBottom: SPACING.sm },
   detailLine: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
   variantGrid: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm },
@@ -463,8 +465,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
-  variantSize: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
-  variantQty: { color: COLORS.success, fontSize: 18, fontWeight: "800" },
+  variantSize: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
+  variantQty: { color: COLORS.success, fontSize: 18, fontWeight: "600" },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -474,13 +476,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  detailLabel: { color: COLORS.textSoft, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
+  detailLabel: { color: COLORS.textSoft, fontSize: 12, fontWeight: "600" },
   detailValue: { color: COLORS.text, fontSize: 13, fontWeight: "600", flex: 1, textAlign: "right" },
   emptyText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
   timelineRow: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  timelineTitle: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
+  timelineTitle: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
   timelineMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
   actionRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm },
   marketSummary: { gap: SPACING.xs, marginTop: SPACING.sm },
-  marketPrice: { color: COLORS.success, fontSize: 28, fontWeight: "800" },
+  marketPrice: { color: COLORS.success, fontSize: 28, fontWeight: "600" },
 });

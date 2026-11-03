@@ -244,9 +244,9 @@ describe('DashboardScreen', () => {
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
     // qty 1 and 3 are low (>0 and <=3); 0 and 8 are not.
-    expect(screen.getByText('Low Stock')).toBeTruthy();
+    expect(screen.getByText('Low stock')).toBeTruthy();
     expect(screen.getByText('View items')).toBeTruthy();
-    expect(screen.getByText('Business Overview')).toBeTruthy();
+    expect(screen.getByText('Business overview')).toBeTruthy();
   });
 
   it('handles a nameless user, a null-prior delta, and null quantities', async () => {
@@ -273,13 +273,13 @@ describe('DashboardScreen', () => {
     setupMocks();
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
-    fireEvent.press(screen.getByText('Low Stock'));
+    fireEvent.press(screen.getByText('Low stock'));
     expect(mockPush).toHaveBeenCalledWith('/inventory');
   });
 
   it.each([
-    [14, 'Good afternoon, Alex 👋'],
-    [20, 'Good evening, Alex 👋'],
+    [14, 'Good afternoon, Alex'],
+    [20, 'Good evening, Alex'],
   ])('greets by time of day (%i:00)', async (hour, expected) => {
     const spy = jest.spyOn(Date.prototype, 'getHours').mockReturnValue(hour);
     setupMocks();
@@ -307,6 +307,6 @@ describe('DashboardScreen', () => {
     });
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
-    expect(screen.getByText('Business Overview')).toBeTruthy();
+    expect(screen.getByText('Business overview')).toBeTruthy();
   });
 });

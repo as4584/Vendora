@@ -22,7 +22,7 @@ test.describe('Login screen', () => {
 
     // App loads and redirects to login
     await expect(page.locator('text=Vendora')).toBeVisible();
-    await expect(page.locator('text=Inventory & Business Suite')).toBeVisible();
+    await expect(page.locator('text=Inventory, sales and invoices for show-floor sellers')).toBeVisible();
 
     // Form fields are present
     await expect(page.getByText('Email', { exact: true })).toBeVisible();
@@ -142,6 +142,6 @@ test.describe('Completed product surfaces', () => {
     await expect(page.getByText('Vendora Support')).toBeVisible();
     await openSettings();
     await page.getByText('View Public Storefront').click();
-    await expect(page.getByText('✓ VERIFIED')).toBeVisible();
+    await expect(page.getByText('Verified')).toBeVisible();
   });
 });

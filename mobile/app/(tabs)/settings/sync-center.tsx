@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
   histRow: { flexDirection: "row", alignItems: "center", gap: SPACING.md, paddingVertical: SPACING.sm },
   intRowDivider: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
   intText: { flex: 1, gap: 3 },
-  intName: { color: COLORS.text, fontSize: 15, fontWeight: "700" },
+  intName: { color: COLORS.text, fontSize: 15, fontWeight: "600" },
   intMeta: { color: COLORS.textMuted, fontSize: 12 },
   emptyText: { color: COLORS.textMuted, fontSize: 13, paddingVertical: SPACING.sm },
 });

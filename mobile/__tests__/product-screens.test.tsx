@@ -117,7 +117,7 @@ describe('public seller product', () => {
   it('shows loading and a verified storefront', async () => {
     let resolve!: (value: any) => void; (api.getSellerProfile as jest.Mock).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
     const screen = render(<SellerProfileScreen />); expect(screen.getByTestId('seller-loading')).toBeTruthy(); resolve(seller);
-    await screen.findByTestId('seller-content'); expect(screen.getByText('✓ VERIFIED')).toBeTruthy(); expect(screen.getByText('$120.00')).toBeTruthy();
+    await screen.findByTestId('seller-content'); expect(screen.getByText('Verified')).toBeTruthy(); expect(screen.getByText('$120.00')).toBeTruthy();
   });
   it('renders empty optional storefront fields and errors', async () => {
     (api.getSellerProfile as jest.Mock).mockResolvedValueOnce({ ...seller, seller: { ...seller.seller, verified: false, member_since: null }, listings: [{ ...seller.listings[0], price: null, category: null, size: null, color: null, condition: null, status: 'listed' }] });
