@@ -1,4 +1,7 @@
-import { Modal, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Alert, Modal, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import * as api from "../services/api";
+import { downloadAndShareRemote } from "../utils/fileActions";
 import { Button } from "./Button";
 import { Icon } from "./ui";
 import { COLORS, RADII, SPACING, TYPE } from "../theme/tokens";
@@ -17,12 +20,31 @@ export function ReceiptSheet({
   onNewSale: () => void;
   onDone: () => void;
 }) {
+  const [pdfBusy, setPdfBusy] = useState(false);
   const share = async () => {
     if (!receipt) return;
     try {
       await Share.share({ message: buildReceiptText(receipt), title: "Receipt" });
     } catch {
       // Dismissed or unavailable: nothing to do.
+    }
+  };
+  const sharePdf = async () => {
+    if (!receipt?.orderId || pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      const token = await api.getToken();
+      await downloadAndShareRemote(
+        api.orderReceiptPdfUrl(receipt.orderId),
+        `receipt-${receipt.orderId.slice(0, 8)}.pdf`,
+        token,
+        "application/pdf",
+        (status) => `Could not get the PDF receipt (${status}).`,
+      );
+    } catch (err: any) {
+      Alert.alert("PDF receipt", err?.message || "Could not share the PDF receipt.");
+    } finally {
+      setPdfBusy(false);
     }
   };
 
@@ -78,6 +100,16 @@ export function ReceiptSheet({
 
               <View style={styles.actions}>
                 <Button label="Share receipt" leadingIcon="share-outline" onPress={share} fullWidth size="lg" />
+                {receipt.orderId && !receipt.pending ? (
+                  <Button
+                    label="Share PDF"
+                    variant="secondary"
+                    leadingIcon="document-text-outline"
+                    onPress={sharePdf}
+                    loading={pdfBusy}
+                    fullWidth
+                  />
+                ) : null}
                 <Button label="New sale" variant="secondary" leadingIcon="add" onPress={onNewSale} fullWidth />
                 <Button label="Done" variant="ghost" onPress={onDone} fullWidth />
               </View>

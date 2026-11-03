@@ -14,9 +14,12 @@ Money definitions (see app.services.checkout):
 Payment breakdown: for orders with payment parts (order_payments), each part
 counts under its own method, so a $200 cash + $85 card order puts $200 in the
 cash box. Older/single sales count under the transaction's method. Refunds are
-subtracted from the method they were paid with ("split" when the refunded line
-came from a split-payment order, since the app can't know which part was
-handed back).
+subtracted from the method they were paid with; a refunded line from a
+split-payment order is attributed back to that order's payment parts in
+proportion to their amounts (to the cent).
+
+Top items are net of refunds: refunded units and revenue are taken back off
+the item they were sold as.
 """
 from collections import defaultdict
 from datetime import datetime
@@ -26,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.models.inventory import InventoryItem
 from app.models.transaction import OrderPayment, Transaction
+from app.services.checkout import allocate
 
 ZERO = Decimal("0.00")
 
@@ -61,11 +65,14 @@ def build_show_summary(db: Session, user_id, since: datetime, until: datetime) -
     profit = net_sales - refund_amount - fees - cost
 
     order_ids = {t.order_id for t in sales if t.order_id}
+    # Refunds may belong to orders sold before the window, so load their parts too.
+    part_order_ids = order_ids | {t.order_id for t in refunds if t.order_id}
     parts_by_order: dict = defaultdict(list)
-    if order_ids:
+    if part_order_ids:
         for part in (
             db.query(OrderPayment)
-            .filter(OrderPayment.user_id == user_id, OrderPayment.order_id.in_(order_ids))
+            .filter(OrderPayment.user_id == user_id, OrderPayment.order_id.in_(part_order_ids))
+            .order_by(OrderPayment.created_at, OrderPayment.id)
             .all()
         ):
             parts_by_order[part.order_id].append(part)
@@ -84,7 +91,14 @@ def build_show_summary(db: Session, user_id, since: datetime, until: datetime) -
             by_method[t.method]["collected"] += _d(t.gross_amount) + _d(t.tax_amount)
             by_method[t.method]["count"] += 1
     for t in refunds:
-        by_method[t.method]["refunded"] += _d(t.gross_amount) + _d(t.tax_amount)
+        amount = _d(t.gross_amount) + _d(t.tax_amount)
+        parts = parts_by_order.get(t.order_id) if t.order_id else None
+        if parts:
+            shares = allocate(amount, [_d(p.amount) for p in parts])
+            for part, share in zip(parts, shares):
+                by_method[part.method]["refunded"] += share
+        else:
+            by_method[t.method]["refunded"] += amount
 
     payments = sorted(
         (
@@ -106,6 +120,14 @@ def build_show_summary(db: Session, user_id, since: datetime, until: datetime) -
             continue
         per_item[t.item_id]["units"] += t.quantity or 1
         per_item[t.item_id]["revenue"] += _d(t.gross_amount)
+    for t in refunds:
+        if t.item_id is None:
+            continue
+        per_item[t.item_id]["units"] -= t.quantity or 1
+        per_item[t.item_id]["revenue"] -= _d(t.gross_amount)
+    # Refunds of sales from before the window can push an item negative; drop
+    # anything that nets to nothing sold.
+    per_item = {k: v for k, v in per_item.items() if v["units"] > 0}
     names = {}
     if per_item:
         names = dict(

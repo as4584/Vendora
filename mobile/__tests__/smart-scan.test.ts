@@ -151,6 +151,30 @@ describe("scan memory", () => {
     expect((await memory.resolveScan("22222222", { online: false })).fields.name).toBe("Other phone");
   });
 
+  it("backfills from inventory once per device, then pulls the new memory", async () => {
+    const backfill = jest.fn(async () => ({ created: 1, updated: 0, skipped: 0 }));
+    const download = jest.fn(async () => [
+      { barcode: "33333333", match: "memory" as const, fields: { name: "From inventory" }, times_seen: 1 },
+    ]);
+    const r = remote({ backfill, download });
+    expect(await memory.backfillScanMemoryOnce(r)).toBe(true);
+    expect(backfill).toHaveBeenCalledTimes(1);
+    expect((await memory.resolveScan("33333333", { online: false })).fields.name).toBe("From inventory");
+    expect(await memory.backfillScanMemoryOnce(r)).toBe(false);
+    expect(backfill).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries the backfill next time when it fails", async () => {
+    const backfill = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ created: 0, updated: 0, skipped: 0 });
+    const r = remote({ backfill });
+    await expect(memory.backfillScanMemoryOnce(r)).rejects.toThrow("offline");
+    expect(await memory.backfillScanMemoryOnce(r)).toBe(true);
+    expect(r.download).not.toHaveBeenCalled(); // nothing new to pull
+  });
+
   it("ignores saves without a name or a usable barcode", async () => {
     await memory.rememberScan("123", { name: "Short" }, { online: false });
     await memory.rememberScan("12345678", { size: "10" }, { online: false });

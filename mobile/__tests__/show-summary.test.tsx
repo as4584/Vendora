@@ -65,8 +65,10 @@ describe('ShowSummaryScreen', () => {
     (apiMock.startShow as jest.Mock).mockResolvedValue(SUMMARY);
     const screen = render(<ShowSummaryScreen />);
     await screen.findByText('No show running');
-    await waitFor(() => expect(apiMock.getShowSummary).toHaveBeenCalledTimes(2));
-    expect((apiMock.getShowSummary as jest.Mock).mock.calls[1][0].since).toBeDefined();
+    expect(apiMock.getShowSummary).toHaveBeenCalledTimes(1);
+    expect((apiMock.getShowSummary as jest.Mock).mock.calls[0][0]).toEqual({
+      tzOffsetMinutes: new Date().getTimezoneOffset(),
+    });
     expect(screen.getByText('No payments in this window.')).toBeTruthy();
     expect(screen.getByText('Nothing sold yet.')).toBeTruthy();
     expect(screen.getAllByText('-$5.00').length).toBeGreaterThan(0);

@@ -6,7 +6,7 @@ import { invoiceLabel, invoiceBalance, invoicePaid } from "../../../utils/invoic
 import { useAuth } from "../../../context/auth";
 import { ActionButton } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
-import { formatCompactDate, formatCurrency } from "../../../utils/inventory";
+import { formatCompactDate, formatCurrency, formatShortDateTime } from "../../../utils/inventory";
 import { invoiceStatusLabel, methodLabel } from "../../../components/InvoicePayments";
 
 const DEFAULT_ACCENT = "#3B7BDB";
@@ -130,7 +130,7 @@ export default function InvoicePreviewScreen() {
               {(invoice.payments ?? []).map((p) => (
                 <View key={p.id} style={styles.paymentRow}>
                   <Text style={styles.paymentMeta} numberOfLines={1}>
-                    {formatCompactDate(p.created_at)} · {methodLabel(p.method)}
+                    {formatShortDateTime(p.created_at)} · {methodLabel(p.method)}
                     {p.note ? ` · ${p.note}` : ""}
                   </Text>
                   <Text style={styles.paymentAmount}>{formatCurrency(p.amount)}</Text>

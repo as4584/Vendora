@@ -16,7 +16,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
-import { COLORS, SPACING } from "../../../theme/tokens";
+import { COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
 import { formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
 
@@ -85,7 +85,7 @@ function InventoryCard({
         <View style={styles.itemCardRow}>
           {selectMode ? (
             <View style={[styles.checkbox, selected && styles.checkboxOn]}>
-              {selected ? <Text style={styles.checkboxTick}>✓</Text> : null}
+              {selected ? <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.checkboxTick}>✓</Text> : null}
             </View>
           ) : null}
           <View style={styles.thumbBox}>
@@ -385,7 +385,7 @@ export default function InventoryListScreen() {
                 </View>
                 <TouchableOpacity accessibilityLabel="Filters" accessibilityRole="button" style={styles.filterBtn} onPress={() => setFilterOpen(true)}>
                   <Icon name="options-outline" size={18} color={activeFilterCount ? COLORS.primaryBright : COLORS.text} />
-                  {activeFilterCount ? <View style={styles.filterBadge}><Text style={styles.filterBadgeText}>{activeFilterCount}</Text></View> : null}
+                  {activeFilterCount ? <View style={styles.filterBadge}><Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.filterBadgeText}>{activeFilterCount}</Text></View> : null}
                 </TouchableOpacity>
               </View>
               {activeFilterCount ? (

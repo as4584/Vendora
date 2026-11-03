@@ -12,7 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Polyline, Polygon, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
-import { COLORS, GRADIENTS, RADII, SPACING } from "../theme/tokens";
+import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../theme/tokens";
 
 export type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -186,7 +186,9 @@ export function Pill({
 
   return (
     <View style={[styles.pill, { backgroundColor: palette.bg, borderColor: palette.border }, style]}>
-      <Text style={[styles.pillText, { color: palette.text }, textStyle]}>{label}</Text>
+      <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={[styles.pillText, { color: palette.text }, textStyle]}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -266,7 +268,7 @@ export function ActionTile({
       activeOpacity={0.82}
     >
       <View style={styles.glyphWrap}>
-        <Text style={styles.glyphText}>{glyph}</Text>
+        <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.glyphText}>{glyph}</Text>
       </View>
       <Text style={styles.actionTileLabel}>{label}</Text>
       {helper ? <Text style={styles.actionTileHelper}>{helper}</Text> : null}
@@ -295,7 +297,7 @@ export function Stepper({
                 current && styles.stepCircleCurrent,
               ]}
             >
-              <Text style={styles.stepCircleText}>{index + 1}</Text>
+              <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.stepCircleText}>{index + 1}</Text>
             </View>
             <Text style={[styles.stepLabel, current && { color: COLORS.text }]}>{step}</Text>
             {index < steps.length - 1 ? <View style={styles.stepLine} /> : null}
@@ -320,7 +322,7 @@ export function TabGlyph({
         active ? styles.tabGlyphActive : styles.tabGlyphInactive,
       ]}
     >
-      <Text style={styles.tabGlyphText}>{glyph}</Text>
+      <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.tabGlyphText}>{glyph}</Text>
     </View>
   );
 }

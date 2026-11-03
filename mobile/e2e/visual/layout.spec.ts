@@ -116,48 +116,99 @@ async function overflowing(page: Page) {
   });
 }
 
+type Screen = (typeof SCREENS)[number];
+
+async function openScreen(page: Page, screen: Screen, size: { width: number; height: number }) {
+  await page.setViewportSize({ width: size.width, height: size.height });
+  await stubApi(page);
+  await page.goto('/');
+  if (screen.authed !== false) {
+    await page.evaluate(() => localStorage.setItem('vendora_access_token', 'demo'));
+  } else {
+    await page.evaluate(() => localStorage.clear());
+  }
+  await page.goto('/');
+  // Navigating before the router has mounted leaves the app on its
+  // start screen, so wait for it to settle and retry the push once.
+  await page.waitForLoadState('networkidle');
+  const navigate = () =>
+    page.evaluate((p) => {
+      window.history.pushState({}, '', p);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, screen.path);
+  await navigate();
+  if (screen.ready) {
+    const ready = page.getByText(screen.ready).first();
+    try {
+      await expect(ready).toBeVisible({ timeout: 5_000 });
+    } catch {
+      await navigate();
+      await expect(ready).toBeVisible();
+    }
+  }
+  for (const step of screen.steps ?? []) {
+    await page.getByText(step, { exact: true }).first().click();
+    await page.waitForTimeout(250);
+  }
+  await page.waitForTimeout(700);
+}
+
 test.describe('layout gate', () => {
   for (const size of SIZES) {
     for (const screen of SCREENS) {
       test(`${screen.name} @ ${size.name}`, async ({ page }) => {
         test.skip(test.info().project.name !== 'iPhone 12', 'sizes are iterated inside the test');
-        await page.setViewportSize({ width: size.width, height: size.height });
-        await stubApi(page);
-        await page.goto('/');
-        if (screen.authed !== false) {
-          await page.evaluate(() => localStorage.setItem('vendora_access_token', 'demo'));
-        } else {
-          await page.evaluate(() => localStorage.clear());
-        }
-        await page.goto('/');
-        // Navigating before the router has mounted leaves the app on its
-        // start screen, so wait for it to settle and retry the push once.
-        await page.waitForLoadState('networkidle');
-        const navigate = () =>
-          page.evaluate((p) => {
-            window.history.pushState({}, '', p);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }, screen.path);
-        await navigate();
-        if (screen.ready) {
-          const ready = page.getByText(screen.ready).first();
-          try {
-            await expect(ready).toBeVisible({ timeout: 5_000 });
-          } catch {
-            await navigate();
-            await expect(ready).toBeVisible();
-          }
-        }
-        for (const step of screen.steps ?? []) {
-          await page.getByText(step, { exact: true }).first().click();
-          await page.waitForTimeout(250);
-        }
-        await page.waitForTimeout(700);
+        await openScreen(page, screen, size);
         await page.screenshot({
           path: `test-results/visual/${size.name}/${screen.name}.png`,
           fullPage: !!screen.fullPage,
         });
         expect(await overflowing(page), `${screen.name} overflows at ${size.width}px`).toEqual([]);
+      });
+    }
+  }
+});
+
+/**
+ * Dynamic Type stand-in. react-native-web ignores the OS text size, so scale
+ * every element's computed font size (and px line height) by LARGE_TEXT,
+ * the same as iOS "larger text" does to a Text. LARGE_TEXT matches
+ * FONT_SCALE.chrome in theme/tokens.ts: text capped with maxFontSizeMultiplier
+ * on device stops growing exactly there, so the web run is a faithful worst
+ * case for capped chrome and a real large-size check for body copy.
+ */
+const LARGE_TEXT = 1.3;
+const LARGE_TEXT_SCREENS = ['dashboard', 'inventory', 'item-detail', 'add', 'sale', 'sale-cart'];
+
+async function scaleText(page: Page, factor: number) {
+  await page.evaluate((k) => {
+    const all = Array.from(document.querySelectorAll<HTMLElement>('body *'));
+    // Read everything first so inherited sizes aren't scaled twice.
+    const sizes = all.map((el) => {
+      const cs = getComputedStyle(el);
+      return { el, font: parseFloat(cs.fontSize), line: cs.lineHeight.endsWith('px') ? parseFloat(cs.lineHeight) : null };
+    });
+    for (const { el, font, line } of sizes) {
+      if (!font) continue;
+      el.style.fontSize = `${font * k}px`;
+      if (line) el.style.lineHeight = `${line * k}px`;
+    }
+  }, factor);
+  await page.waitForTimeout(300);
+}
+
+test.describe('layout gate: large text', () => {
+  for (const size of SIZES.filter((s) => s.name !== 'ipad')) {
+    for (const screen of SCREENS.filter((s) => LARGE_TEXT_SCREENS.includes(s.name))) {
+      test(`${screen.name} @ ${size.name} @ ${LARGE_TEXT}x text`, async ({ page }) => {
+        test.skip(test.info().project.name !== 'iPhone 12', 'sizes are iterated inside the test');
+        await openScreen(page, screen, size);
+        await scaleText(page, LARGE_TEXT);
+        await page.screenshot({
+          path: `test-results/visual/large-text/${size.name}/${screen.name}.png`,
+          fullPage: !!screen.fullPage,
+        });
+        expect(await overflowing(page), `${screen.name} overflows at ${size.width}px with large text`).toEqual([]);
       });
     }
   }

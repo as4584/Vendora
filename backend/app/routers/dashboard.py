@@ -149,6 +149,13 @@ def get_advanced_analytics(
     )
 
 
+def local_day_start(now: datetime, tz_offset_minutes: int | None) -> datetime:
+    """UTC instant of the seller's local midnight for *now* (UTC midnight if no offset)."""
+    offset = timedelta(minutes=tz_offset_minutes or 0)
+    local = now - offset
+    return local.replace(hour=0, minute=0, second=0, microsecond=0) + offset
+
+
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
@@ -157,6 +164,11 @@ def _aware(value: datetime) -> datetime:
 def show_summary(
     since: datetime | None = Query(None, description="Window start; default: show start, else start of today (UTC)"),
     until: datetime | None = Query(None, description="Window end; default: now"),
+    tz_offset_minutes: int | None = Query(
+        None, ge=-14 * 60, le=14 * 60,
+        description="Client Date.getTimezoneOffset() (minutes UTC is ahead of local, e.g. 300 for "
+                    "New York in winter); 'today' then starts at the seller's local midnight",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -169,7 +181,7 @@ def show_summary(
     elif current_user.show_started_at:
         start = _aware(current_user.show_started_at)
     else:
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = local_day_start(now, tz_offset_minutes)
     if start >= end:
         raise HTTPException(status_code=422, detail="since must be before until")
     data = build_show_summary(db, current_user.id, start, end)

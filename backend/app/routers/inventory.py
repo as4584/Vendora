@@ -48,6 +48,7 @@ from app.schemas.inventory import (
 from app.dependencies.auth import get_current_user
 from app.dependencies.tier_limiter import TIER_LIMITS, enforce_item_limit
 from app.services.inventory import transition_item
+from app.services.scan_memory import remember_items
 from app.services.spreadsheet_import import (
     detect_format,
     google_sheet_candidate_csv_urls,
@@ -298,6 +299,7 @@ def _import_inventory_content(
 ) -> InventoryImportResult:
     rows = rows_from_bytes(content, detect_format(filename, content_type, content), content_type)
     parsed_rows = parse_inventory_rows(rows)
+    touched: list[InventoryItem] = []
 
     result = {
         "dry_run": dry_run,
@@ -355,6 +357,7 @@ def _import_inventory_content(
             for field, value in payload.items():
                 setattr(match, field, value)
             db.add(match)
+            touched.append(match)
         else:
             item = InventoryItem(
                 user_id=current_user.id,
@@ -367,8 +370,10 @@ def _import_inventory_content(
             # Make the new row visible to _find_import_match so a SKU/UPC that
             # repeats later in the same file updates it instead of colliding.
             db.flush()
+            touched.append(item)
 
     if not dry_run:
+        remember_items(db, current_user.id, touched)
         db.commit()
 
     return InventoryImportResult(**result)
@@ -1180,6 +1185,7 @@ def commit_import(
     ).order_by(InventoryImportRow.row_number).all()
 
     counts = {"create": 0, "update": 0, "skip": 0, "error": 0}
+    touched: list[InventoryItem] = []
 
     for row in import_rows:
         if row.action == "error" or not row.mapped_data:
@@ -1211,6 +1217,7 @@ def commit_import(
                 status="in_stock",
             )
             db.add(item)
+            touched.append(item)
             counts["create"] += 1
 
         elif row.action == "update" and row.inventory_item_id:
@@ -1245,9 +1252,13 @@ def commit_import(
                 if field not in _SKIP_ON_UPDATE and hasattr(item, field):
                     setattr(item, field, value)
             db.add(item)
+            touched.append(item)
             counts["update"] += 1
         else:
             counts["skip"] += 1
+
+    # Rows with a barcode + name teach Smart Scan (never over seller-confirmed memory).
+    remember_items(db, current_user.id, touched)
 
     job.status = "committed"
     job.rows_created = counts["create"]

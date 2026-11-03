@@ -138,6 +138,8 @@ export interface ReceiptData {
   total: number;
   payments: { method: string; cents: number }[];
   pending?: boolean;
+  /** Server order id once synced; enables the PDF receipt. */
+  orderId?: string;
 }
 
 /** Plain-text receipt for the native share sheet (Messages, mail, notes). */

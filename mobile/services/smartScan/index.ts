@@ -22,6 +22,7 @@ export {
 } from "./stability";
 export { isLiveScanAvailable, getLiveScannerView };
 import {
+  backfillScanMemoryOnce as backfillWith,
   mergeFields,
   rememberScan as rememberWith,
   resolveScan as resolveWith,
@@ -45,6 +46,9 @@ export const scanRemote: ScanRemote = {
   download() {
     return request<ScanResolution[]>("/scan/memory");
   },
+  backfill() {
+    return request<{ created: number; updated: number; skipped: number }>("/scan/backfill", { method: "POST" });
+  },
 };
 
 export function resolveScan(barcode: string, styleCode?: string) {
@@ -57,6 +61,12 @@ export function rememberScan(barcode: string, fields: ScanFields) {
 
 export function syncScanMemory() {
   return syncWith(scanRemote);
+}
+
+/** Once per device: seed account memory from existing inventory UPCs. */
+export async function backfillScanMemoryOnce() {
+  if (!isOnline()) return false;
+  return backfillWith(scanRemote);
 }
 
 /** Read a label photo on the phone and merge it under anything remembered. */

@@ -124,12 +124,13 @@ export async function downloadAndShareRemote(
   filename: string,
   token: string | null,
   mimeType = XLSX_MIME,
+  failMessage: (status: number) => string = errorForStatus,
 ) {
   const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
   if (Platform.OS === "web" && typeof window !== "undefined") {
     const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error(errorForStatus(res.status));
+    if (!res.ok) throw new Error(failMessage(res.status));
     webDownloadBlob(await res.blob(), filename);
     return;
   }
@@ -142,11 +143,15 @@ export async function downloadAndShareRemote(
   const uri = `${baseDir}${filename}`;
   const result = await FileSystem.downloadAsync(url, uri, { headers });
   if (result.status >= 400) {
-    throw new Error(errorForStatus(result.status));
+    throw new Error(failMessage(result.status));
   }
 
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(result.uri, { mimeType, dialogTitle: filename });
+    await Sharing.shareAsync(result.uri, {
+      mimeType,
+      dialogTitle: filename,
+      ...(mimeType === "application/pdf" ? { UTI: "com.adobe.pdf" } : {}),
+    });
     return;
   }
   throw new Error("File sharing is not available on this device.");

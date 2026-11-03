@@ -56,11 +56,10 @@ export default function ShowSummaryScreen() {
 
   useEffect(() => {
     // First load: the server applies the saved show start when no window is
-    // sent; without one it falls back to UTC midnight, so re-ask for local midnight.
+    // sent; without one it falls back to the seller's local midnight (tz offset).
     api
-      .getShowSummary()
+      .getShowSummary({ tzOffsetMinutes: new Date().getTimezoneOffset() })
       .then((summary) => {
-        if (!summary.show_started_at) return load("show", null);
         setData(summary);
         setShowStart(summary.show_started_at);
         setLoading(false);

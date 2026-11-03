@@ -40,10 +40,11 @@ import {
     rememberScan,
     resolveScan,
     syncScanMemory,
+    backfillScanMemoryOnce,
     type ScanFields,
 } from "../../../services/smartScan";
 
-import { COLORS } from "../../../theme/tokens";
+import { COLORS, FONT_SCALE } from "../../../theme/tokens";
 const CATEGORY_PREFIXES: Record<string, string> = {
     sneakers: "SNK",
     clothing: "CLO",
@@ -122,7 +123,10 @@ export default function AddItemScreen() {
 
     // Bring this account's barcode memory onto the phone so scans work offline.
     useEffect(() => {
-        syncScanMemory().catch(() => undefined);
+        // ...then, once per device, learn barcodes from inventory imported before Smart Scan.
+        syncScanMemory()
+            .then(() => backfillScanMemoryOnce())
+            .catch(() => undefined);
         let alive = true;
         isLiveScanAvailable()
             .then((ok) => {
@@ -693,7 +697,7 @@ export default function AddItemScreen() {
                                 <Text style={styles.variantSize}>{v.size}</Text>
                                 <View style={styles.qtyControls}>
                                     <IconButton icon="remove" label={`Decrease quantity for ${v.size}`} onPress={() => adjustVariantQty(idx, -1)} />
-                                    <Text style={styles.qtyValue}>{v.quantity}</Text>
+                                    <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.qtyValue}>{v.quantity}</Text>
                                     <IconButton icon="add" label={`Increase quantity for ${v.size}`} onPress={() => adjustVariantQty(idx, 1)} />
                                 </View>
                                 <IconButton icon="close" label={`Remove size ${v.size}`} onPress={() => removeVariant(idx)} />
@@ -725,7 +729,7 @@ export default function AddItemScreen() {
                         <Text style={styles.sectionTitle}>Quantity</Text>
                         <View style={styles.qtyRow}>
                             <IconButton icon="remove" label="Decrease quantity" onPress={() => setQuantity((q) => Math.max(1, q - 1))} />
-                            <Text style={styles.qtyValueLarge}>{quantity}</Text>
+                            <Text maxFontSizeMultiplier={FONT_SCALE.display} style={styles.qtyValueLarge}>{quantity}</Text>
                             <IconButton icon="add" label="Increase quantity" onPress={() => setQuantity((q) => q + 1)} />
                         </View>
                     </>

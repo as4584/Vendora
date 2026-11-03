@@ -19,7 +19,7 @@ import {
   Sparkline,
   StatCard,
 } from "../../components/ui";
-import { COLORS, GRADIENTS, RADII, SPACING } from "../../theme/tokens";
+import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../../theme/tokens";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -150,7 +150,7 @@ export default function DashboardScreen() {
       {/* Hero: today's profit, the one figure that matters */}
       <GradientCard colors={GRADIENTS.hero}>
         <Text style={styles.heroLabel}>Profit today</Text>
-        <Text style={styles.heroValue}>{money(data.net_profit_today)}</Text>
+        <Text maxFontSizeMultiplier={FONT_SCALE.display} style={styles.heroValue}>{money(data.net_profit_today)}</Text>
         {heroDelta ? <Text style={[styles.heroDelta, { color: heroDelta.tone === "up" ? COLORS.success : COLORS.danger }]}>{heroDelta.text}</Text> : null}
         {showHeroSpark ? (
           <View style={styles.heroSparkWrap}>
@@ -174,7 +174,7 @@ export default function DashboardScreen() {
         <View style={styles.overviewHead}>
           <Text style={styles.overviewTitle}>Business overview</Text>
           <View style={styles.periodPill}>
-            <Text style={styles.periodPillText}>Last 30 days</Text>
+            <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.periodPillText}>Last 30 days</Text>
             <Icon name="chevron-down" size={13} color={COLORS.textMuted} />
           </View>
         </View>

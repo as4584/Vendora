@@ -277,8 +277,17 @@ def _item_out(db: Session, item: InventoryItem) -> ItemOut:
 
 
 @router.get("/items/{item_id}", response_model=ItemOut)
-def stockx_item(item_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return _item_out(db, _item(db, current_user, item_id))
+async def stockx_item(
+    item_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    item = _item(db, current_user, item_id)
+    # Viewing the item re-checks asks StockX hadn't confirmed yet (best effort).
+    if stockx_service.is_configured() and stockx_service.is_connected(db, current_user.id):
+        try:
+            await stockx_service.recheck_pending_listings(db, current_user.id, item_id=item.id)
+        except HTTPException:
+            db.rollback()
+    return _item_out(db, item)
 
 
 @router.get("/items/{item_id}/market", response_model=list[MarketOut])
