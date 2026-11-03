@@ -52,6 +52,36 @@ describe('API endpoint contracts', () => {
     body?: unknown;
   }> = [
     {
+      name: 'show summary (server default window)',
+      call: () => api.getShowSummary(),
+      path: '/dashboard/show-summary',
+    },
+    {
+      name: 'show summary window',
+      call: () => api.getShowSummary({ since: '2026-11-02T00:00:00Z', until: '2026-11-03T00:00:00Z' }),
+      path: '/dashboard/show-summary?since=2026-11-02T00%3A00%3A00Z&until=2026-11-03T00%3A00%3A00Z',
+    },
+    {
+      name: 'start show now',
+      call: () => api.startShow(),
+      path: '/dashboard/show-start',
+      method: 'PUT',
+      body: {},
+    },
+    {
+      name: 'start show at a time',
+      call: () => api.startShow('2026-11-02T13:00:00Z'),
+      path: '/dashboard/show-start',
+      method: 'PUT',
+      body: { started_at: '2026-11-02T13:00:00Z' },
+    },
+    {
+      name: 'end show',
+      call: () => api.endShow(),
+      path: '/dashboard/show-start',
+      method: 'DELETE',
+    },
+    {
       name: 'register',
       call: () => api.register('USER@EXAMPLE.COM', 'secret123', 'Shop'),
       path: '/auth/register',
@@ -310,6 +340,9 @@ describe('API endpoint contracts', () => {
       lastRequest(fetchMock as unknown as jest.Mock).url,
       '/inventory?page=3&per_page=10&q=shoe&status=listed&source=square&available_only=true',
     );
+
+    await api.listItems({ upc: '012345678905', perPage: 5 });
+    expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/inventory?page=1&per_page=5&upc=012345678905');
 
     await api.listTransactions(2, 40);
     expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/transactions?page=2&per_page=40');
