@@ -1224,6 +1224,11 @@ export async function exportTransactionsCSV(): Promise<string> {
   return request<string>("/export/transactions");
 }
 
+/** Absolute URL for a checkout's branded PDF receipt (needs the auth header). */
+export function orderReceiptPdfUrl(orderId: string): string {
+  return `${API_BASE_URL}/transactions/order/${encodeURIComponent(orderId)}/receipt.pdf`;
+}
+
 /** Absolute URL for the styled .xlsx export with embedded item photos (Pro). */
 export function exportInventoryXlsxUrl(): string {
   return `${API_BASE_URL}/export/inventory?format=xlsx`;
@@ -1351,10 +1356,14 @@ export interface ShowSummary {
   top_items: { item_id: string; name: string; units: number; revenue: string }[];
 }
 
-export async function getShowSummary(params: { since?: string; until?: string } = {}): Promise<ShowSummary> {
+export async function getShowSummary(
+  params: { since?: string; until?: string; tzOffsetMinutes?: number } = {},
+): Promise<ShowSummary> {
   const qs = new URLSearchParams();
   if (params.since) qs.set("since", params.since);
   if (params.until) qs.set("until", params.until);
+  // Date.getTimezoneOffset(): the server then starts "today" at the seller's local midnight.
+  if (params.tzOffsetMinutes !== undefined) qs.set("tz_offset_minutes", String(params.tzOffsetMinutes));
   const query = qs.toString();
   return request<ShowSummary>(`/dashboard/show-summary${query ? `?${query}` : ""}`);
 }

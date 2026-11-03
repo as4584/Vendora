@@ -9,7 +9,7 @@ import { ReactNode } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { BRAND, COLORS, CONTROL, MIN_TOUCH, RADII, TYPE } from "../theme/tokens";
+import { BRAND, COLORS, CONTROL, FONT_SCALE, MIN_TOUCH, RADII, TYPE } from "../theme/tokens";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
 export type ButtonSize = "sm" | "md" | "lg";
@@ -105,7 +105,7 @@ export function Button({
         <Text
           numberOfLines={1}
           adjustsFontSizeToFit
-          maxFontSizeMultiplier={1.4}
+          maxFontSizeMultiplier={FONT_SCALE.control}
           style={[styles.label, size === "sm" && styles.labelSm, { color: colors.text }]}
         >
           {label}

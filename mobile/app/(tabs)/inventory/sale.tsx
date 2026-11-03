@@ -18,7 +18,7 @@ import { Card, Icon, Pill, SectionLabel } from "../../../components/ui";
 import { Button, IconButton, triggerHaptic } from "../../../components/Button";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 import { ReceiptSheet } from "../../../components/ReceiptSheet";
-import { BRAND, COLORS, RADII, SPACING, TYPE } from "../../../theme/tokens";
+import { BRAND, COLORS, FONT_SCALE, RADII, SPACING, TYPE } from "../../../theme/tokens";
 import { formatCurrency, resolveQty } from "../../../utils/inventory";
 import {
   centsToString,
@@ -322,6 +322,7 @@ export default function QuickSaleScreen() {
           cents: toCents(p.amount),
         })),
         pending: offline,
+        orderId: offline ? undefined : order.order_id,
       });
     } catch (err: any) {
       Alert.alert("Sale failed", err?.message || "Could not log this sale.");
@@ -429,7 +430,7 @@ export default function QuickSaleScreen() {
                     </View>
                     <View style={styles.qtyStepper}>
                       <IconButton icon="remove" label={`Decrease ${line.item.name}`} onPress={() => changeQty(line.item.id, -1)} />
-                      <Text style={styles.qtyValue}>{line.qty}</Text>
+                      <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.qtyValue}>{line.qty}</Text>
                       <IconButton icon="add" label={`Increase ${line.item.name}`} onPress={() => changeQty(line.item.id, 1)} />
                     </View>
                   </View>
@@ -492,7 +493,7 @@ export default function QuickSaleScreen() {
 
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>{formatCents(totals.total)}</Text>
+              <Text maxFontSizeMultiplier={FONT_SCALE.display} style={styles.totalValue}>{formatCents(totals.total)}</Text>
             </View>
           </Card>
         ) : null}
@@ -669,7 +670,7 @@ function Chip({
       style={[styles.chip, compact && styles.chipCompact, active && styles.chipActive, disabled && styles.chipDisabled]}
     >
       {icon ? <Icon name={icon} size={15} color={active ? BRAND.onPrimary : COLORS.textMuted} /> : null}
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+      <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
     </TouchableOpacity>
   );
 }

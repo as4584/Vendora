@@ -1,6 +1,7 @@
 import {
   formatCompactDate,
   formatCurrency,
+  formatShortDateTime,
   resolveQty,
   resolvedPhoto,
   sizeBreakdown,
@@ -17,6 +18,17 @@ describe('inventory formatting utilities', () => {
     expect(formatCompactDate(null)).toBe('Never');
     expect(formatCompactDate('not-a-date')).toBe('Unknown');
     expect(formatCompactDate('2026-01-02T00:00:00Z')).toBeTruthy();
+  });
+
+  it('formats short date-times for payment history without seconds', () => {
+    // Local-time inputs so the assertion holds in any CI time zone.
+    const now = new Date(2026, 10, 5, 9, 0, 0);
+    const value = new Date(2026, 10, 3, 14, 41, 37).toISOString();
+    expect(formatShortDateTime(value, now)).toBe('Nov 3, 2:41 PM');
+    const lastYear = new Date(2025, 0, 9, 8, 5, 59).toISOString();
+    expect(formatShortDateTime(lastYear, now)).toBe('Jan 9, 2025, 8:05 AM');
+    expect(formatShortDateTime(null)).toBe('Never');
+    expect(formatShortDateTime('nope')).toBe('Unknown');
   });
 
   it('resolves photos, quantities, and size descriptions', () => {

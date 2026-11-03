@@ -96,6 +96,11 @@ describe('API endpoint contracts', () => {
       path: '/dashboard/show-summary?since=2026-11-02T00%3A00%3A00Z&until=2026-11-03T00%3A00%3A00Z',
     },
     {
+      name: 'show summary local today',
+      call: () => api.getShowSummary({ tzOffsetMinutes: 300 }),
+      path: '/dashboard/show-summary?tz_offset_minutes=300',
+    },
+    {
       name: 'start show now',
       call: () => api.startShow(),
       path: '/dashboard/show-start',

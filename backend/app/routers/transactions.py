@@ -12,7 +12,7 @@ import uuid
 from decimal import Decimal
 
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -33,6 +33,7 @@ from app.schemas.transaction import (
 )
 from app.services.profit import calculate_net_amount
 from app.services.checkout import allocate
+from app.services.invoice_pdf import generate_receipt_pdf
 from app.services.inventory import deduct_stock, restore_stock, get_available_quantity
 from app.services.invoice import (
     _deduct_variant_quantity,
@@ -368,6 +369,55 @@ def get_sale_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
+
+
+@router.get("/order/{order_id}/receipt.pdf")
+def get_sale_receipt_pdf(
+    order_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The checkout's receipt as a PDF (same branding as invoices)."""
+    order = _load_order(db, current_user.id, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    item_ids = [t.item_id for t in order.transactions if t.item_id]
+    names = dict(
+        db.query(InventoryItem.id, InventoryItem.name)
+        .filter(InventoryItem.user_id == current_user.id, InventoryItem.id.in_(item_ids))
+        .all()
+    ) if item_ids else {}
+    lines = []
+    for t in order.transactions:
+        qty = t.quantity or 1
+        line_subtotal = (t.gross_amount or Decimal("0.00")) + (t.discount_amount or Decimal("0.00"))
+        lines.append({
+            "name": names.get(t.item_id) or "Item",
+            "size": t.variant_size,
+            "quantity": qty,
+            "unit_price": (line_subtotal / qty).quantize(Decimal("0.01")),
+            "line_total": line_subtotal,
+        })
+    payments = [{"method": p.method, "amount": p.amount} for p in order.payments] or [
+        {"method": order.transactions[0].method, "amount": order.total_amount}
+    ]
+    number = f"R-{str(order.order_id).split('-')[0].upper()}"
+    pdf = generate_receipt_pdf(
+        user=current_user,
+        receipt_number=number,
+        created_at=order.created_at,
+        lines=lines,
+        subtotal=order.subtotal_amount,
+        discount=order.discount_amount,
+        tax=order.tax_amount,
+        total=order.total_amount,
+        payments=payments,
+    )
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="receipt-{number}.pdf"'},
+    )
 
 
 @router.get("", response_model=TransactionListResponse)

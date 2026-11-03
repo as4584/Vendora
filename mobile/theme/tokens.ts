@@ -85,5 +85,12 @@ export const ELEVATION = {
 };
 
 // Control heights. Apple's minimum touch target is 44pt; "sm" reaches it via hitSlop.
+/**
+ * Dynamic Type caps (Text maxFontSizeMultiplier). Body copy scales freely and
+ * wraps; only text inside fixed-size chrome (tab bar, pills, badges, stepper
+ * glyphs, big hero numbers) is capped so it can't clip or push the layout.
+ */
+export const FONT_SCALE = { chrome: 1.3, display: 1.3, control: 1.4 } as const;
+
 export const CONTROL = { sm: 36, md: 48, lg: 52 };
 export const MIN_TOUCH = 44;

@@ -10,6 +10,7 @@ import base64
 import os
 import tempfile
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from fpdf import FPDF
@@ -72,37 +73,12 @@ def _draw_initials_circle(pdf: FPDF, x: float, y: float, size: float, user: User
     pdf.cell(iw + 2, 7, initials, align="C")
 
 
-# ─── Main generator ──────────────────────────────────────────────────────────
+def _draw_brand_header(pdf: FPDF, user: User, accent: tuple, heading: str,
+                       L: float, T: float, W: float) -> float:
+    """Logo, business name/contact (left) and a big heading (right).
 
-def generate_invoice_pdf(
-    invoice: Invoice,
-    items: list,
-    user: User,
-    inv_number: str,
-) -> bytes:
-    """Return PDF bytes for the given invoice.
-
-    Args:
-        invoice:    Invoice ORM object.
-        items:      List of InvoiceItem ORM objects for this invoice.
-        user:       The invoice owner (seller).
-        inv_number: Human-readable invoice number, e.g. 'INV0005'.
+    Shared by invoices and sale receipts. Returns the y of the separator line.
     """
-    pdf = FPDF(orientation="P", unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=False)
-    pdf.add_page()
-
-    L: float = 20      # left margin
-    T: float = 15      # top margin
-    W: float = 170     # usable width  (A4 210 − 2×20)
-
-    # Per-business accent colour (falls back to Resqlo blue).
-    accent = _hex_to_rgb(getattr(user, "invoice_accent_color", None)) or BLUE
-
-    # ── Top accent bar (full width) ───────────────────────────────────────────
-    pdf.set_fill_color(*accent)
-    pdf.rect(0, 0, 210, 4, style="F")
-
     # ── Logo / profile picture (the business icon) ────────────────────────────
     pic_size: float = 22
     tmp_path = _load_profile_tmp(user)
@@ -141,16 +117,52 @@ def generate_invoice_pdf(
         pdf.cell(W / 2, 4, line, align="L")
         cy += 4
 
-    # "INVOICE" heading (right side, large)
+    # Heading, e.g. "INVOICE" / "RECEIPT" (right side, large)
     pdf.set_font("Helvetica", "B", 28)
     pdf.set_text_color(*DARK)
     pdf.set_xy(L + W / 2, T)
-    pdf.cell(W / 2, 12, "INVOICE", align="R")
+    pdf.cell(W / 2, 12, heading, align="R")
 
     # ── Separator (adapts to the contact block height) ────────────────────────
     y_sep: float = max(cy + 2, T + pic_size + 9)
     pdf.set_draw_color(*LIGHT_LINE)
     pdf.line(L, y_sep, L + W, y_sep)
+
+    return y_sep
+
+
+# ─── Main generator ──────────────────────────────────────────────────────────
+
+def generate_invoice_pdf(
+    invoice: Invoice,
+    items: list,
+    user: User,
+    inv_number: str,
+) -> bytes:
+    """Return PDF bytes for the given invoice.
+
+    Args:
+        invoice:    Invoice ORM object.
+        items:      List of InvoiceItem ORM objects for this invoice.
+        user:       The invoice owner (seller).
+        inv_number: Human-readable invoice number, e.g. 'INV0005'.
+    """
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=False)
+    pdf.add_page()
+
+    L: float = 20      # left margin
+    T: float = 15      # top margin
+    W: float = 170     # usable width  (A4 210 − 2×20)
+
+    # Per-business accent colour (falls back to Resqlo blue).
+    accent = _hex_to_rgb(getattr(user, "invoice_accent_color", None)) or BLUE
+
+    # ── Top accent bar (full width) ───────────────────────────────────────────
+    pdf.set_fill_color(*accent)
+    pdf.rect(0, 0, 210, 4, style="F")
+
+    y_sep = _draw_brand_header(pdf, user, accent, "INVOICE", L, T, W)
 
     # ── Bill To + Invoice metadata ────────────────────────────────────────────
     y_meta: float = y_sep + 6
@@ -319,5 +331,156 @@ def generate_invoice_pdf(
         pdf.set_font("Helvetica", "I", 9)
         pdf.set_text_color(*MID)
         pdf.multi_cell(W, 5, f"Notes: {invoice.notes}")
+
+    return bytes(pdf.output())
+
+
+# ─── Sale receipt ────────────────────────────────────────────────────────────
+
+PAYMENT_LABELS = {
+    "cash": "Cash", "card": "Card", "venmo": "Venmo", "zelle": "Zelle",
+    "cashapp": "Cash App", "paypal": "PayPal", "apple_pay": "Apple Pay", "split": "Split",
+}
+
+
+def _latin1(text: str) -> str:
+    """The core PDF fonts are Latin-1 only; swap anything else for '?'."""
+    return str(text).encode("latin-1", "replace").decode("latin-1")
+
+
+def _money_str(value) -> str:
+    amount = Decimal(value or 0).quantize(Decimal("0.01"))
+    sign = "-" if amount < 0 else ""
+    return f"{sign}${abs(amount):,.2f}"
+
+
+def generate_receipt_pdf(
+    *,
+    user: User,
+    receipt_number: str,
+    created_at: Optional[datetime],
+    lines: list[dict],
+    subtotal,
+    discount,
+    tax,
+    total,
+    payments: list[dict],
+) -> bytes:
+    """Return PDF bytes for an in-person sale receipt.
+
+    Same look as the invoice (accent bar, logo/initials, business block) so a
+    seller's paperwork matches; the footer credits Resqlo.
+
+    lines:    [{"name", "size", "quantity", "unit_price", "line_total"}]
+    payments: [{"method", "amount"}]
+    """
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=False)
+    pdf.add_page()
+    L, T, W = 20.0, 15.0, 170.0
+    accent = _hex_to_rgb(getattr(user, "invoice_accent_color", None)) or BLUE
+
+    pdf.set_fill_color(*accent)
+    pdf.rect(0, 0, 210, 4, style="F")
+    y_sep = _draw_brand_header(pdf, user, accent, "RECEIPT", L, T, W)
+
+    when = (created_at or datetime.now()).strftime("%b %d, %Y %I:%M %p")
+    y = y_sep + 6
+    for label, value in (("RECEIPT:", receipt_number), ("DATE:", when)):
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(*accent)
+        pdf.set_xy(L, y)
+        pdf.cell(22, 5, label, align="L")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*DARK)
+        pdf.set_xy(L + 22, y)
+        pdf.cell(W - 22, 5, _latin1(value), align="L")
+        y += 6
+
+    def _table_header() -> None:
+        nonlocal y
+        pdf.set_fill_color(*accent)
+        pdf.rect(L, y, W, 9, style="F")
+        x = L
+        for cw, label, align in zip(col_w, ["Item", "Qty", "Price", "Amount"], ["L", "C", "R", "R"]):
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*WHITE)
+            pdf.set_xy(x + 2, y + 2)
+            pdf.cell(cw - 2, 5, label, align=align)
+            x += cw
+        y += 9
+
+    col_w = [W * 0.50, W * 0.15, W * 0.175, W * 0.175]
+    y += 4
+    _table_header()
+    for line in lines:
+        if y > 255:
+            pdf.add_page()
+            y = T
+            _table_header()
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*DARK)
+        pdf.set_xy(L + 2, y + 2)
+        pdf.cell(col_w[0] - 4, 5, _latin1(line.get("name") or "Item")[:60], align="L")
+        if line.get("size"):
+            pdf.set_font("Helvetica", "", 8)
+            pdf.set_text_color(*MID)
+            pdf.set_xy(L + 2, y + 7)
+            pdf.cell(col_w[0] - 4, 4, _latin1(f"Size: {line['size']}"), align="L")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(*DARK)
+        pdf.set_xy(L + col_w[0], y + 2)
+        pdf.cell(col_w[1] - 2, 5, str(line.get("quantity") or 1), align="C")
+        pdf.set_xy(L + col_w[0] + col_w[1], y + 2)
+        pdf.cell(col_w[2] - 2, 5, _money_str(line.get("unit_price")), align="R")
+        pdf.set_xy(L + col_w[0] + col_w[1] + col_w[2], y + 2)
+        pdf.cell(col_w[3] - 2, 5, _money_str(line.get("line_total")), align="R")
+        y += 11
+        pdf.set_draw_color(*LIGHT_LINE)
+        pdf.line(L, y, L + W, y)
+
+    rows = [("SUBTOTAL:", _money_str(subtotal), False)]
+    if Decimal(discount or 0) > 0:
+        rows.append(("DISCOUNT:", _money_str(-Decimal(discount)), False))
+    if Decimal(tax or 0) > 0:
+        rows.append(("TAX:", _money_str(tax), False))
+    rows.append(("TOTAL:", _money_str(total), True))
+    for part in payments:
+        method = part.get("method") or ""
+        rows.append((f"PAID ({PAYMENT_LABELS.get(method, method).upper()}):", _money_str(part.get("amount")), False))
+    if y + 8 + len(rows) * 7 + 40 > 290:
+        pdf.add_page()
+        y = T
+
+    tx, tl, tv = L + W * 0.45, W * 0.36, W * 0.19
+    y += 8
+    for label, value, bold in rows:
+        pdf.set_font("Helvetica", "B" if bold else "", 10)
+        pdf.set_text_color(*(DARK if bold else MID))
+        pdf.set_xy(tx, y)
+        pdf.cell(tl, 6, _latin1(label), align="R")
+        pdf.set_text_color(*DARK)
+        pdf.set_xy(tx + tl, y)
+        pdf.cell(tv, 6, value, align="R")
+        y += 7
+
+    y += 6
+    pdf.set_fill_color(*BLACK)
+    pdf.rect(L, y, W, 12, style="F")
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(*WHITE)
+    pdf.set_xy(L + 4, y + 2.5)
+    pdf.cell(W * 0.6, 7, "PAID", align="L")
+    pdf.set_xy(L + W * 0.6, y + 2.5)
+    pdf.cell(W * 0.4 - 4, 7, _money_str(total), align="R")
+    y += 20
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(*MID)
+    pdf.set_xy(L, y)
+    pdf.cell(W, 5, "Thank you!", align="C")
+    pdf.set_font("Helvetica", "", 7)
+    pdf.set_xy(L, y + 6)
+    pdf.cell(W, 4, "Receipt by Resqlo", align="C")
 
     return bytes(pdf.output())

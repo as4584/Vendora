@@ -10,7 +10,7 @@ import { invoiceBalance, invoicePaid } from "../utils/invoices";
 import { Button, triggerHaptic } from "./Button";
 import { Icon } from "./ui";
 import { COLORS, MIN_TOUCH, RADII, SPACING, TYPE } from "../theme/tokens";
-import { formatCompactDate, formatCurrency } from "../utils/inventory";
+import { formatCurrency, formatShortDateTime } from "../utils/inventory";
 
 export const PAYMENT_METHODS: { value: api.InvoicePaymentMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
@@ -120,8 +120,8 @@ export function InvoicePayments({
             <View key={p.id} style={styles.historyRow}>
               <Icon name="checkmark-circle" size={18} color={COLORS.success} />
               <View style={styles.historyText}>
-                <Text style={styles.historyTitle} numberOfLines={1}>
-                  {methodLabel(p.method)} · {formatCompactDate(p.created_at)}
+                <Text style={styles.historyTitle} numberOfLines={2}>
+                  {methodLabel(p.method)} · {formatShortDateTime(p.created_at)}
                 </Text>
                 {p.note ? (
                   <Text style={styles.historyNote} numberOfLines={2}>

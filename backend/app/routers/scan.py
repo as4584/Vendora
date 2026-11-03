@@ -153,6 +153,38 @@ def learn(
     return ScanResult(barcode=mem.barcode, match="memory", fields=mem.fields, times_seen=mem.times_seen)
 
 
+class BackfillResult(BaseModel):
+    created: int
+    updated: int
+    skipped: int
+
+
+@router.post("/backfill", response_model=BackfillResult)
+def backfill(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One-time (idempotent) seed of barcode memory from the seller's existing
+    items that carry a UPC. Never overwrites what the seller confirmed."""
+    from app.services.scan_memory import remember_items  # avoids an import cycle
+
+    items = (
+        db.query(InventoryItem)
+        .filter(
+            InventoryItem.user_id == current_user.id,
+            InventoryItem.upc.isnot(None),
+            InventoryItem.upc != "",
+            InventoryItem.deleted_at.is_(None),
+        )
+        # Newest first: when two items share a barcode, the newer one wins.
+        .order_by(InventoryItem.updated_at.desc())
+        .all()
+    )
+    counts = remember_items(db, current_user.id, items)
+    db.commit()
+    return BackfillResult(**counts)
+
+
 @router.get("/memory", response_model=list[ScanResult])
 def list_memory(
     limit: int = Query(default=2000, ge=1, le=5000),

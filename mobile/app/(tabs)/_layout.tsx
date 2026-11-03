@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
-import { View, StyleSheet, TouchableOpacity, GestureResponderEvent } from "react-native";
-import { COLORS } from "../../theme/tokens";
+import { View, StyleSheet, Text, TouchableOpacity, GestureResponderEvent } from "react-native";
+import { COLORS, FONT_SCALE } from "../../theme/tokens";
 import { Icon, type IconName } from "../../components/ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -40,13 +40,19 @@ export default function TabsLayout() {
           backgroundColor: COLORS.bgElevated,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: 64 + bottomInset,
-          paddingTop: 8,
+          height: 70 + bottomInset,
+          paddingTop: 6,
           paddingBottom: bottomInset,
         },
         tabBarActiveTintColor: COLORS.primaryBright,
         tabBarInactiveTintColor: COLORS.textSoft,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
+        tabBarLabelStyle: styles.tabLabel,
+        // Dynamic Type: labels grow a little, but the fixed-height bar never clips them.
+        tabBarLabel: ({ color, children }) => (
+          <Text maxFontSizeMultiplier={FONT_SCALE.chrome} numberOfLines={1} style={[styles.tabLabel, { color }]}>
+            {children}
+          </Text>
+        ),
         tabBarItemStyle: { paddingVertical: 2 },
       }}
     >
@@ -93,6 +99,7 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  tabLabel: { fontSize: 11, fontWeight: "500" },
   fabWrap: {
     top: -18,
     justifyContent: "center",

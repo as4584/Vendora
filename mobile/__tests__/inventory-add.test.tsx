@@ -65,6 +65,7 @@ jest.mock('../services/smartScan', () => ({
   rememberScan: (...a: unknown[]) => mockRememberScan(...a),
   readLabel: (...a: unknown[]) => mockReadLabel(...a),
   syncScanMemory: jest.fn(async () => 0),
+  backfillScanMemoryOnce: jest.fn(async () => true),
   isLabelReaderAvailable: () => mockLabelReader,
 }));
 
@@ -102,6 +103,13 @@ describe('add inventory screen', () => {
   afterEach(() => {
     alertSpy.mockRestore();
     warnSpy.mockRestore();
+  });
+
+  it('syncs scan memory, then runs the one-time inventory backfill on mount', async () => {
+    const smartScan = require('../services/smartScan');
+    render(<AddItemScreen />);
+    await waitFor(() => expect(smartScan.backfillScanMemoryOnce).toHaveBeenCalled());
+    expect(smartScan.syncScanMemory).toHaveBeenCalled();
   });
 
   it('requires an item name before creating inventory', () => {

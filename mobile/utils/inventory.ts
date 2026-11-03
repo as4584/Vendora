@@ -59,3 +59,20 @@ export function formatCompactDate(value?: string | null) {
   if (Number.isNaN(parsed.getTime())) return "Unknown";
   return parsed.toLocaleString();
 }
+
+/**
+ * Short date + time for history rows, e.g. "Nov 3, 2:41 PM" (no seconds).
+ * Adds the year only when it isn't the current one.
+ */
+export function formatShortDateTime(value?: string | null, now: Date = new Date()) {
+  if (!value) return "Never";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Unknown";
+  const date = parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(parsed.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+  const time = parsed.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${date}, ${time}`;
+}

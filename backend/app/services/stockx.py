@@ -60,6 +60,22 @@ MAX_429_RETRIES = 3
 OUTBOX_BACKOFF_BASE = timedelta(seconds=30)
 OPEN_LISTING_STATUSES = ("pending", "active")
 SKIP_ORDER_STATUSES = ("CANCELED", "CANCELLED", "RETURNED", "FAILED", "DECLINED")
+# StockX listing status -> stockx_listings.status (unknown values leave the row alone).
+REMOTE_LISTING_STATUS = {
+    "ACTIVE": "active",
+    "INACTIVE": "inactive",
+    "DELETED": "deleted",
+    "CANCELED": "deleted",
+    "CANCELLED": "deleted",
+    "MATCHED": "sold",
+    "COMPLETED": "sold",
+}
+# A pending ask StockX never surfaces within this long is marked failed.
+PENDING_GIVE_UP = timedelta(hours=24)
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 NOT_CONFIGURED = "StockX not configured"
 NOT_CONNECTED = "StockX not connected"
@@ -567,6 +583,78 @@ class StockxService(ProviderAdapter):
         db.commit()
         return listing
 
+    async def recheck_pending_listings(
+        self, db: Session, user_id: uuid.UUID, item_id: Optional[uuid.UUID] = None,
+        now: Optional[datetime] = None,
+    ) -> int:
+        """Resolve asks still "pending" (StockX accepted the create but returned
+        no listingId yet). With an id, read that listing; without one, find our
+        ask among the seller's listings for the same variant + amount. Asks that
+        never show up within PENDING_GIVE_UP are marked failed so they don't sit
+        pending forever. Returns how many rows changed."""
+        now = now or datetime.now(timezone.utc)
+        query = db.query(StockxListing).filter(
+            StockxListing.user_id == user_id, StockxListing.status == "pending"
+        )
+        if item_id is not None:
+            query = query.filter(StockxListing.inventory_item_id == item_id)
+        pending = query.order_by(StockxListing.created_at).all()
+        if not pending:
+            return 0
+        changed = 0
+        remote_by_variant: dict[str, list[dict]] = {}
+        for listing in pending:
+            try:
+                if listing.listing_id:
+                    remote = await self.request(db, user_id, "GET", f"/selling/listings/{listing.listing_id}")
+                else:
+                    if listing.variant_id not in remote_by_variant:
+                        data = await self.request(
+                            db, user_id, "GET", "/selling/listings",
+                            params={"variantIds": listing.variant_id, "pageNumber": 1, "pageSize": 100},
+                        )
+                        remote_by_variant[listing.variant_id] = list((data or {}).get("listings") or [])
+                    remote = self._claim_remote_listing(db, listing, remote_by_variant[listing.variant_id])
+            except StockxAPIError as exc:
+                if exc.status_code == 404 and listing.listing_id:
+                    listing.status = "deleted"
+                    listing.last_error = None
+                    changed += 1
+                else:
+                    listing.last_error = exc.message
+                continue
+            if remote:
+                listing.listing_id = listing.listing_id or str(remote.get("listingId") or "") or None
+                # Still PENDING on StockX: keep the id, re-read it next time.
+                mapped = REMOTE_LISTING_STATUS.get(str(remote.get("status") or "").upper())
+                if mapped:
+                    listing.status = mapped
+                listing.last_error = None
+                changed += 1
+            elif now - _aware(listing.created_at) > PENDING_GIVE_UP:
+                listing.status = "failed"
+                listing.last_error = "StockX never confirmed this ask. List it again."
+                changed += 1
+        db.commit()
+        return changed
+
+    @staticmethod
+    def _claim_remote_listing(db: Session, listing: StockxListing, remote: list[dict]) -> Optional[dict]:
+        """First remote listing for this variant + amount not already tied to a row."""
+        for row in remote:
+            remote_id = str(row.get("listingId") or "")
+            variant = (row.get("variant") or {}).get("variantId") or row.get("variantId")
+            if not remote_id or variant != listing.variant_id:
+                continue
+            if money(row.get("amount")) != Decimal(listing.amount):
+                continue
+            taken = db.query(StockxListing.id).filter(StockxListing.listing_id == remote_id).first()
+            if taken:
+                continue
+            remote.remove(row)
+            return row
+        return None
+
     # ── orders ─────────────────────────────────────────────────────────────────
 
     async def _orders(self, db: Session, user_id: uuid.UUID, path: str) -> list[dict]:
@@ -662,6 +750,8 @@ class StockxService(ProviderAdapter):
 
     async def _do_sync(self, db: Session, user_id: uuid.UUID, run: ProviderSyncRun) -> SyncResult:
         result = SyncResult(run_id=run.id)
+        # Per-listing API errors are recorded on the row, so this never blocks the import.
+        await self.recheck_pending_listings(db, user_id)
         orders = await self._orders(db, user_id, "/selling/orders/active")
         orders += await self._orders(db, user_id, "/selling/orders/history")
         seen: set[str] = set()

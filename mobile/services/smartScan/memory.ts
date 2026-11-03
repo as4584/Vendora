@@ -11,6 +11,7 @@ import type { ScanFields } from "./parseLabel";
 
 const MEMORY_KEY = "scan:memory";
 const PENDING_KEY = "scan:pending";
+const BACKFILL_KEY = "scan:backfilled";
 
 export type ScanMatch = "memory" | "inventory" | "style" | null;
 export type ScanEntry = { fields: ScanFields; times_seen: number; updated_at: string };
@@ -20,6 +21,8 @@ export type ScanRemote = {
   lookup(barcode: string, styleCode?: string): Promise<ScanResolution>;
   learn(barcode: string, fields: ScanFields): Promise<unknown>;
   download(): Promise<ScanResolution[]>;
+  /** Seed account memory from existing inventory UPCs (idempotent on the server). */
+  backfill?(): Promise<{ created: number; updated: number; skipped: number }>;
 };
 
 const PER_BOX_KEYS: (keyof ScanFields)[] = ["size"];
@@ -158,6 +161,19 @@ export async function syncScanMemory(remote: ScanRemote): Promise<number> {
   }
   await writeJson(MEMORY_KEY, memory);
   return rows.length;
+}
+
+/**
+ * One time per device: ask the server to learn barcodes from inventory the
+ * seller already has, then pull anything new down. Failures retry next time.
+ */
+export async function backfillScanMemoryOnce(remote: ScanRemote): Promise<boolean> {
+  if (!remote.backfill) return false;
+  if (await readJson<boolean>(BACKFILL_KEY, false)) return false;
+  const result = await remote.backfill();
+  await writeJson(BACKFILL_KEY, true);
+  if (result.created + result.updated > 0) await syncScanMemory(remote);
+  return true;
 }
 
 export async function forgetScan(rawBarcode: string): Promise<void> {
