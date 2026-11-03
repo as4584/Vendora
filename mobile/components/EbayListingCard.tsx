@@ -11,6 +11,7 @@ import { Alert, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, View } 
 import * as api from "../services/api";
 import { Button } from "./Button";
 import { Card, Pill, SectionLabel } from "./ui";
+import { EbayInsights } from "./EbayInsights";
 import { COLORS, RADII, SPACING, TYPE } from "../theme/tokens";
 
 export const EBAY_CONDITIONS: { value: string; label: string }[] = [
@@ -191,6 +192,7 @@ export function EbayListingCard({ item, available, onChanged }: Props) {
             <Button label="Update price" size="sm" variant="secondary" onPress={openPrice} disabled={busy} />
             <Button label="End listing" size="sm" variant="ghost" onPress={endListing} loading={busy} />
           </View>
+          <EbayInsights itemId={item.id} listPrice={listing.price} />
         </View>
       ) : (
         <View style={styles.stack}>

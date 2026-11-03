@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill, SectionLabel, type IconName } from "../../../components/ui";
 import { Button } from "../../../components/Button";
+import { EbayPayouts } from "../../../components/EbayPayouts";
 import { COLORS, SPACING } from "../../../theme/tokens";
 
 type ProviderKey = "lightspeed" | "square" | "clover" | "ebay";
@@ -189,6 +190,8 @@ export default function SyncCenterScreen() {
       {runs.length > 4 ? (
         <ActionButton label={showAll ? "Show less" : "View All History"} onPress={() => setShowAll((v) => !v)} tone="secondary" />
       ) : null}
+
+      <EbayPayouts connected={!!statuses.ebay?.connected} />
 
       {outbox.length > 0 ? (
         <>

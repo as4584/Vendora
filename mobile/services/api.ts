@@ -1652,6 +1652,81 @@ export interface EbayComps {
   items: { title: string | null; price: string; condition: string | null; url: string | null; image_url: string | null; sold_date: string | null }[];
 }
 
+export interface EbayTraffic {
+  listing_id: string | null;
+  available: boolean;
+  views: number | null;
+  impressions: number | null;
+  click_through_rate: string | null;
+  conversion_rate: string | null;
+  sales: number | null;
+  watchers: number | null;
+  day: string | null;
+  /** Gentle hint when views are high and sales are zero. */
+  price_hint: string | null;
+  /** e.g. "48 views · 3 watchers · 0 sales" */
+  summary: string | null;
+}
+
+export async function getEbayTraffic(itemId: string, refresh = false): Promise<EbayTraffic> {
+  return request<EbayTraffic>(`/integrations/ebay/listings/${encodeURIComponent(itemId)}/traffic${refresh ? "?refresh=true" : ""}`);
+}
+
+export async function getEbayOfferEligibility(itemId: string): Promise<{ listing_id: string | null; eligible: boolean; message: string | null }> {
+  return request(`/integrations/ebay/listings/${encodeURIComponent(itemId)}/offers/eligibility`);
+}
+
+export interface EbayOfferInput {
+  price?: string;
+  discount_percent?: number;
+  duration_days?: number;
+  message?: string;
+}
+
+export async function sendEbayOffer(itemId: string, input: EbayOfferInput): Promise<{ listing_id: string; offers_sent: number; offer_ids: string[] }> {
+  return request(`/integrations/ebay/listings/${encodeURIComponent(itemId)}/offers`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export interface EbayPayout {
+  payout_id: string;
+  amount: string;
+  currency: string;
+  status: string | null;
+  payout_date: string | null;
+  transaction_count: number | null;
+  ebay_net: string | null;
+  resqlo_net: string | null;
+  difference: string | null;
+  orders_matched: number;
+  orders_missing: number;
+  reconciled: boolean;
+}
+
+export interface EbayOrderFees {
+  order_id: string;
+  transaction_id: string | null;
+  gross: string | null;
+  final_value_fee: string;
+  ad_fee: string;
+  shipping_label: string;
+  other_fees: string;
+  total_fees: string;
+  net: string | null;
+  payout_id: string | null;
+}
+
+export async function syncEbayFinances(): Promise<{ orders_with_fees: number; transactions_updated: number; payouts: number }> {
+  return request("/integrations/ebay/finances/sync", { method: "POST" });
+}
+
+export async function listEbayPayouts(): Promise<EbayPayout[]> {
+  return request<EbayPayout[]>("/integrations/ebay/payouts");
+}
+
+export async function listEbayFees(): Promise<EbayOrderFees[]> {
+  return request<EbayOrderFees[]>("/integrations/ebay/fees");
+}
+
 export async function getItemEbayComps(itemId: string): Promise<EbayComps> {
   return request<EbayComps>(`/inventory/${encodeURIComponent(itemId)}/ebay-comps`);
 }
