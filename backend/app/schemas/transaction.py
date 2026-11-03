@@ -7,7 +7,7 @@ from typing import Optional, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-PAYMENT_METHODS = Literal["stripe", "cashapp", "paypal", "zelle", "venmo", "cash", "other"]
+PAYMENT_METHODS = Literal["stripe", "cashapp", "paypal", "zelle", "venmo", "cash", "card", "other"]
 TRANSACTION_STATUSES = Literal["pending", "completed", "failed", "refunded"]
 
 

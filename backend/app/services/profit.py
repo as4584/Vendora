@@ -14,6 +14,7 @@ from decimal import Decimal
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import or_ as sa_or
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
@@ -103,17 +104,19 @@ def get_net_profit(db: Session, user_id, since: Optional[datetime] = None) -> De
         refund_query = refund_query.filter(Transaction.created_at >= since)
     refund_net = refund_query.scalar() or Decimal("0.00")
 
-    # Get total buy_price for sold items (cost basis)
+    # Cost of goods frozen on each sale (refunds carry negative cost).
+    # Counted on the day the sale happened, for exactly the units sold.
     cost_query = db.query(
-        func.coalesce(func.sum(InventoryItem.buy_price), Decimal("0.00"))
+        func.coalesce(func.sum(Transaction.cost_amount), Decimal("0.00"))
     ).filter(
-        InventoryItem.user_id == user_id,
-        InventoryItem.status.in_(["sold", "shipped", "paid", "archived"]),
-        InventoryItem.deleted_at.is_(None),
-        InventoryItem.buy_price.isnot(None),
+        Transaction.user_id == user_id,
+        sa_or(
+            Transaction.is_refund == True,  # noqa: E712
+            Transaction.status.in_(["completed", "refunded"]),
+        ),
     )
     if since:
-        cost_query = cost_query.filter(InventoryItem.updated_at >= since)
+        cost_query = cost_query.filter(Transaction.created_at >= since)
     cost_basis = cost_query.scalar() or Decimal("0.00")
 
     return sales_net + refund_net - cost_basis
@@ -123,10 +126,13 @@ def get_inventory_value(db: Session, user_id) -> dict:
     """Calculate total inventory value and expected value for active items."""
     result = db.query(
         func.coalesce(func.sum(
-            case((InventoryItem.buy_price.isnot(None), InventoryItem.buy_price), else_=Decimal("0.00"))
+            case((InventoryItem.buy_price.isnot(None), InventoryItem.buy_price * InventoryItem.quantity), else_=Decimal("0.00"))
         ), Decimal("0.00")).label("total_cost"),
         func.coalesce(func.sum(
-            case((InventoryItem.expected_sell_price.isnot(None), InventoryItem.expected_sell_price), else_=Decimal("0.00"))
+            case(
+                (InventoryItem.expected_sell_price.isnot(None), InventoryItem.expected_sell_price * InventoryItem.quantity),
+                else_=Decimal("0.00"),
+            )
         ), Decimal("0.00")).label("total_expected"),
     ).filter(
         InventoryItem.user_id == user_id,
