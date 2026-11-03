@@ -1,6 +1,6 @@
 """Apple in-app purchase entitlements, reported by RevenueCat webhooks.
 
-The iOS app identifies RevenueCat customers by the Vendora user id
+The iOS app identifies RevenueCat customers by the Resqlo user id
 (``Purchases.logIn(user.id)``), so ``app_user_id`` maps straight to a user.
 Each Apple product gets one ``Subscription`` row (provider="apple"); the
 user's tier is then recomputed from *all* active rows, Stripe and Apple alike,

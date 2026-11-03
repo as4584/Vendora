@@ -1,11 +1,11 @@
 # Smart Scan
 
-**Scan a shoebox. Vendora fills in the item. Everything happens on your phone.**
+**Scan a shoebox. Resqlo fills in the item. Everything happens on your phone.**
 
-<img src="img/smart-scan-add.png" alt="Vendora Add Stock screen with the Scan a box button" width="320">
+<img src="img/smart-scan-add.png" alt="Resqlo Add Stock screen with the Scan a box button" width="320">
 
 Smart Scan turns the camera into a stocking tool for resellers. Point it at the
-barcode on a box and Vendora fills in the name, style code, size, colorway and
+barcode on a box and Resqlo fills in the name, style code, size, colorway and
 your usual prices, then you save. It uses no outside product databases and no
 paid lookup services. The app learns from you.
 
@@ -32,7 +32,7 @@ and the printed label **at the same time**, with no button to press:
 
 Recognition runs entirely on the phone. If the phone can't run the live
 scanner (older chip, camera access denied, Expo Go, Android, web), or it
-stops mid-scan, Vendora falls back to the tap-to-read flow below.
+stops mid-scan, Resqlo falls back to the tap-to-read flow below.
 
 > Status: the live scanner's Swift (`LiveScannerView.swift`) has not yet been
 > run on a device. The JS side (voting, checklist, fallback) is unit tested
@@ -46,19 +46,19 @@ When you tap **Scan a box** and point at the barcode:
    field fills in right away: name, style code, colorway, size, your buy price
    and your sell price. This works with no signal.
 2. **Your existing inventory.** If an item you already stock carries this
-   barcode, Vendora copies its details.
-3. **The box label (read on the phone).** For a barcode Vendora has never seen,
+   barcode, Resqlo copies its details.
+3. **The box label (read on the phone).** For a barcode Resqlo has never seen,
    the camera stays open and asks for the label. Tap **Read label**. Apple's
-   on-device text recognition reads the printed label, and Vendora picks out:
+   on-device text recognition reads the printed label, and Resqlo picks out:
    - **Style code**: Nike/Jordan `DD1391-100`, older Nike `555088-134`,
      adidas `GW2871` / `B75806`, New Balance `U9060AAA`
    - **Size**: US sizes over UK/EUR, including kids sizes like `5.5Y`
    - **Colorway**: `WHITE/BLACK-WHITE` becomes `White/Black-White`
    - **Brand and model name**
 4. **Same shoe, new size.** If the label's style code matches a shoe you've
-   already saved, Vendora fills in everything from that shoe and takes the size
+   already saved, Resqlo fills in everything from that shoe and takes the size
    from the new box.
-5. **You confirm, Vendora remembers.** Check the fields, fix anything, and save.
+5. **You confirm, Resqlo remembers.** Check the fields, fix anything, and save.
    From then on that barcode fills in instantly, exactly the way you saved it.
 
 If the label can't be read, tap **Type it myself**. You enter the details once
@@ -74,7 +74,7 @@ and that barcode is remembered from then on.
 | **Works offline.** Memory lives on the phone first, and saves made offline sync to your account when you reconnect. | Convention floors have bad signal. |
 | **Follows you.** Memory is stored on your account and downloaded when you open Add Stock. | A new phone knows your barcodes. |
 | **Private.** Each account's memory is its own. Nothing is shared or sent to third parties. | Your sourcing is your business. |
-| **No guessing.** A field Vendora isn't confident about is left blank. | A blank field beats a wrong one. |
+| **No guessing.** A field Resqlo isn't confident about is left blank. | A blank field beats a wrong one. |
 
 ## Under the hood
 

@@ -58,9 +58,9 @@ _SCRIPT = (
     "var ctrl=window.AbortController?new AbortController():null;var timer=setTimeout(function(){if(ctrl)ctrl.abort();},20000);"
     "try{var response=await fetch('/api/v1/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token,password:password}),signal:ctrl?ctrl.signal:undefined});"
     "clearTimeout(timer);"
-    "if(!response.ok){message.textContent=response.status===400?'This link is invalid or expired. Request a new one in Vendora.':'Could not reset your password. Please try again.';button.disabled=false;return;}"
-    "token='';form.reset();form.hidden=true;var open=document.getElementById('open-app');open.hidden=true;open.setAttribute('href','#');message.textContent='Your password has been reset. Open Vendora and sign in with your new password.';"
-    "}catch(err){clearTimeout(timer);message.textContent=(err&&err.name==='AbortError')?'Vendora took too long to respond. Please try again.':'Could not reach Vendora. Check your connection and try again.';button.disabled=false;}"
+    "if(!response.ok){message.textContent=response.status===400?'This link is invalid or expired. Request a new one in Resqlo.':'Could not reset your password. Please try again.';button.disabled=false;return;}"
+    "token='';form.reset();form.hidden=true;var open=document.getElementById('open-app');open.hidden=true;open.setAttribute('href','#');message.textContent='Your password has been reset. Open Resqlo and sign in with your new password.';"
+    "}catch(err){clearTimeout(timer);message.textContent=(err&&err.name==='AbortError')?'Resqlo took too long to respond. Please try again.':'Could not reach Resqlo. Check your connection and try again.';button.disabled=false;}"
     "});"
     "})();"
 )
@@ -92,25 +92,25 @@ PAGE = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Reset your Vendora password</title>
+<title>Reset your Resqlo password</title>
 <style>{_STYLE}</style>
 </head><body>
 <section id="valid">
-<h1>Reset your Vendora password</h1>
-<p>Choose a new password here, or open Vendora to reset it in the app.</p>
+<h1>Reset your Resqlo password</h1>
+<p>Choose a new password here, or open Resqlo to reset it in the app.</p>
 <form id="reset-form">
 <label for="password">New password</label><input id="password" type="password" autocomplete="new-password" required>
 <label for="confirm">Confirm password</label><input id="confirm" type="password" autocomplete="new-password" required>
 <p><button id="submit-reset" type="submit">Reset password</button></p>
 </form>
 <p id="message" role="status" aria-live="polite"></p>
-<p><a class="btn" id="open-app" href="#">Open Vendora</a></p>
+<p><a class="btn" id="open-app" href="#">Open Resqlo</a></p>
 </section>
 <section id="invalid" hidden>
 <h1>This reset link is not valid</h1>
-<p>The link is incomplete or damaged. Open Vendora, tap <strong>Forgot password?</strong> on the sign-in screen, and request a new email.</p>
+<p>The link is incomplete or damaged. Open Resqlo, tap <strong>Forgot password?</strong> on the sign-in screen, and request a new email.</p>
 </section>
-<noscript><p>Turn on JavaScript to reset your password from this page, or request a new reset email from the Vendora app.</p></noscript>
+<noscript><p>Turn on JavaScript to reset your password from this page, or request a new reset email from the Resqlo app.</p></noscript>
 <script>{_SCRIPT}</script>
 </body></html>"""
 

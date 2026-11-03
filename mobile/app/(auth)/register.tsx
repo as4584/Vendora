@@ -63,7 +63,7 @@ export default function RegisterScreen() {
                 {/* Brand */}
                 <View style={styles.brandContainer}>
                     <Ionicons name="cube-outline" size={28} color="#EDEDF2" />
-                    <Text style={styles.brandName}>Join Vendora</Text>
+                    <Text style={styles.brandName}>Join Resqlo</Text>
                     <Text style={styles.tagline}>Start selling smarter</Text>
                 </View>
 

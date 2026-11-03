@@ -1,7 +1,7 @@
 """Spreadsheet inventory import helpers.
 
 Accepts messy reseller spreadsheets and maps common column names into the
-Vendora inventory model. The router owns authentication and persistence.
+Resqlo inventory model. The router owns authentication and persistence.
 """
 from __future__ import annotations
 
@@ -276,7 +276,7 @@ def parse_size_breakdown(value: Any) -> list[dict[str, Any]]:
     return variants
 
 
-# Columns Vendora writes on export that are bookkeeping, not item data.
+# Columns Resqlo writes on export that are bookkeeping, not item data.
 EXPORT_ONLY_HEADERS = {"id", "externalid", "createdat", "updatedat", "sizebreakdown", "backimageformula"}
 # The export's own `source` column ("spreadsheet"/"manual"/...) is not a vendor.
 VENDORA_SOURCE_VALUES = {"spreadsheet", "manual", "lightspeed", "square", "clover", "ebay", "shopify"}

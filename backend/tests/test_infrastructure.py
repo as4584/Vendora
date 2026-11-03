@@ -24,7 +24,7 @@ def test_password_reset_email_requires_resend_key(monkeypatch):
 def test_password_reset_email_builds_safe_text_and_html_payload(monkeypatch):
     captured = {}
     monkeypatch.setattr("app.services.email.settings.RESEND_API_KEY", "resend-test-key")
-    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_NAME", "Vendora")
+    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_NAME", "Resqlo")
     monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_EMAIL", "noreply@lexmakesit.com")
     monkeypatch.setattr(
         "app.services.email.settings.PASSWORD_RESET_URL",
@@ -41,7 +41,7 @@ def test_password_reset_email_builds_safe_text_and_html_payload(monkeypatch):
     assert captured["url"] == "https://api.resend.com/emails"
     assert captured["headers"]["Authorization"] == "Bearer resend-test-key"
     payload = captured["json"]
-    assert payload["from"] == "Vendora <noreply@lexmakesit.com>"
+    assert payload["from"] == "Resqlo <noreply@lexmakesit.com>"
     assert payload["to"] == ["user@example.com"]
     assert "token+with+spaces" in payload["text"]
     assert "&quot;quoted&quot;" in payload["html"]

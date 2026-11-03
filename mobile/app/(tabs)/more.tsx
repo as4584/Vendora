@@ -12,7 +12,7 @@ const LINKS: MoreLink[] = [
   { label: "Advanced Analytics", helper: "Revenue, sell-through, top categories", icon: "bar-chart-outline", route: "/settings/analytics" },
   { label: "Plans & Billing", helper: "Manage your subscription", icon: "card-outline", route: "/settings/subscription" },
   { label: "Settings", helper: "Account, branding & integrations", icon: "settings-outline", route: "/settings" },
-  { label: "Support", helper: "Get help from the Vendora team", icon: "help-buoy-outline", route: "/settings/support" },
+  { label: "Support", helper: "Get help from the Resqlo team", icon: "help-buoy-outline", route: "/settings/support" },
 ];
 
 export default function MoreScreen() {

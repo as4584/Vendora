@@ -1,4 +1,4 @@
-"""Vendora API — FastAPI application entrypoint."""
+"""Resqlo API — FastAPI application entrypoint."""
 import logging
 import os
 import re
@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI):
 _docs_enabled = settings.ENVIRONMENT != "production"
 
 app = FastAPI(
-    title="Vendora API",
+    title="Resqlo API",
     description="Reseller Operating System — Inventory + Payments + Profit + Trust",
     version="4.2.0",
     docs_url="/api/v1/docs" if _docs_enabled else None,

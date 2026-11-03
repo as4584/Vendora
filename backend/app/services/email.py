@@ -1,4 +1,4 @@
-"""Transactional email delivery for Vendora.
+"""Transactional email delivery for Resqlo.
 
 Resend is the production provider. SMTP is an optional fallback that is only
 used when ``SMTP_HOST`` is configured; production leaves it empty. See
@@ -127,11 +127,11 @@ def send_password_reset_email(email: str, token: str) -> None:
     minutes = settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
     _send_email(
         email,
-        "Reset your Vendora password",
-        "We received a request to reset your Vendora password.\n\n"
+        "Reset your Resqlo password",
+        "We received a request to reset your Resqlo password.\n\n"
         f"Open this link within {minutes} minutes:\n{reset_url}\n\n"
         "If you did not request this, you can ignore this email.",
-        "<h2>Reset your Vendora password</h2>"
+        "<h2>Reset your Resqlo password</h2>"
         "<p>We received a request to reset your password.</p>"
         f'<p><a href="{safe_url}">Reset password</a></p>'
         f"<p>This link expires in {minutes} minutes.</p>"
@@ -147,15 +147,15 @@ def send_no_account_email(email: str) -> None:
     """
     _send_email(
         email,
-        "Vendora password reset request",
-        "Someone asked to reset the Vendora password for this email address, "
-        "but there is no Vendora account using it.\n\n"
+        "Resqlo password reset request",
+        "Someone asked to reset the Resqlo password for this email address, "
+        "but there is no Resqlo account using it.\n\n"
         "If this was you, try the other email addresses you may have signed up "
         "with, or create a new account in the app.\n\n"
         "If you did not request this, you can ignore this email.",
-        "<h2>No Vendora account for this email</h2>"
-        "<p>Someone asked to reset the Vendora password for this email address, "
-        "but there is no Vendora account using it.</p>"
+        "<h2>No Resqlo account for this email</h2>"
+        "<p>Someone asked to reset the Resqlo password for this email address, "
+        "but there is no Resqlo account using it.</p>"
         "<p>If this was you, try the other email addresses you may have signed up "
         "with, or create a new account in the app.</p>"
         "<p>If you did not request this, you can ignore this email.</p>",
@@ -166,7 +166,7 @@ def send_support_request_email(email: str, subject: str, message: str, priority:
     """Notify the support mailbox; all user content is escaped, never trusted as HTML."""
     _send_email(
         settings.SUPPORT_EMAIL,
-        f"[{safe_header(priority, 20).upper()}] Vendora support: {subject}",
+        f"[{safe_header(priority, 20).upper()}] Resqlo support: {subject}",
         f"From: {email}\nPriority: {priority}\n\n{message}",
         f"<p><strong>From:</strong> {escape_html(email)}</p>"
         f"<p><strong>Priority:</strong> {escape_html(priority)}</p>"

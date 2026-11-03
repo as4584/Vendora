@@ -1,4 +1,4 @@
-"""Discord webhook notifications for Vendora team alerts."""
+"""Discord webhook notifications for Resqlo team alerts."""
 import httpx
 
 from app.config import settings
@@ -14,7 +14,7 @@ def send_support_notification(email: str, subject: str, message: str, priority: 
         raise DiscordNotifyError("DISCORD_WEBHOOK_URL is not configured")
     color = {"priority": 0xF97316}.get(priority, 0x8B5CF6)
     payload = {
-        "username": "Vendora Support",
+        "username": "Resqlo Support",
         "embeds": [
             {
                 "title": f"🛟 New {priority} support request",

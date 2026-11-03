@@ -1,4 +1,4 @@
-"""Support requests submitted from the Vendora app."""
+"""Support requests submitted from the Resqlo app."""
 import uuid
 
 from sqlalchemy import Column, ForeignKey, Index, String, Text, Uuid

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_USE_TLS: bool = False
     EMAIL_FROM_EMAIL: str = "noreply@lexmakesit.com"
-    EMAIL_FROM_NAME: str = "Vendora"
+    EMAIL_FROM_NAME: str = "Resqlo"
     # Discord webhook — in-app support requests are mirrored to the team channel.
     DISCORD_WEBHOOK_URL: str = ""
     # HTTPS keeps reset links clickable in Gmail; the bridge page served by

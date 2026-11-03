@@ -1,7 +1,7 @@
 """eBay Sell API integration — OAuth + pull-only (import) sync.
 
-v1 scope: read-only. Pulls the seller's Inventory API items into Vendora
-inventory and Fulfillment API orders into Vendora transactions. No write-back
+v1 scope: read-only. Pulls the seller's Inventory API items into Resqlo
+inventory and Fulfillment API orders into Resqlo transactions. No write-back
 (no listing creation) — that is a separate, larger effort.
 
 Environment (sandbox vs production) is selected via ``settings.EBAY_ENV``.

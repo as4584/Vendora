@@ -3,7 +3,7 @@
 Models:
   InventoryItem           — canonical sellable unit (existing)
   InventoryStockLedger    — immutable audit log of every quantity change
-  InventoryExternalLink   — maps a Vendora item to a record in an external system
+  InventoryExternalLink   — maps a Resqlo item to a record in an external system
   InventoryImportJob      — tracks a spreadsheet import preview → commit lifecycle
   InventoryImportRow      — one CSV row with per-row validation and action results
 """
@@ -132,7 +132,7 @@ class InventoryStockLedger(Base, TimestampMixin):
 # ─── External provider links ─────────────────────────────────────────────────
 
 class InventoryExternalLink(Base, TimestampMixin):
-    """Maps a Vendora inventory item to a record in an external system.
+    """Maps a Resqlo inventory item to a record in an external system.
 
     Replaces the single (source, external_id) pair on InventoryItem
     for cases where one item has links to multiple providers.

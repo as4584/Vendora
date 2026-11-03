@@ -41,7 +41,7 @@ def resend(monkeypatch):
     sent = []
     monkeypatch.setattr("app.services.email.settings.RESEND_API_KEY", "resend-test-key")
     monkeypatch.setattr("app.services.email.settings.SMTP_HOST", "")
-    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_NAME", "Vendora")
+    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_NAME", "Resqlo")
     monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_EMAIL", "noreply@lexmakesit.com")
     monkeypatch.setattr("app.services.email.settings.SUPPORT_EMAIL", "support@lexmakesit.com")
 
@@ -77,7 +77,7 @@ def smtp(monkeypatch):
     monkeypatch.setattr("app.services.email.settings.SMTP_USERNAME", "user")
     monkeypatch.setattr("app.services.email.settings.SMTP_PASSWORD", "pass")
     monkeypatch.setattr("app.services.email.settings.SMTP_USE_TLS", False)
-    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_NAME", "Vendora")
+    monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_NAME", "Resqlo")
     monkeypatch.setattr("app.services.email.settings.EMAIL_FROM_EMAIL", "noreply@lexmakesit.com")
     monkeypatch.setattr("app.services.email.settings.SUPPORT_EMAIL", "support@lexmakesit.com")
     monkeypatch.setattr("app.services.email.smtplib.SMTP_SSL", FakeSMTP)
@@ -165,7 +165,7 @@ class TestNoHeaderInjection:
     def test_normal_support_email_still_sends(self, resend):
         send_support_request_email("user@example.com", "Billing question", "Line one\nLine two", "priority")
         sent = resend[-1]
-        assert sent["subject"] == "[PRIORITY] Vendora support: Billing question"
+        assert sent["subject"] == "[PRIORITY] Resqlo support: Billing question"
         assert sent["reply_to"] == "user@example.com"
         assert "Line one<br>Line two" in sent["html"]
 

@@ -1,5 +1,5 @@
 /**
- * Vendora Mobile — iPhone Smoke Tests
+ * Resqlo Mobile — iPhone Smoke Tests
  *
  * Runs against the Expo web build (no backend needed).
  * Catches white pages, JS crashes, and broken navigation.
@@ -21,7 +21,7 @@ test.describe('Login screen', () => {
     await page.goto('/');
 
     // App loads and redirects to login
-    await expect(page.locator('text=Vendora')).toBeVisible();
+    await expect(page.locator('text=Resqlo')).toBeVisible();
     await expect(page.locator('text=Inventory, sales and invoices for show-floor sellers')).toBeVisible();
 
     // Form fields are present
@@ -42,7 +42,7 @@ test.describe('Login screen', () => {
     });
 
     await page.goto('/');
-    await expect(page.locator('text=Vendora')).toBeVisible();
+    await expect(page.locator('text=Resqlo')).toBeVisible();
 
     // Filter out known non-critical network errors from missing backend
     const fatal = errors.filter(
@@ -67,7 +67,7 @@ test.describe('Forgot password screen', () => {
 test.describe('Register screen', () => {
   test('renders without white page', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('text=Vendora')).toBeVisible();
+    await expect(page.locator('text=Resqlo')).toBeVisible();
 
     // Navigate to register via "Sign Up" link
     await page.click('text=Sign Up');
@@ -83,14 +83,14 @@ test.describe('Register screen', () => {
 test.describe('Login form interaction', () => {
   test('shows validation when submitting empty form', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('text=Vendora')).toBeVisible();
+    await expect(page.locator('text=Resqlo')).toBeVisible();
 
     // Tap login without filling anything — app should react (not crash)
     const loginBtn = page.locator('text=Sign In').or(page.locator('text=Login')).first();
     if (await loginBtn.isVisible()) {
       await loginBtn.click();
       // App should still be rendered (not white page) after bad submit
-      await expect(page.locator('text=Vendora')).toBeVisible();
+      await expect(page.locator('text=Resqlo')).toBeVisible();
     }
   });
 });
@@ -128,7 +128,7 @@ test.describe('Completed product surfaces', () => {
       await expect.poll(() => page.locator('body').innerText()).toContain('More');
       await page.getByText('More', { exact: true }).click();
       await page.getByText('Settings', { exact: true }).click();
-      await expect(page.getByText('Vendora Plus')).toBeVisible();
+      await expect(page.getByText('Resqlo Plus')).toBeVisible();
     };
     await openSettings();
     expect(errors).toEqual([]);
@@ -139,7 +139,7 @@ test.describe('Completed product surfaces', () => {
     await expect(page.getByTestId('analytics-content').getByRole('heading', { name: 'Advanced Analytics' })).toBeVisible();
     await openSettings();
     await page.getByRole('button', { name: 'Support', exact: true }).click();
-    await expect(page.getByText('Vendora Support')).toBeVisible();
+    await expect(page.getByText('Resqlo Support')).toBeVisible();
     await openSettings();
     await page.getByText('View Public Storefront').click();
     await expect(page.getByText('Verified')).toBeVisible();
