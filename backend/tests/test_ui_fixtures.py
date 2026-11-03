@@ -31,11 +31,13 @@ SCREENS = {
     "subscription": "/subscriptions/me",
     "integrations_health": "/integrations/health",
     "advanced": "/dashboard/advanced?days=30",
+    "show_summary": "/dashboard/show-summary",
 }
 
 
 def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
     test_user.subscription_tier = "pro"
+    test_user.sales_tax_rate = Decimal("6.625")
     db.commit()
     items = []
     for name, cat, sku, upc, size, color, buy, sell, qty in STOCK:
@@ -45,11 +47,17 @@ def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
         )
         db.add(item)
         items.append(item)
+    # The Dunks come in several sizes, so checkout shows the size picker.
+    items[0].custom_attributes = {"variants": [
+        {"size": "9", "quantity": 1}, {"size": "10", "quantity": 2}, {"size": "10.5", "quantity": 0},
+    ]}
     db.commit()
 
+    # $244 subtotal - $14 discount = $230, + 6.625% tax = $245.24; paid cash + card.
     sale = client.post("/api/v1/transactions/order", json={
-        "method": "cash", "fee_amount": "0",
-        "lines": [{"item_id": str(items[0].id), "quantity": 1, "unit_price": "160.00"},
+        "fee_amount": "3.10", "discount_amount": "14.00", "tax_rate": "6.625",
+        "payments": [{"method": "cash", "amount": "200.00"}, {"method": "card", "amount": "45.24"}],
+        "lines": [{"item_id": str(items[0].id), "quantity": 1, "unit_price": "160.00", "size": "10"},
                   {"item_id": str(items[4].id), "quantity": 2, "unit_price": "42.00"}],
     }, headers=auth_headers)
     assert sale.status_code == 201, sale.text
@@ -58,6 +66,12 @@ def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
         "lines": [{"item_id": str(items[1].id), "quantity": 1, "unit_price": "285.00"}],
     }, headers=auth_headers)
     assert card.status_code == 201, card.text
+    refund = client.post(f"/api/v1/transactions/{card.json()['transactions'][0]['id']}/refund",
+                         json={"reason": "Wrong size"}, headers=auth_headers)
+    assert refund.status_code == 201, refund.text
+    client.post("/api/v1/transactions/order", json={
+        "method": "card", "lines": [{"item_id": str(items[3].id), "quantity": 1, "unit_price": "185.00"}],
+    }, headers=auth_headers)
     inv = client.post("/api/v1/invoices", json={
         "customer_name": "Marcus Reed", "customer_email": "marcus@example.com",
         "items": [{"inventory_item_id": str(items[2].id), "description": items[2].name, "quantity": 1, "unit_price": "130.00"}],
