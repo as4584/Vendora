@@ -1,0 +1,80 @@
+"""Realistic demo account -> JSON fixtures for the app's visual layout checks.
+
+Always runs as a contract test: every read endpoint the app's screens call
+must answer 200 for a busy seller. With UI_FIXTURES_OUT=<path> set, the
+responses are also written out for mobile/e2e/visual (Playwright stubs), so
+the screenshots show real server-shaped data instead of hand-written mocks.
+"""
+import json
+import os
+from decimal import Decimal
+
+from app.models.inventory import InventoryItem
+
+STOCK = [
+    ("Nike Dunk Low Retro White Black", "Sneakers", "DD1391-100", "195866137738", "10", "White/Black", "110.00", "165.00", 3),
+    ("Air Jordan 4 Retro Bred Reimagined", "Sneakers", "FV5029-006", "197862948123", "9.5", "Black/Cement Grey", "215.00", "290.00", 1),
+    ("adidas Samba OG Cloud White", "Sneakers", "B75806", "4060512043157", "8.5", "White/Black/Gum", "90.00", "130.00", 2),
+    ("New Balance 9060 Sea Salt", "Sneakers", "U9060AAA", "196432651234", "11", "Sea Salt", "140.00", "185.00", 1),
+    ("Pokemon 151 Booster Bundle (Sealed)", "Collectibles", "PKM-151-BB", "820650853517", None, None, "28.00", "45.00", 6),
+    ("Supreme Box Logo Hoodie FW23 Heather Grey With An Extra Long Name", "Clothing", "SUP-BOGO-FW23", None, "L", "Heather Grey", "250.00", "420.00", 1),
+]
+
+SCREENS = {
+    "me": "/auth/me",
+    "dashboard": "/dashboard",
+    "inventory": "/inventory?limit=50&offset=0",
+    "transactions": "/transactions?limit=50&offset=0",
+    "invoices": "/invoices?limit=50&offset=0",
+    "features": "/features",
+    "tiers": "/features/tiers",
+    "subscription": "/subscriptions/me",
+    "integrations_health": "/integrations/health",
+    "advanced": "/dashboard/advanced?days=30",
+}
+
+
+def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
+    test_user.subscription_tier = "pro"
+    db.commit()
+    items = []
+    for name, cat, sku, upc, size, color, buy, sell, qty in STOCK:
+        item = InventoryItem(
+            user_id=test_user.id, name=name, category=cat, sku=sku, upc=upc, size=size, color=color,
+            buy_price=Decimal(buy), expected_sell_price=Decimal(sell), quantity=qty, condition="New",
+        )
+        db.add(item)
+        items.append(item)
+    db.commit()
+
+    sale = client.post("/api/v1/transactions/order", json={
+        "method": "cash", "fee_amount": "0",
+        "lines": [{"item_id": str(items[0].id), "quantity": 1, "unit_price": "160.00"},
+                  {"item_id": str(items[4].id), "quantity": 2, "unit_price": "42.00"}],
+    }, headers=auth_headers)
+    assert sale.status_code == 201, sale.text
+    card = client.post("/api/v1/transactions/order", json={
+        "method": "zelle", "fee_amount": "0",
+        "lines": [{"item_id": str(items[1].id), "quantity": 1, "unit_price": "285.00"}],
+    }, headers=auth_headers)
+    assert card.status_code == 201, card.text
+    inv = client.post("/api/v1/invoices", json={
+        "customer_name": "Marcus Reed", "customer_email": "marcus@example.com",
+        "items": [{"inventory_item_id": str(items[2].id), "description": items[2].name, "quantity": 1, "unit_price": "130.00"}],
+    }, headers=auth_headers)
+    assert inv.status_code in (200, 201), inv.text
+
+    out = {"item_id": str(items[0].id), "invoice_id": inv.json()["id"]}
+    paths = dict(SCREENS)
+    paths["item"] = f"/inventory/{items[0].id}"
+    paths["item_activity"] = f"/inventory/{items[0].id}/activity?limit=20"
+    paths["invoice"] = f"/invoices/{out['invoice_id']}"
+    for key, path in paths.items():
+        resp = client.get(f"/api/v1{path}", headers=auth_headers)
+        assert resp.status_code == 200, (key, resp.status_code, resp.text[:200])
+        out[key] = resp.json()
+
+    target = os.environ.get("UI_FIXTURES_OUT")
+    if target:
+        with open(target, "w", encoding="utf-8") as fh:
+            json.dump(out, fh, indent=2, default=str)

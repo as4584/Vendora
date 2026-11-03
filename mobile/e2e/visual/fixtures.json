@@ -1,0 +1,678 @@
+{
+  "item_id": "56130a49-63c3-4751-ad3a-45501f2b5679",
+  "invoice_id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
+  "me": {
+    "id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+    "email": "test-c62f17e3@vendora.test",
+    "business_name": "Test Business",
+    "profile_picture": null,
+    "business_address": null,
+    "business_phone": null,
+    "invoice_accent_color": null,
+    "subscription_tier": "pro",
+    "is_partner": false,
+    "created_at": "2026-11-03T01:07:53.843288Z",
+    "updated_at": "2026-11-03T01:07:53.842064Z"
+  },
+  "dashboard": {
+    "revenue_today": "529.00",
+    "revenue_week": "529.00",
+    "revenue_month": "529.00",
+    "net_profit_today": "148.00",
+    "net_profit_week": "148.00",
+    "net_profit_month": "148.00",
+    "net_profit_all_time": "148.00",
+    "total_inventory_value": "902.00",
+    "total_expected_value": "1375.00",
+    "potential_profit": "473.00",
+    "total_items": 6,
+    "items_in_stock": 5,
+    "items_listed": 0,
+    "items_sold": 1,
+    "total_transactions": 3,
+    "total_refunds": 0
+  },
+  "inventory": {
+    "items": [
+      {
+        "id": "56130a49-63c3-4751-ad3a-45501f2b5679",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "name": "Nike Dunk Low Retro White Black",
+        "category": "Sneakers",
+        "sku": "DD1391-100",
+        "upc": "195866137738",
+        "size": "10",
+        "color": "White/Black",
+        "condition": "New",
+        "serial_number": null,
+        "custom_attributes": {},
+        "buy_price": "110.00",
+        "expected_sell_price": "165.00",
+        "actual_sell_price": "160.00",
+        "platform": null,
+        "status": "in_stock",
+        "photo_front_url": null,
+        "photo_back_url": null,
+        "quantity": 2,
+        "vendor_name": null,
+        "notes": null,
+        "source": null,
+        "external_id": null,
+        "created_at": "2026-11-03T01:07:53.843288Z",
+        "updated_at": "2026-11-03T01:07:53.842064Z"
+      },
+      {
+        "id": "4093e81b-74f4-4e94-aa3d-0ec9f131e55e",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "name": "adidas Samba OG Cloud White",
+        "category": "Sneakers",
+        "sku": "B75806",
+        "upc": "4060512043157",
+        "size": "8.5",
+        "color": "White/Black/Gum",
+        "condition": "New",
+        "serial_number": null,
+        "custom_attributes": {},
+        "buy_price": "90.00",
+        "expected_sell_price": "130.00",
+        "actual_sell_price": null,
+        "platform": null,
+        "status": "in_stock",
+        "photo_front_url": null,
+        "photo_back_url": null,
+        "quantity": 2,
+        "vendor_name": null,
+        "notes": null,
+        "source": null,
+        "external_id": null,
+        "created_at": "2026-11-03T01:07:53.843288Z",
+        "updated_at": "2026-11-03T01:07:53.843288Z"
+      },
+      {
+        "id": "e4e44e3d-dbc3-4bb6-84b1-06bb9899b0c1",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "name": "New Balance 9060 Sea Salt",
+        "category": "Sneakers",
+        "sku": "U9060AAA",
+        "upc": "196432651234",
+        "size": "11",
+        "color": "Sea Salt",
+        "condition": "New",
+        "serial_number": null,
+        "custom_attributes": {},
+        "buy_price": "140.00",
+        "expected_sell_price": "185.00",
+        "actual_sell_price": null,
+        "platform": null,
+        "status": "in_stock",
+        "photo_front_url": null,
+        "photo_back_url": null,
+        "quantity": 1,
+        "vendor_name": null,
+        "notes": null,
+        "source": null,
+        "external_id": null,
+        "created_at": "2026-11-03T01:07:53.843288Z",
+        "updated_at": "2026-11-03T01:07:53.843288Z"
+      },
+      {
+        "id": "f2770a08-4807-4be2-8d7d-36b92d358705",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "name": "Pokemon 151 Booster Bundle (Sealed)",
+        "category": "Collectibles",
+        "sku": "PKM-151-BB",
+        "upc": "820650853517",
+        "size": null,
+        "color": null,
+        "condition": "New",
+        "serial_number": null,
+        "custom_attributes": {},
+        "buy_price": "28.00",
+        "expected_sell_price": "45.00",
+        "actual_sell_price": "42.00",
+        "platform": null,
+        "status": "in_stock",
+        "photo_front_url": null,
+        "photo_back_url": null,
+        "quantity": 4,
+        "vendor_name": null,
+        "notes": null,
+        "source": null,
+        "external_id": null,
+        "created_at": "2026-11-03T01:07:53.843288Z",
+        "updated_at": "2026-11-03T01:07:53.842064Z"
+      },
+      {
+        "id": "d210af9f-715d-44e3-9478-a4a9bbb5230b",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "name": "Supreme Box Logo Hoodie FW23 Heather Grey With An Extra Long Name",
+        "category": "Clothing",
+        "sku": "SUP-BOGO-FW23",
+        "upc": null,
+        "size": "L",
+        "color": "Heather Grey",
+        "condition": "New",
+        "serial_number": null,
+        "custom_attributes": {},
+        "buy_price": "250.00",
+        "expected_sell_price": "420.00",
+        "actual_sell_price": null,
+        "platform": null,
+        "status": "in_stock",
+        "photo_front_url": null,
+        "photo_back_url": null,
+        "quantity": 1,
+        "vendor_name": null,
+        "notes": null,
+        "source": null,
+        "external_id": null,
+        "created_at": "2026-11-03T01:07:53.843288Z",
+        "updated_at": "2026-11-03T01:07:53.843288Z"
+      },
+      {
+        "id": "19fff62c-3e94-45ff-bb4b-dae403b03d0d",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "name": "Air Jordan 4 Retro Bred Reimagined",
+        "category": "Sneakers",
+        "sku": "FV5029-006",
+        "upc": "197862948123",
+        "size": "9.5",
+        "color": "Black/Cement Grey",
+        "condition": "New",
+        "serial_number": null,
+        "custom_attributes": {},
+        "buy_price": "215.00",
+        "expected_sell_price": "290.00",
+        "actual_sell_price": "285.00",
+        "platform": null,
+        "status": "sold",
+        "photo_front_url": null,
+        "photo_back_url": null,
+        "quantity": 0,
+        "vendor_name": null,
+        "notes": null,
+        "source": null,
+        "external_id": null,
+        "created_at": "2026-11-03T01:07:53.843288Z",
+        "updated_at": "2026-11-03T01:07:53.842064Z"
+      }
+    ],
+    "total": 6,
+    "page": 1,
+    "per_page": 20,
+    "pages": 1
+  },
+  "transactions": {
+    "items": [
+      {
+        "id": "3652c492-3f1a-48b5-af27-a7829e6344c1",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "item_id": "19fff62c-3e94-45ff-bb4b-dae403b03d0d",
+        "invoice_id": null,
+        "method": "zelle",
+        "status": "completed",
+        "gross_amount": "285.00",
+        "fee_amount": "0.00",
+        "net_amount": "285.00",
+        "quantity": 1,
+        "external_reference_id": null,
+        "notes": null,
+        "is_refund": false,
+        "original_transaction_id": null,
+        "order_id": "c21ff93d-89e1-4d54-9475-adcb501482d5",
+        "created_at": "2026-11-03T01:07:53.893392Z",
+        "updated_at": "2026-11-03T01:07:53.893392Z"
+      },
+      {
+        "id": "35694995-034e-4e79-8d43-d574fcad1133",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "item_id": "f2770a08-4807-4be2-8d7d-36b92d358705",
+        "invoice_id": null,
+        "method": "cash",
+        "status": "completed",
+        "gross_amount": "84.00",
+        "fee_amount": "0.00",
+        "net_amount": "84.00",
+        "quantity": 2,
+        "external_reference_id": null,
+        "notes": null,
+        "is_refund": false,
+        "original_transaction_id": null,
+        "order_id": "43a06e82-e479-4e6e-92a8-7cbbc1449d42",
+        "created_at": "2026-11-03T01:07:53.880855Z",
+        "updated_at": "2026-11-03T01:07:53.880855Z"
+      },
+      {
+        "id": "cd5d4390-31db-42fc-9f88-bc0b02bb0c26",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "item_id": "56130a49-63c3-4751-ad3a-45501f2b5679",
+        "invoice_id": null,
+        "method": "cash",
+        "status": "completed",
+        "gross_amount": "160.00",
+        "fee_amount": "0.00",
+        "net_amount": "160.00",
+        "quantity": 1,
+        "external_reference_id": null,
+        "notes": null,
+        "is_refund": false,
+        "original_transaction_id": null,
+        "order_id": "43a06e82-e479-4e6e-92a8-7cbbc1449d42",
+        "created_at": "2026-11-03T01:07:53.870169Z",
+        "updated_at": "2026-11-03T01:07:53.870169Z"
+      }
+    ],
+    "total": 3,
+    "page": 1,
+    "per_page": 20,
+    "pages": 1
+  },
+  "invoices": {
+    "items": [
+      {
+        "id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
+        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "number": 1,
+        "invoice_number": "INV0001",
+        "customer_name": "Marcus Reed",
+        "customer_email": "marcus@example.com",
+        "status": "draft",
+        "subtotal": "130.00",
+        "tax": "0.00",
+        "shipping": "0.00",
+        "discount": "0.00",
+        "total": "130.00",
+        "stripe_payment_intent_id": null,
+        "notes": null,
+        "items": [
+          {
+            "id": "1c66b1fe-06e2-434e-8bc5-5bc82453f8c8",
+            "invoice_id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
+            "inventory_item_id": "4093e81b-74f4-4e94-aa3d-0ec9f131e55e",
+            "size_label": null,
+            "description": "adidas Samba OG Cloud White",
+            "quantity": 1,
+            "unit_price": "130.00",
+            "line_total": "130.00"
+          }
+        ],
+        "created_at": "2026-11-03T01:07:53.910398Z",
+        "updated_at": "2026-11-03T01:07:53.910398Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "per_page": 20,
+    "pages": 1
+  },
+  "features": {
+    "tier": "pro",
+    "is_partner": false,
+    "features": {
+      "inventory_crud": true,
+      "manual_payment": true,
+      "dashboard_basic": true,
+      "quick_sale": true,
+      "barcode_scanning": true,
+      "csv_export": true,
+      "invoices": true,
+      "stripe_payments": true,
+      "analytics_advanced": true,
+      "unlimited_items": true,
+      "seller_page": false,
+      "verified_badge": false,
+      "priority_support": false
+    }
+  },
+  "tiers": {
+    "tiers": {
+      "free": {
+        "name": "Free",
+        "price": 0,
+        "item_limit": 25,
+        "features": [
+          "inventory_crud",
+          "manual_payment",
+          "dashboard_basic",
+          "quick_sale"
+        ]
+      },
+      "pro": {
+        "name": "Pro",
+        "price": 20,
+        "item_limit": null,
+        "features": [
+          "inventory_crud",
+          "manual_payment",
+          "dashboard_basic",
+          "quick_sale",
+          "barcode_scanning",
+          "csv_export",
+          "invoices",
+          "stripe_payments",
+          "analytics_advanced",
+          "unlimited_items"
+        ]
+      }
+    },
+    "partner_addon": {
+      "price": 5,
+      "requires": "pro",
+      "features": [
+        "seller_page",
+        "verified_badge",
+        "priority_support"
+      ]
+    }
+  },
+  "subscription": {
+    "tier": "pro",
+    "is_partner": false,
+    "status": "none",
+    "current_period_end": null,
+    "managed_billing": false,
+    "provider": null
+  },
+  "integrations_health": {
+    "providers": [
+      {
+        "provider": "lightspeed",
+        "last_run_at": null,
+        "last_run_status": null,
+        "failed_runs_24h": 0,
+        "open_issues_count": 0
+      },
+      {
+        "provider": "square",
+        "last_run_at": null,
+        "last_run_status": null,
+        "failed_runs_24h": 0,
+        "open_issues_count": 0
+      },
+      {
+        "provider": "clover",
+        "last_run_at": null,
+        "last_run_status": null,
+        "failed_runs_24h": 0,
+        "open_issues_count": 0
+      },
+      {
+        "provider": "ebay",
+        "last_run_at": null,
+        "last_run_status": null,
+        "failed_runs_24h": 0,
+        "open_issues_count": 0
+      }
+    ]
+  },
+  "advanced": {
+    "period_days": 30,
+    "revenue": "529.00",
+    "net": "148.00",
+    "average_order_value": "176.3333333333333333333333333",
+    "sell_through_rate": "16.66666666666666666666666667",
+    "daily": [
+      {
+        "date": "2026-10-05",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-06",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-07",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-08",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-09",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-10",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-11",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-12",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-13",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-14",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-15",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-16",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-17",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-18",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-19",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-20",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-21",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-22",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-23",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-24",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-25",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-26",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-27",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-28",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-29",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-30",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-10-31",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-11-01",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-11-02",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-11-03",
+        "revenue": "529.00",
+        "net": "148.00",
+        "transactions": 3
+      }
+    ],
+    "categories": [
+      {
+        "category": "Sneakers",
+        "revenue": "445.00",
+        "units_sold": 2
+      },
+      {
+        "category": "Collectibles",
+        "revenue": "84.00",
+        "units_sold": 2
+      }
+    ]
+  },
+  "item": {
+    "id": "56130a49-63c3-4751-ad3a-45501f2b5679",
+    "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+    "name": "Nike Dunk Low Retro White Black",
+    "category": "Sneakers",
+    "sku": "DD1391-100",
+    "upc": "195866137738",
+    "size": "10",
+    "color": "White/Black",
+    "condition": "New",
+    "serial_number": null,
+    "custom_attributes": {},
+    "buy_price": "110.00",
+    "expected_sell_price": "165.00",
+    "actual_sell_price": "160.00",
+    "platform": null,
+    "status": "in_stock",
+    "photo_front_url": null,
+    "photo_back_url": null,
+    "quantity": 2,
+    "vendor_name": null,
+    "notes": null,
+    "source": null,
+    "external_id": null,
+    "created_at": "2026-11-03T01:07:53.843288Z",
+    "updated_at": "2026-11-03T01:07:53.842064Z"
+  },
+  "item_activity": [
+    {
+      "id": "c35c2019-815c-4e86-83a0-ca628c146641",
+      "inventory_item_id": "56130a49-63c3-4751-ad3a-45501f2b5679",
+      "delta_quantity": -1,
+      "quantity_after": 2,
+      "event_type": "sale",
+      "source_type": "transaction",
+      "source_id": "cd5d4390-31db-42fc-9f88-bc0b02bb0c26",
+      "created_at": "2026-11-03T01:07:53.870169Z"
+    }
+  ],
+  "invoice": {
+    "id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
+    "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+    "number": 1,
+    "invoice_number": "INV0001",
+    "customer_name": "Marcus Reed",
+    "customer_email": "marcus@example.com",
+    "status": "draft",
+    "subtotal": "130.00",
+    "tax": "0.00",
+    "shipping": "0.00",
+    "discount": "0.00",
+    "total": "130.00",
+    "stripe_payment_intent_id": null,
+    "notes": null,
+    "items": [
+      {
+        "id": "1c66b1fe-06e2-434e-8bc5-5bc82453f8c8",
+        "invoice_id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
+        "inventory_item_id": "4093e81b-74f4-4e94-aa3d-0ec9f131e55e",
+        "size_label": null,
+        "description": "adidas Samba OG Cloud White",
+        "quantity": 1,
+        "unit_price": "130.00",
+        "line_total": "130.00"
+      }
+    ],
+    "created_at": "2026-11-03T01:07:53.910398Z",
+    "updated_at": "2026-11-03T01:07:53.910398Z"
+  }
+}

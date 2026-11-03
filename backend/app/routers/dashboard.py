@@ -107,11 +107,12 @@ def get_advanced_analytics(
         bucket = daily_map.setdefault(date_key, {"revenue": Decimal("0"), "net": Decimal("0"), "transactions": 0})
         sign = Decimal("-1") if transaction.is_refund else Decimal("1")
         bucket["revenue"] += sign * transaction.gross_amount
-        bucket["net"] += transaction.net_amount
+        cost = transaction.cost_amount or Decimal("0")
+        bucket["net"] += transaction.net_amount - cost
         bucket["transactions"] += 1
         if not transaction.is_refund:
             sale_revenue += transaction.gross_amount
-            sale_net += transaction.net_amount
+            sale_net += transaction.net_amount - cost
             sale_count += 1
             category = item_categories.get(transaction.item_id, "Uncategorized")
             cat = category_map.setdefault(category, {"revenue": Decimal("0"), "units_sold": 0})

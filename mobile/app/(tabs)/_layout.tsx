@@ -34,7 +34,8 @@ export default function TabsLayout() {
         headerShadowVisible: false,
         headerTintColor: COLORS.text,
         headerTitleStyle: { fontWeight: "800", fontSize: 18 },
-        sceneStyle: { backgroundColor: COLORS.bg },
+        // iPad / wide screens: keep content at a readable phone-to-tablet width.
+        sceneStyle: { backgroundColor: COLORS.bg, width: "100%", maxWidth: 760, alignSelf: "center" },
         tabBarStyle: {
           backgroundColor: COLORS.bgElevated,
           borderTopColor: COLORS.border,

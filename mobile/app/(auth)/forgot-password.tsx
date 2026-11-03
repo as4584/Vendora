@@ -60,16 +60,10 @@ export default function ForgotPasswordScreen() {
                             If there&apos;s no account for that email, we&apos;ll send it a short note saying so.
                             Nothing at all? Check spam, or try another email you may have signed up with.
                         </Text>
-                        <TouchableOpacity
-                            accessibilityRole="button"
-                            style={styles.secondaryButton}
-                            onPress={() => {
+                        <Button label="Try a different email" variant="secondary" size="md" onPress={() => {
                                 setSubmitted(false);
                                 setEmail("");
-                            }}
-                        >
-                            <Text style={styles.secondaryButtonText}>Try a different email</Text>
-                        </TouchableOpacity>
+                            }} />
                         <Link href="/(auth)/register" asChild>
                             <TouchableOpacity accessibilityRole="link" style={styles.backLink}>
                                 <Text style={styles.backText}>Create an account</Text>

@@ -17,7 +17,7 @@ class Transaction(Base, TimestampMixin):
     __tablename__ = "transactions"
     __table_args__ = (
         CheckConstraint(
-            "method IN ('stripe', 'cashapp', 'paypal', 'zelle', 'venmo', 'cash', 'other')",
+            "method IN ('stripe', 'cashapp', 'paypal', 'zelle', 'venmo', 'cash', 'card', 'other')",
             name="ck_transactions_method",
         ),
         CheckConstraint(
@@ -75,3 +75,32 @@ class Transaction(Base, TimestampMixin):
     order_id = Column(Uuid, nullable=True)
     # Integration tracking
     source = Column(String(50), nullable=True, index=True)  # e.g. "lightspeed", "manual"
+    # Cost of goods for this line, frozen at the moment of sale (unit buy price
+    # x quantity). Refunds carry the negative of the original's cost, because
+    # the unit goes back into stock. NULL = cost unknown (item had no buy price).
+    cost_amount = Column(Numeric(10, 2), nullable=True)
+
+
+@sa.event.listens_for(Transaction, "before_insert")
+def _freeze_cost(mapper, connection, target):  # noqa: ARG001 - SQLAlchemy signature
+    """Every way a sale is created (POS, order, invoice, integrations) gets its cost."""
+    if target.cost_amount is not None:
+        return
+    if target.is_refund and target.original_transaction_id is not None:
+        original_cost = connection.execute(
+            sa.select(Transaction.__table__.c.cost_amount).where(
+                Transaction.__table__.c.id == target.original_transaction_id
+            )
+        ).scalar()
+        if original_cost is not None:
+            target.cost_amount = -original_cost
+        return
+    if target.item_id is None or target.is_refund:
+        return
+    from app.models.inventory import InventoryItem
+
+    buy_price = connection.execute(
+        sa.select(InventoryItem.__table__.c.buy_price).where(InventoryItem.__table__.c.id == target.item_id)
+    ).scalar()
+    if buy_price is not None:
+        target.cost_amount = buy_price * (target.quantity or 1)

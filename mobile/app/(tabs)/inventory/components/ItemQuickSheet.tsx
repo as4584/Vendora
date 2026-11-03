@@ -21,13 +21,13 @@ import {
     TextInput,
     Animated,
     Alert,
-    ActivityIndicator,
     Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as api from "../../../../services/api";
 
 import { COLORS } from "../../../../theme/tokens";
+import { Button, IconButton } from "../../../../components/Button";
 // ─── Clothing / Size-variant detection ──────────────────────────────────────
 const CLOTHING_KEYWORDS = [
     "clothing", "apparel", "shirt", "pants", "jeans", "dress", "jacket",
@@ -435,32 +435,11 @@ function ItemQuickSheetContent({
                                 <View key={idx} style={styles.variantRow}>
                                     <Text style={styles.variantSize}>{v.size}</Text>
                                     <View style={styles.qtyControls}>
-                                        <TouchableOpacity
-                                            accessibilityLabel={`Decrease quantity for ${v.size}`}
-                                            accessibilityRole="button"
-                                            style={styles.qtyBtn}
-                                            onPress={() => adjustVariantQty(idx, -1)}
-                                        >
-                                            <Text style={styles.qtyBtnText}>−</Text>
-                                        </TouchableOpacity>
+                                        <IconButton icon="remove" label={`Decrease quantity for ${v.size}`} onPress={() => adjustVariantQty(idx, -1)} />
                                         <Text style={styles.qtyValue}>{v.quantity}</Text>
-                                        <TouchableOpacity
-                                            accessibilityLabel={`Increase quantity for ${v.size}`}
-                                            accessibilityRole="button"
-                                            style={styles.qtyBtn}
-                                            onPress={() => adjustVariantQty(idx, 1)}
-                                        >
-                                            <Text style={styles.qtyBtnText}>+</Text>
-                                        </TouchableOpacity>
+                                        <IconButton icon="add" label={`Increase quantity for ${v.size}`} onPress={() => adjustVariantQty(idx, 1)} />
                                     </View>
-                                    <TouchableOpacity
-                                        accessibilityLabel={`Remove size ${v.size}`}
-                                        accessibilityRole="button"
-                                        style={styles.removeBtn}
-                                        onPress={() => removeVariant(idx)}
-                                    >
-                                        <Text style={styles.removeBtnText}>✕</Text>
-                                    </TouchableOpacity>
+                                    <IconButton icon="close" label={`Remove size ${v.size}`} onPress={() => removeVariant(idx)} />
                                 </View>
                             ))}
 
@@ -476,14 +455,7 @@ function ItemQuickSheetContent({
                                     onSubmitEditing={addVariant}
                                     returnKeyType="done"
                                 />
-                                <TouchableOpacity
-                                    accessibilityLabel="Add Size"
-                                    accessibilityRole="button"
-                                    style={styles.addSizeBtn}
-                                    onPress={addVariant}
-                                >
-                                    <Text style={styles.addSizeBtnText}>+ Add Size</Text>
-                                </TouchableOpacity>
+                                <Button label="+ Add Size" variant="secondary" size="sm" onPress={addVariant} accessibilityLabel="Add Size" />
                             </View>
                         </View>
                     ) : (
@@ -491,65 +463,30 @@ function ItemQuickSheetContent({
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Quantity</Text>
                             <View style={styles.qtyRow}>
-                                <TouchableOpacity
-                                    accessibilityLabel="Decrease quantity"
-                                    accessibilityRole="button"
-                                    style={styles.qtyBtnLarge}
-                                    onPress={() => setQuantity((q) => Math.max(0, q - 1))}
-                                >
-                                    <Text style={styles.qtyBtnLargeText}>−</Text>
-                                </TouchableOpacity>
+                                <IconButton icon="remove" label="Decrease quantity" onPress={() => setQuantity((q) => Math.max(0, q - 1))} />
                                 <Text style={styles.qtyValueLarge}>{quantity}</Text>
-                                <TouchableOpacity
-                                    accessibilityLabel="Increase quantity"
-                                    accessibilityRole="button"
-                                    style={styles.qtyBtnLarge}
-                                    onPress={() => setQuantity((q) => q + 1)}
-                                >
-                                    <Text style={styles.qtyBtnLargeText}>+</Text>
-                                </TouchableOpacity>
+                                <IconButton icon="add" label="Increase quantity" onPress={() => setQuantity((q) => q + 1)} />
                             </View>
                         </View>
                     )}
 
                     {/* ── Action Buttons ── */}
                     <View style={styles.actions}>
-                        <TouchableOpacity
-                            accessibilityRole="button"
-                            style={styles.saveBtn}
-                            onPress={saveChanges}
-                            disabled={saving}
-                        >
-                            {saving ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <Text style={styles.saveBtnText}>Save Changes</Text>
-                            )}
-                        </TouchableOpacity>
+                        <Button label="Save Changes" variant="primary" size="lg" fullWidth onPress={saveChanges} disabled={saving} loading={saving} />
 
-                        <TouchableOpacity
-                            accessibilityRole="button"
-                            style={styles.editBtn}
+                        <Button
+                            label="Full Edit"
+                            variant="secondary"
+                            size="lg"
+                            fullWidth
+                            leadingIcon="create-outline"
                             onPress={() => {
                                 onClose();
                                 router.push(`/(tabs)/inventory/edit?id=${item.id}`);
                             }}
-                        >
-                            <Text style={styles.editBtnText}>✏️ Full Edit</Text>
-                        </TouchableOpacity>
+                        />
 
-                        <TouchableOpacity
-                            accessibilityRole="button"
-                            style={styles.deleteBtn}
-                            onPress={handleDelete}
-                            disabled={deleting}
-                        >
-                            {deleting ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <Text style={styles.deleteBtnText}>Delete</Text>
-                            )}
-                        </TouchableOpacity>
+                        <Button label="Delete" variant="destructive" size="lg" fullWidth onPress={handleDelete} disabled={deleting} loading={deleting} />
                     </View>
                 </ScrollView>
             </Animated.View>
