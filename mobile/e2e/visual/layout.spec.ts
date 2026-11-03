@@ -26,6 +26,7 @@ const SCREENS: { name: string; path: string; ready?: string; authed?: boolean }[
   { name: 'add', path: '/inventory/add', ready: 'Scan a box' },
   { name: 'edit', path: `/inventory/edit?id=${fixtures.item_id}` },
   { name: 'sale', path: '/inventory/sale' },
+  { name: 'sale-cart', path: `/inventory/sale?add=${fixtures.item_id}`, ready: 'Cart · 1 item' },
   { name: 'invoices', path: '/inventory/invoices' },
   { name: 'invoice-preview', path: `/inventory/invoice-preview?id=${fixtures.invoice_id}` },
   { name: 'import', path: '/inventory/import' },
@@ -35,11 +36,13 @@ const SCREENS: { name: string; path: string; ready?: string; authed?: boolean }[
   { name: 'support', path: '/settings/support' },
   { name: 'sync-center', path: '/settings/sync-center' },
   { name: 'analytics', path: '/settings/analytics' },
+  { name: 'show-summary', path: '/settings/show-summary', ready: 'Count the cash box' },
 ];
 
 const ROUTES: [RegExp, unknown][] = [
   [/\/auth\/me$/, fixtures.me],
   [/\/dashboard\/advanced/, fixtures.advanced],
+  [/\/dashboard\/show-summary/, fixtures.show_summary],
   [/\/dashboard$/, fixtures.dashboard],
   [/\/inventory\/[^/?]+\/activity/, fixtures.item_activity],
   [new RegExp(`/inventory/${fixtures.item_id}$`), fixtures.item],

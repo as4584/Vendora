@@ -87,6 +87,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="settings/subscription" options={{ href: null, headerTitle: "Plans & Billing" }} />
       <Tabs.Screen name="settings/analytics" options={{ href: null, headerTitle: "Advanced Analytics" }} />
       <Tabs.Screen name="settings/support" options={{ href: null, headerTitle: "Support" }} />
+      <Tabs.Screen name="settings/show-summary" options={{ href: null, headerTitle: "Show Summary" }} />
     </Tabs>
   );
 }

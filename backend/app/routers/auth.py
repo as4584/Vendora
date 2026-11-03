@@ -221,6 +221,8 @@ def update_profile(
         current_user.business_phone = payload.business_phone
     if payload.invoice_accent_color is not None:
         current_user.invoice_accent_color = payload.invoice_accent_color
+    if payload.sales_tax_rate is not None:
+        current_user.sales_tax_rate = payload.sales_tax_rate
     db.add(current_user)
     db.commit()
     db.refresh(current_user)

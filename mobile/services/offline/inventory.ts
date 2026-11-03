@@ -25,6 +25,7 @@ import type {
   Dashboard,
 } from "../api";
 import { isOnline } from "./net";
+import { centsToString, computeCheckout, sameBarcode, toCents } from "../../utils/checkout";
 import { tryGetSender } from "./sender";
 import {
   KEYS,
@@ -107,6 +108,7 @@ export async function offlineListItems(
   if (params.status) items = items.filter((i) => i.status === params.status);
   if (params.source) items = items.filter((i) => i.source === params.source);
   if (params.availableOnly) items = items.filter((i) => i.quantity > 0);
+  if (params.upc) items = items.filter((i) => sameBarcode(i.upc, params.upc));
 
   // Newest first, matching the server's default ordering.
   items.sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
@@ -276,6 +278,7 @@ export async function queueSaleOrder(payload: CreateSaleOrderPayload): Promise<S
     if (!item) continue;
     item.quantity = Math.max(0, item.quantity - line.quantity);
     if (item.quantity === 0) item.status = "sold";
+    adjustVariant(item, line.size, -line.quantity);
     item.updated_at = now;
   }
   await writeMirror(m);
@@ -289,16 +292,41 @@ export async function queueSaleOrder(payload: CreateSaleOrderPayload): Promise<S
     createdAt: now,
     attempts: 0,
   });
-  const gross = payload.lines.reduce((sum, l) => sum + Number(l.unit_price) * l.quantity, 0);
-  const fee = Number(payload.fee_amount ?? "0");
+  // Same cents math as the server, so the receipt shown offline matches what syncs.
+  const totals = computeCheckout({
+    lines: payload.lines.map((l) => ({ priceCents: toCents(l.unit_price), qty: l.quantity })),
+    discountMode: payload.discount_percent ? "percent" : "amount",
+    discountValue: payload.discount_percent ?? payload.discount_amount ?? "",
+    taxRate: payload.tax_rate ?? "",
+  });
+  const fee = toCents(payload.fee_amount ?? "0");
   return {
     order_id: tempId("order"),
-    gross_amount: gross.toFixed(2),
-    fee_amount: fee.toFixed(2),
-    net_amount: (gross - fee).toFixed(2),
+    subtotal_amount: centsToString(totals.subtotal),
+    discount_amount: centsToString(totals.discount),
+    gross_amount: centsToString(totals.gross),
+    tax_amount: centsToString(totals.tax),
+    total_amount: centsToString(totals.total),
+    fee_amount: centsToString(fee),
+    net_amount: centsToString(totals.gross - fee),
+    payments: payload.payments ?? (payload.method ? [{ method: payload.method, amount: centsToString(totals.total) }] : []),
+    created_at: now,
     transactions: [],
     pending: true,
   };
+}
+
+/** Move a size variant's stock by delta (no-op for items without that size). */
+function adjustVariant(item: InventoryItem, size: string | undefined, delta: number): void {
+  const variants = item.custom_attributes?.variants;
+  if (!size || !Array.isArray(variants)) return;
+  const key = size.trim().toLowerCase();
+  const next = variants.map((v: any) =>
+    String(v?.size ?? "").trim().toLowerCase() === key
+      ? { ...v, quantity: Math.max(0, (Number(v.quantity) || 0) + delta) }
+      : v,
+  );
+  item.custom_attributes = { ...item.custom_attributes, variants: next };
 }
 
 /** Item ids an outbox entry refers to (sale orders carry several). */
@@ -437,6 +465,7 @@ async function revertOptimistic(entries: OutboxEntry[]): Promise<void> {
         if (!item) continue;
         item.quantity += line.quantity ?? 1;
         if (item.status === "sold" && item.quantity > 0) item.status = "in_stock";
+        adjustVariant(item, line.size, line.quantity ?? 1);
       }
     }
     // update_item: the next server read replaces the mirror copy.

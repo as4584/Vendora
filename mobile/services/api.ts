@@ -243,6 +243,10 @@ export interface User {
   business_address: string | null;
   business_phone: string | null;
   invoice_accent_color: string | null;  // hex, e.g. #3B7BDB
+  /** Default sales tax percent for checkout, e.g. "6.625". */
+  sales_tax_rate?: string | null;
+  /** When the current show began (end-of-show summary counts from it). */
+  show_started_at?: string | null;
   subscription_tier: string;
   is_partner: boolean;
   created_at: string;
@@ -333,6 +337,7 @@ export interface ProfilePatch {
   business_address?: string | null;
   business_phone?: string | null;
   invoice_accent_color?: string | null;
+  sales_tax_rate?: string | null;
 }
 
 export async function updateProfile(
@@ -441,6 +446,8 @@ export interface ListItemsParams {
   status?: string;
   source?: string;
   availableOnly?: boolean;
+  /** Exact barcode match (scan to sell). */
+  upc?: string;
 }
 
 export async function listItems(
@@ -468,6 +475,7 @@ export async function listItems(
   if (params.status) qs.set("status", params.status);
   if (params.source) qs.set("source", params.source);
   if (params.availableOnly) qs.set("available_only", "true");
+  if (params.upc) qs.set("upc", params.upc);
 
   if (!isOnline()) return offlineListItems(normalized);
   try {
@@ -742,6 +750,11 @@ export interface Transaction {
   original_transaction_id: string | null;
   /** Shared by every line of one multi-item checkout. */
   order_id?: string | null;
+  /** Order discount allocated to this line (gross_amount is already after it). */
+  discount_amount?: string;
+  /** Sales tax collected on this line; not revenue, not profit. */
+  tax_amount?: string;
+  variant_size?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -751,12 +764,25 @@ export interface SaleOrderLine {
   quantity: number;
   /** Agreed price per unit (after haggling), as "0.00". */
   unit_price: string;
+  /** Size variant sold, for items with custom_attributes.variants. */
+  size?: string;
+}
+
+export interface PaymentPart {
+  method: string;
+  amount: string;
 }
 
 export interface CreateSaleOrderPayload {
   lines: SaleOrderLine[];
-  method: string;
+  /** One method for the whole total, OR `payments` (parts summing to the total). */
+  method?: string;
+  payments?: PaymentPart[];
   fee_amount?: string;
+  discount_amount?: string;
+  discount_percent?: string;
+  /** Sales tax percent, e.g. "6.625". */
+  tax_rate?: string;
   notes?: string;
   /** Offline outbox id; the server records a replayed order only once. */
   client_request_id?: string;
@@ -764,7 +790,15 @@ export interface CreateSaleOrderPayload {
 
 export interface SaleOrder {
   order_id: string;
+  subtotal_amount?: string;
+  discount_amount?: string;
+  /** Revenue after discount, excluding tax. */
   gross_amount: string;
+  tax_amount?: string;
+  /** What the customer paid (gross + tax). */
+  total_amount?: string;
+  payments?: PaymentPart[];
+  created_at?: string;
   fee_amount: string;
   net_amount: string;
   transactions: Transaction[];
@@ -1200,6 +1234,51 @@ export interface AdvancedAnalytics {
   sell_through_rate: string;
   daily: { date: string; revenue: string; net: string; transactions: number }[];
   categories: { category: string; revenue: string; units_sold: number }[];
+}
+
+// ─── End-of-show summary ─────────────────────────────
+
+export interface ShowSummary {
+  since: string;
+  until: string;
+  show_started_at: string | null;
+  orders: number;
+  units_sold: number;
+  units_refunded: number;
+  subtotal: string;
+  discounts: string;
+  net_sales: string;
+  tax_collected: string;
+  fees: string;
+  refunds: string;
+  refunded_tax: string;
+  refund_count: number;
+  cost_of_goods: string;
+  sales_missing_cost: number;
+  profit: string;
+  collected: string;
+  payments: { method: string; collected: string; refunded: string; net: string; count: number }[];
+  top_items: { item_id: string; name: string; units: number; revenue: string }[];
+}
+
+export async function getShowSummary(params: { since?: string; until?: string } = {}): Promise<ShowSummary> {
+  const qs = new URLSearchParams();
+  if (params.since) qs.set("since", params.since);
+  if (params.until) qs.set("until", params.until);
+  const query = qs.toString();
+  return request<ShowSummary>(`/dashboard/show-summary${query ? `?${query}` : ""}`);
+}
+
+/** Mark the show as started (now by default); the summary counts from then. */
+export async function startShow(startedAt?: string): Promise<ShowSummary> {
+  return request<ShowSummary>("/dashboard/show-start", {
+    method: "PUT",
+    body: JSON.stringify(startedAt ? { started_at: startedAt } : {}),
+  });
+}
+
+export async function endShow(): Promise<void> {
+  await request<void>("/dashboard/show-start", { method: "DELETE" });
 }
 
 export async function getAdvancedAnalytics(days = 30): Promise<AdvancedAnalytics> {

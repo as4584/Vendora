@@ -15,13 +15,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.user import User
-from app.models.transaction import Transaction
+from app.models.transaction import OrderPayment, Transaction
 from app.models.inventory import InventoryItem
 from app.schemas.transaction import (
+    OrderPaymentResponse,
     SaleOrderCreate,
     SaleOrderResponse,
     TransactionCreate,
@@ -30,7 +32,13 @@ from app.schemas.transaction import (
     RefundCreate,
 )
 from app.services.profit import calculate_net_amount
+from app.services.checkout import allocate
 from app.services.inventory import deduct_stock, restore_stock, get_available_quantity
+from app.services.invoice import (
+    _deduct_variant_quantity,
+    _variant_rows,
+    check_invoice_item_availability,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -150,28 +158,68 @@ def create_transaction(
     return txn
 
 
-def _order_response(txns: list[Transaction]) -> SaleOrderResponse:
+def _order_payments(db: Session, user_id, order_id) -> list[OrderPayment]:
+    return (
+        db.query(OrderPayment)
+        .filter(OrderPayment.user_id == user_id, OrderPayment.order_id == order_id)
+        .order_by(OrderPayment.created_at, OrderPayment.id)
+        .all()
+    )
+
+
+def _order_response(txns: list[Transaction], payments: list[OrderPayment]) -> SaleOrderResponse:
+    def total(attr: str) -> Decimal:
+        return sum((getattr(t, attr) or Decimal("0.00") for t in txns), Decimal("0.00"))
+
+    gross = total("gross_amount")
+    discount = total("discount_amount")
+    tax = total("tax_amount")
     return SaleOrderResponse(
         order_id=txns[0].order_id,
-        gross_amount=sum((t.gross_amount for t in txns), Decimal("0.00")),
-        fee_amount=sum((t.fee_amount for t in txns), Decimal("0.00")),
-        net_amount=sum((t.net_amount for t in txns), Decimal("0.00")),
+        subtotal_amount=gross + discount,
+        discount_amount=discount,
+        gross_amount=gross,
+        tax_amount=tax,
+        total_amount=gross + tax,
+        fee_amount=total("fee_amount"),
+        net_amount=total("net_amount"),
+        payments=[OrderPaymentResponse.model_validate(p) for p in payments],
+        created_at=txns[0].created_at,
         transactions=[TransactionResponse.model_validate(t) for t in txns],
     )
 
 
-def _allocate_fee(fee: Decimal, grosses: list[Decimal]) -> list[Decimal]:
-    """Split an order-level fee across lines in proportion to line gross.
+def _load_order(db: Session, user_id, order_id) -> SaleOrderResponse | None:
+    txns = (
+        db.query(Transaction)
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.order_id == order_id,
+            Transaction.is_refund.is_(False),
+        )
+        .order_by(Transaction.external_reference_id, Transaction.created_at, Transaction.id)
+        .all()
+    )
+    if not txns:
+        return None
+    return _order_response(txns, _order_payments(db, user_id, order_id))
 
-    Rounds to cents; the last line takes the remainder so the parts always
-    sum exactly to the fee.
-    """
-    total = sum(grosses, Decimal("0.00"))
-    if fee == 0 or total == 0:
-        return [Decimal("0.00")] * len(grosses)
-    parts = [(fee * g / total).quantize(Decimal("0.01")) for g in grosses[:-1]]
-    parts.append(fee - sum(parts, Decimal("0.00")))
-    return parts
+
+def _replayed_order(db: Session, user_id, client_request_id: str | None) -> SaleOrderResponse | None:
+    if not client_request_id:
+        return None
+    first = _find_client_request(db, user_id, f"{client_request_id}:0")
+    if first and first.order_id:
+        return _load_order(db, user_id, first.order_id)
+    return None
+
+
+# Kept under its old name: tests and callers split fees with it.
+_allocate_fee = allocate
+
+
+def _variant_key(size: str | None) -> str | None:
+    return size.strip().lower() if size else None
 
 
 @router.post("/order", response_model=SaleOrderResponse, status_code=status.HTTP_201_CREATED)
@@ -182,25 +230,24 @@ def create_sale_order(
 ):
     """Record a multi-item checkout atomically.
 
-    Every line is validated (ownership, stock, counting repeated items
-    together) before anything is written; then all lines are written and
-    committed together, so a dropped connection can never leave half a sale.
-    Lines share an order_id. Replays with the same client_request_id return
-    the original order.
+    Every line is validated (ownership, stock, size stock, counting repeated
+    items together) before anything is written; then all lines and payment
+    parts are written and committed together, so a dropped connection can
+    never leave half a sale. Lines share an order_id. Replays with the same
+    client_request_id return the original order.
+
+    The order-level discount, sales tax and fee are each split across lines
+    by value, to the cent, summing exactly. gross_amount on each line is its
+    revenue after discount and before tax; tax is stored separately and never
+    counted as profit.
     """
-    if payload.client_request_id:
-        first = _find_client_request(db, current_user.id, f"{payload.client_request_id}:0")
-        if first and first.order_id:
-            existing = (
-                db.query(Transaction)
-                .filter(Transaction.user_id == current_user.id, Transaction.order_id == first.order_id)
-                .order_by(Transaction.external_reference_id)
-                .all()
-            )
-            return _order_response(existing)
+    replay = _replayed_order(db, current_user.id, payload.client_request_id)
+    if replay:
+        return replay
 
     items: dict = {}
     requested: dict = {}
+    requested_sizes: dict = {}
     for line in payload.lines:
         if line.item_id not in items:
             item = db.query(InventoryItem).filter(
@@ -212,6 +259,9 @@ def create_sale_order(
                 raise HTTPException(status_code=404, detail=f"Item {line.item_id} not found")
             items[line.item_id] = item
         requested[line.item_id] = requested.get(line.item_id, 0) + line.quantity
+        if line.size and _variant_rows(items[line.item_id]):
+            key = (line.item_id, line.size.strip())
+            requested_sizes[key] = requested_sizes.get(key, 0) + line.quantity
     for item_id, qty in requested.items():
         available = get_available_quantity(items[item_id])
         if available < qty:
@@ -225,22 +275,40 @@ def create_sale_order(
                     "requested": qty,
                 },
             )
+    for (item_id, size), qty in requested_sizes.items():
+        check_invoice_item_availability(items[item_id], qty, size)
 
+    amounts = payload.amounts()
+    parts = payload.payment_parts()
+    methods = {p.method for p in parts}
+    if len(methods) == 1:
+        line_method = parts[0].method
+    elif methods:
+        line_method = "split"
+    else:  # a $0.00 order has no payment parts
+        line_method = payload.method or "other"
+    fees = allocate(payload.fee_amount, amounts.line_grosses)
     order_id = uuid.uuid4()
-    grosses = [(line.unit_price * line.quantity).quantize(Decimal("0.01")) for line in payload.lines]
-    fees = _allocate_fee(payload.fee_amount, grosses)
     txns: list[Transaction] = []
+    payments: list[OrderPayment] = []
     try:
-        for index, (line, gross, fee) in enumerate(zip(payload.lines, grosses, fees, strict=True)):
+        for index, line in enumerate(payload.lines):
+            gross = amounts.line_grosses[index]
+            fee = fees[index]
+            item = items[line.item_id]
+            size = line.size.strip() if line.size else None
             txn = Transaction(
                 user_id=current_user.id,
                 item_id=line.item_id,
                 order_id=order_id,
-                method=payload.method,
+                method=line_method,
                 status="completed",
                 gross_amount=gross,
                 fee_amount=fee,
                 net_amount=calculate_net_amount(gross, fee),
+                discount_amount=amounts.line_discounts[index],
+                tax_amount=amounts.line_taxes[index],
+                variant_size=size,
                 quantity=line.quantity,
                 source=CLIENT_REQUEST_SOURCE if payload.client_request_id else None,
                 external_reference_id=(
@@ -251,8 +319,9 @@ def create_sale_order(
             )
             db.add(txn)
             db.flush()
-            item = items[line.item_id]
             item.actual_sell_price = line.unit_price
+            if size and _variant_rows(item):
+                _deduct_variant_quantity(item, size, line.quantity)
             db.add(item)
             # No status-only fallback here: if stock can't be deducted the
             # whole order is rolled back rather than half-recorded.
@@ -266,26 +335,39 @@ def create_sale_order(
                 idempotency_key=f"txn:{txn.id}:sale",
             )
             txns.append(txn)
+        for part in parts:
+            payment = OrderPayment(
+                user_id=current_user.id, order_id=order_id, method=part.method, amount=part.amount,
+            )
+            db.add(payment)
+            payments.append(payment)
         db.commit()
     except IntegrityError:
         db.rollback()
         # A concurrent replay of the same order won the race.
-        if payload.client_request_id:
-            first = _find_client_request(db, current_user.id, f"{payload.client_request_id}:0")
-            if first and first.order_id:
-                return _order_response(
-                    db.query(Transaction)
-                    .filter(Transaction.user_id == current_user.id, Transaction.order_id == first.order_id)
-                    .order_by(Transaction.external_reference_id)
-                    .all()
-                )
+        replay = _replayed_order(db, current_user.id, payload.client_request_id)
+        if replay:
+            return replay
         raise
     except Exception:
         db.rollback()
         raise
     for txn in txns:
         db.refresh(txn)
-    return _order_response(txns)
+    return _order_response(txns, payments)
+
+
+@router.get("/order/{order_id}", response_model=SaleOrderResponse)
+def get_sale_order(
+    order_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One checkout with its lines and payment parts (for receipts)."""
+    order = _load_order(db, current_user.id, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
 
 
 @router.get("", response_model=TransactionListResponse)
@@ -375,6 +457,10 @@ def refund_transaction(
         gross_amount=original.gross_amount,
         fee_amount=Decimal("0.00"),
         net_amount=-original.net_amount,
+        discount_amount=original.discount_amount or Decimal("0.00"),
+        tax_amount=original.tax_amount or Decimal("0.00"),
+        variant_size=original.variant_size,
+        order_id=original.order_id,
         quantity=original.quantity,
         notes=payload.reason or f"Refund of transaction {original.id}",
         is_refund=True,
@@ -394,6 +480,8 @@ def refund_transaction(
         ).first()
         if item:
             restore_qty = original.quantity if original.quantity else 1
+            if original.variant_size and _variant_rows(item):
+                _restore_variant_quantity(item, original.variant_size, restore_qty)
             idem_key = f"txn:{original.id}:refund"
             try:
                 restore_stock(
@@ -419,3 +507,17 @@ def refund_transaction(
     db.commit()
     db.refresh(refund_txn)
     return refund_txn
+
+
+def _restore_variant_quantity(item: InventoryItem, size: str, quantity: int) -> None:
+    """Put refunded units back on the size they were sold from."""
+    variants = [dict(v) for v in _variant_rows(item)]
+    key = _variant_key(size)
+    for variant in variants:
+        if _variant_key(str(variant.get("size") or "")) == key:
+            variant["quantity"] = max(0, int(variant.get("quantity") or 0)) + quantity
+            attrs = dict(item.custom_attributes or {})
+            attrs["variants"] = variants
+            item.custom_attributes = attrs
+            flag_modified(item, "custom_attributes")
+            return

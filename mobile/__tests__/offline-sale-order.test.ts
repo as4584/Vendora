@@ -97,6 +97,54 @@ describe("offline sale orders", () => {
     expect((await read(FAILED))[0]).toMatchObject({ id: "ob_o", kind: "sale_order" });
   });
 
+  it("queues a split, discounted, taxed, sized order and returns server-identical totals", async () => {
+    await AsyncStorage.setItem(MIRROR, JSON.stringify({
+      s: { id: "s", quantity: 3, status: "in_stock", custom_attributes: { variants: [{ size: "9", quantity: 1 }, { size: "10", quantity: 2 }] } },
+    }));
+    const offline = require("../services/offline/inventory");
+    const payments = [{ method: "cash", amount: "150.00" }, { method: "card", amount: "60.00" }];
+
+    const order = await offline.queueSaleOrder({
+      lines: [{ item_id: "s", quantity: 2, unit_price: "110.00", size: "10" }],
+      payments,
+      discount_amount: "20.00",
+      tax_rate: "5",
+      fee_amount: "1.00",
+    });
+
+    expect(order).toMatchObject({
+      pending: true, subtotal_amount: "220.00", discount_amount: "20.00", gross_amount: "200.00",
+      tax_amount: "10.00", total_amount: "210.00", net_amount: "199.00", payments,
+    });
+    const mirror = await read(MIRROR);
+    expect(mirror.s.quantity).toBe(1);
+    expect(mirror.s.custom_attributes.variants).toEqual([{ size: "9", quantity: 1 }, { size: "10", quantity: 0 }]);
+    const outbox = await read(OUTBOX);
+    expect(outbox[0].body).toMatchObject({ payments, discount_amount: "20.00", tax_rate: "5" });
+
+    // Percent discount + single method fills in one payment part.
+    const pct = await offline.queueSaleOrder({
+      lines: [{ item_id: "s", quantity: 1, unit_price: "100.00" }], method: "card", discount_percent: "10",
+    });
+    expect(pct).toMatchObject({ total_amount: "90.00", payments: [{ method: "card", amount: "90.00" }] });
+
+    // Rejected: stock and the size come back.
+    require("../services/offline/sender").setSender(jest.fn().mockRejectedValue(apiError(409, "size gone")));
+    await offline.flushOutbox();
+    const after = await read(MIRROR);
+    expect(after.s.custom_attributes.variants).toEqual([{ size: "9", quantity: 1 }, { size: "10", quantity: 2 }]);
+  });
+
+  it("finds mirrored items by barcode offline", async () => {
+    await AsyncStorage.setItem(MIRROR, JSON.stringify({
+      a: { id: "a", quantity: 1, status: "in_stock", upc: "012345678905", created_at: "2" },
+      b: { id: "b", quantity: 1, status: "in_stock", upc: null, created_at: "1" },
+    }));
+    const offline = require("../services/offline/inventory");
+    const res = await offline.offlineListItems({ upc: "12345678905" });
+    expect(res.items.map((i: any) => i.id)).toEqual(["a"]);
+  });
+
   it("pulls an order that depends on a rejected offline-created item", async () => {
     await AsyncStorage.setItem(OUTBOX, JSON.stringify([
       { id: "ob_c", kind: "create_item", path: "/inventory", method: "POST",

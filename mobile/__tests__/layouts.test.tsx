@@ -98,7 +98,7 @@ describe('router layouts', () => {
 
   it('registers visible and hidden tab routes with safe-area padding', () => {
     render(<TabsLayout />);
-    expect(mockTabsScreen).toHaveBeenCalledTimes(16);
+    expect(mockTabsScreen).toHaveBeenCalledTimes(17);
     const routeNames = mockTabsScreen.mock.calls.map(([props]) => props.name);
     expect(routeNames).toEqual([
       'dashboard',
@@ -117,6 +117,7 @@ describe('router layouts', () => {
       'settings/subscription',
       'settings/analytics',
       'settings/support',
+      'settings/show-summary',
     ]);
     const hidden = mockTabsScreen.mock.calls.find(([props]) => props.name === 'inventory/[id]')?.[0];
     expect(hidden.options.href).toBeNull();

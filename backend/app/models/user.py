@@ -1,7 +1,7 @@
 """User model — Core Engine Layer."""
 import uuid
 
-from sqlalchemy import Column, String, Boolean, CheckConstraint, Uuid, Text, DateTime
+from sqlalchemy import Column, String, Boolean, CheckConstraint, Uuid, Text, DateTime, Numeric
 from app.models.base import Base, TimestampMixin, SoftDeleteMixin
 
 
@@ -28,3 +28,6 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     invoice_accent_color = Column(String(9), nullable=True)  # hex e.g. #3B7BDB
     password_reset_token_hash = Column(String(64), nullable=True, index=True)
     password_reset_expires_at = Column(DateTime(timezone=True), nullable=True)
+    # Checkout defaults: sales tax percent (e.g. 6.625) and when the current show began.
+    sales_tax_rate = Column(Numeric(6, 3), nullable=True)
+    show_started_at = Column(DateTime(timezone=True), nullable=True)

@@ -1,42 +1,44 @@
 {
-  "item_id": "56130a49-63c3-4751-ad3a-45501f2b5679",
-  "invoice_id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
+  "item_id": "a1e54b7a-4e16-4181-9a3b-768c74d4e170",
+  "invoice_id": "6feb8386-8ffc-42b3-8bf9-bf877a50be82",
   "me": {
-    "id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
-    "email": "test-c62f17e3@vendora.test",
+    "id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
+    "email": "test-412a9329@vendora.test",
     "business_name": "Test Business",
     "profile_picture": null,
     "business_address": null,
     "business_phone": null,
     "invoice_accent_color": null,
+    "sales_tax_rate": "6.625",
+    "show_started_at": null,
     "subscription_tier": "pro",
     "is_partner": false,
-    "created_at": "2026-11-03T01:07:53.843288Z",
-    "updated_at": "2026-11-03T01:07:53.842064Z"
+    "created_at": "2026-11-03T01:39:37.631157Z",
+    "updated_at": "2026-11-03T01:39:37.630343Z"
   },
   "dashboard": {
-    "revenue_today": "529.00",
-    "revenue_week": "529.00",
-    "revenue_month": "529.00",
-    "net_profit_today": "148.00",
-    "net_profit_week": "148.00",
-    "net_profit_month": "148.00",
-    "net_profit_all_time": "148.00",
-    "total_inventory_value": "902.00",
-    "total_expected_value": "1375.00",
-    "potential_profit": "473.00",
+    "revenue_today": "415.00",
+    "revenue_week": "415.00",
+    "revenue_month": "415.00",
+    "net_profit_today": "105.90",
+    "net_profit_week": "105.90",
+    "net_profit_month": "105.90",
+    "net_profit_all_time": "105.90",
+    "total_inventory_value": "977.00",
+    "total_expected_value": "1480.00",
+    "potential_profit": "503.00",
     "total_items": 6,
     "items_in_stock": 5,
     "items_listed": 0,
     "items_sold": 1,
-    "total_transactions": 3,
-    "total_refunds": 0
+    "total_transactions": 4,
+    "total_refunds": 1
   },
   "inventory": {
     "items": [
       {
-        "id": "56130a49-63c3-4751-ad3a-45501f2b5679",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "id": "a1e54b7a-4e16-4181-9a3b-768c74d4e170",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
         "name": "Nike Dunk Low Retro White Black",
         "category": "Sneakers",
         "sku": "DD1391-100",
@@ -45,7 +47,22 @@
         "color": "White/Black",
         "condition": "New",
         "serial_number": null,
-        "custom_attributes": {},
+        "custom_attributes": {
+          "variants": [
+            {
+              "size": "9",
+              "quantity": 1
+            },
+            {
+              "size": "10",
+              "quantity": 1
+            },
+            {
+              "size": "10.5",
+              "quantity": 0
+            }
+          ]
+        },
         "buy_price": "110.00",
         "expected_sell_price": "165.00",
         "actual_sell_price": "160.00",
@@ -58,12 +75,12 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T01:07:53.843288Z",
-        "updated_at": "2026-11-03T01:07:53.842064Z"
+        "created_at": "2026-11-03T01:39:37.635713Z",
+        "updated_at": "2026-11-03T01:39:37.630343Z"
       },
       {
-        "id": "4093e81b-74f4-4e94-aa3d-0ec9f131e55e",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "id": "e32ef139-d767-4ee8-9c7a-de896d99c7b5",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
         "name": "adidas Samba OG Cloud White",
         "category": "Sneakers",
         "sku": "B75806",
@@ -85,39 +102,12 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T01:07:53.843288Z",
-        "updated_at": "2026-11-03T01:07:53.843288Z"
+        "created_at": "2026-11-03T01:39:37.635713Z",
+        "updated_at": "2026-11-03T01:39:37.635713Z"
       },
       {
-        "id": "e4e44e3d-dbc3-4bb6-84b1-06bb9899b0c1",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
-        "name": "New Balance 9060 Sea Salt",
-        "category": "Sneakers",
-        "sku": "U9060AAA",
-        "upc": "196432651234",
-        "size": "11",
-        "color": "Sea Salt",
-        "condition": "New",
-        "serial_number": null,
-        "custom_attributes": {},
-        "buy_price": "140.00",
-        "expected_sell_price": "185.00",
-        "actual_sell_price": null,
-        "platform": null,
-        "status": "in_stock",
-        "photo_front_url": null,
-        "photo_back_url": null,
-        "quantity": 1,
-        "vendor_name": null,
-        "notes": null,
-        "source": null,
-        "external_id": null,
-        "created_at": "2026-11-03T01:07:53.843288Z",
-        "updated_at": "2026-11-03T01:07:53.843288Z"
-      },
-      {
-        "id": "f2770a08-4807-4be2-8d7d-36b92d358705",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "id": "7b9c30c4-9004-42aa-9420-a11915eb7035",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
         "name": "Pokemon 151 Booster Bundle (Sealed)",
         "category": "Collectibles",
         "sku": "PKM-151-BB",
@@ -139,12 +129,12 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T01:07:53.843288Z",
-        "updated_at": "2026-11-03T01:07:53.842064Z"
+        "created_at": "2026-11-03T01:39:37.635713Z",
+        "updated_at": "2026-11-03T01:39:37.630343Z"
       },
       {
-        "id": "d210af9f-715d-44e3-9478-a4a9bbb5230b",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "id": "05d51743-641e-4362-876e-70741f451cd9",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
         "name": "Supreme Box Logo Hoodie FW23 Heather Grey With An Extra Long Name",
         "category": "Clothing",
         "sku": "SUP-BOGO-FW23",
@@ -166,12 +156,12 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T01:07:53.843288Z",
-        "updated_at": "2026-11-03T01:07:53.843288Z"
+        "created_at": "2026-11-03T01:39:37.635713Z",
+        "updated_at": "2026-11-03T01:39:37.635713Z"
       },
       {
-        "id": "19fff62c-3e94-45ff-bb4b-dae403b03d0d",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "id": "fbf1c6db-97cb-4c08-9c4e-fcc9c6f158e8",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
         "name": "Air Jordan 4 Retro Bred Reimagined",
         "category": "Sneakers",
         "sku": "FV5029-006",
@@ -183,7 +173,34 @@
         "custom_attributes": {},
         "buy_price": "215.00",
         "expected_sell_price": "290.00",
-        "actual_sell_price": "285.00",
+        "actual_sell_price": null,
+        "platform": null,
+        "status": "in_stock",
+        "photo_front_url": null,
+        "photo_back_url": null,
+        "quantity": 1,
+        "vendor_name": null,
+        "notes": null,
+        "source": null,
+        "external_id": null,
+        "created_at": "2026-11-03T01:39:37.635713Z",
+        "updated_at": "2026-11-03T01:39:37.630343Z"
+      },
+      {
+        "id": "23c33104-836c-4cf9-8aff-d257b8a3f058",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
+        "name": "New Balance 9060 Sea Salt",
+        "category": "Sneakers",
+        "sku": "U9060AAA",
+        "upc": "196432651234",
+        "size": "11",
+        "color": "Sea Salt",
+        "condition": "New",
+        "serial_number": null,
+        "custom_attributes": {},
+        "buy_price": "140.00",
+        "expected_sell_price": "185.00",
+        "actual_sell_price": "185.00",
         "platform": null,
         "status": "sold",
         "photo_front_url": null,
@@ -193,8 +210,8 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T01:07:53.843288Z",
-        "updated_at": "2026-11-03T01:07:53.842064Z"
+        "created_at": "2026-11-03T01:39:37.635713Z",
+        "updated_at": "2026-11-03T01:39:37.630343Z"
       }
     ],
     "total": 6,
@@ -205,12 +222,35 @@
   "transactions": {
     "items": [
       {
-        "id": "3652c492-3f1a-48b5-af27-a7829e6344c1",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
-        "item_id": "19fff62c-3e94-45ff-bb4b-dae403b03d0d",
+        "id": "0a061066-5693-45c5-9e35-9c7e76ad2444",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
+        "item_id": "23c33104-836c-4cf9-8aff-d257b8a3f058",
+        "invoice_id": null,
+        "method": "card",
+        "status": "completed",
+        "gross_amount": "185.00",
+        "fee_amount": "0.00",
+        "net_amount": "185.00",
+        "quantity": 1,
+        "external_reference_id": null,
+        "notes": null,
+        "is_refund": false,
+        "original_transaction_id": null,
+        "order_id": "0ddeb479-7694-4cba-980c-1b529765bf25",
+        "discount_amount": "0.00",
+        "tax_amount": "0.00",
+        "variant_size": null,
+        "cost_amount": "140.00",
+        "created_at": "2026-11-03T01:39:37.709512Z",
+        "updated_at": "2026-11-03T01:39:37.709512Z"
+      },
+      {
+        "id": "6d76579e-10da-4f87-b779-4d6a64ec961f",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
+        "item_id": "fbf1c6db-97cb-4c08-9c4e-fcc9c6f158e8",
         "invoice_id": null,
         "method": "zelle",
-        "status": "completed",
+        "status": "refunded",
         "gross_amount": "285.00",
         "fee_amount": "0.00",
         "net_amount": "285.00",
@@ -219,50 +259,85 @@
         "notes": null,
         "is_refund": false,
         "original_transaction_id": null,
-        "order_id": "c21ff93d-89e1-4d54-9475-adcb501482d5",
-        "created_at": "2026-11-03T01:07:53.893392Z",
-        "updated_at": "2026-11-03T01:07:53.893392Z"
+        "order_id": "7d7d2ee6-8324-4c05-bb2f-6a4ed57cea80",
+        "discount_amount": "0.00",
+        "tax_amount": "0.00",
+        "variant_size": null,
+        "cost_amount": "215.00",
+        "created_at": "2026-11-03T01:39:37.685699Z",
+        "updated_at": "2026-11-03T01:39:37.630343Z"
       },
       {
-        "id": "35694995-034e-4e79-8d43-d574fcad1133",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
-        "item_id": "f2770a08-4807-4be2-8d7d-36b92d358705",
+        "id": "aef39fe3-5af6-4919-8887-bdfa0670f782",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
+        "item_id": "fbf1c6db-97cb-4c08-9c4e-fcc9c6f158e8",
         "invoice_id": null,
-        "method": "cash",
+        "method": "zelle",
         "status": "completed",
-        "gross_amount": "84.00",
+        "gross_amount": "285.00",
         "fee_amount": "0.00",
-        "net_amount": "84.00",
+        "net_amount": "-285.00",
+        "quantity": 1,
+        "external_reference_id": null,
+        "notes": "Wrong size",
+        "is_refund": true,
+        "original_transaction_id": "6d76579e-10da-4f87-b779-4d6a64ec961f",
+        "order_id": "7d7d2ee6-8324-4c05-bb2f-6a4ed57cea80",
+        "discount_amount": "0.00",
+        "tax_amount": "0.00",
+        "variant_size": null,
+        "cost_amount": "-215.00",
+        "created_at": "2026-11-03T01:39:37.685699Z",
+        "updated_at": "2026-11-03T01:39:37.685699Z"
+      },
+      {
+        "id": "9d586430-c0a0-4625-9951-2d1818db7b8f",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
+        "item_id": "7b9c30c4-9004-42aa-9420-a11915eb7035",
+        "invoice_id": null,
+        "method": "split",
+        "status": "completed",
+        "gross_amount": "79.18",
+        "fee_amount": "1.07",
+        "net_amount": "78.11",
         "quantity": 2,
         "external_reference_id": null,
         "notes": null,
         "is_refund": false,
         "original_transaction_id": null,
-        "order_id": "43a06e82-e479-4e6e-92a8-7cbbc1449d42",
-        "created_at": "2026-11-03T01:07:53.880855Z",
-        "updated_at": "2026-11-03T01:07:53.880855Z"
+        "order_id": "e9844c42-0537-4f3c-9b77-6655a17fc0f5",
+        "discount_amount": "4.82",
+        "tax_amount": "5.25",
+        "variant_size": null,
+        "cost_amount": "56.00",
+        "created_at": "2026-11-03T01:39:37.672213Z",
+        "updated_at": "2026-11-03T01:39:37.672213Z"
       },
       {
-        "id": "cd5d4390-31db-42fc-9f88-bc0b02bb0c26",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
-        "item_id": "56130a49-63c3-4751-ad3a-45501f2b5679",
+        "id": "cbc39547-fdb3-46c6-8263-857ee4cb3786",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
+        "item_id": "a1e54b7a-4e16-4181-9a3b-768c74d4e170",
         "invoice_id": null,
-        "method": "cash",
+        "method": "split",
         "status": "completed",
-        "gross_amount": "160.00",
-        "fee_amount": "0.00",
-        "net_amount": "160.00",
+        "gross_amount": "150.82",
+        "fee_amount": "2.03",
+        "net_amount": "148.79",
         "quantity": 1,
         "external_reference_id": null,
         "notes": null,
         "is_refund": false,
         "original_transaction_id": null,
-        "order_id": "43a06e82-e479-4e6e-92a8-7cbbc1449d42",
-        "created_at": "2026-11-03T01:07:53.870169Z",
-        "updated_at": "2026-11-03T01:07:53.870169Z"
+        "order_id": "e9844c42-0537-4f3c-9b77-6655a17fc0f5",
+        "discount_amount": "9.18",
+        "tax_amount": "9.99",
+        "variant_size": "10",
+        "cost_amount": "110.00",
+        "created_at": "2026-11-03T01:39:37.664708Z",
+        "updated_at": "2026-11-03T01:39:37.664708Z"
       }
     ],
-    "total": 3,
+    "total": 5,
     "page": 1,
     "per_page": 20,
     "pages": 1
@@ -270,8 +345,8 @@
   "invoices": {
     "items": [
       {
-        "id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
-        "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+        "id": "6feb8386-8ffc-42b3-8bf9-bf877a50be82",
+        "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
         "number": 1,
         "invoice_number": "INV0001",
         "customer_name": "Marcus Reed",
@@ -286,9 +361,9 @@
         "notes": null,
         "items": [
           {
-            "id": "1c66b1fe-06e2-434e-8bc5-5bc82453f8c8",
-            "invoice_id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
-            "inventory_item_id": "4093e81b-74f4-4e94-aa3d-0ec9f131e55e",
+            "id": "2ae45d41-1942-42c2-ba83-fa163c0a00dd",
+            "invoice_id": "6feb8386-8ffc-42b3-8bf9-bf877a50be82",
+            "inventory_item_id": "e32ef139-d767-4ee8-9c7a-de896d99c7b5",
             "size_label": null,
             "description": "adidas Samba OG Cloud White",
             "quantity": 1,
@@ -296,8 +371,8 @@
             "line_total": "130.00"
           }
         ],
-        "created_at": "2026-11-03T01:07:53.910398Z",
-        "updated_at": "2026-11-03T01:07:53.910398Z"
+        "created_at": "2026-11-03T01:39:37.718899Z",
+        "updated_at": "2026-11-03T01:39:37.718899Z"
       }
     ],
     "total": 1,
@@ -407,9 +482,9 @@
   },
   "advanced": {
     "period_days": 30,
-    "revenue": "529.00",
-    "net": "148.00",
-    "average_order_value": "176.3333333333333333333333333",
+    "revenue": "700.00",
+    "net": "175.90",
+    "average_order_value": "175.00",
     "sell_through_rate": "16.66666666666666666666666667",
     "daily": [
       {
@@ -588,27 +663,96 @@
       },
       {
         "date": "2026-11-03",
-        "revenue": "529.00",
-        "net": "148.00",
-        "transactions": 3
+        "revenue": "415.00",
+        "net": "105.90",
+        "transactions": 5
       }
     ],
     "categories": [
       {
         "category": "Sneakers",
-        "revenue": "445.00",
-        "units_sold": 2
+        "revenue": "620.82",
+        "units_sold": 3
       },
       {
         "category": "Collectibles",
-        "revenue": "84.00",
+        "revenue": "79.18",
         "units_sold": 2
       }
     ]
   },
+  "show_summary": {
+    "since": "2026-11-03T00:00:00Z",
+    "until": "2026-11-03T01:39:37.850124Z",
+    "show_started_at": null,
+    "orders": 3,
+    "units_sold": 5,
+    "units_refunded": 1,
+    "subtotal": "714.00",
+    "discounts": "14.00",
+    "net_sales": "700.00",
+    "tax_collected": "15.24",
+    "fees": "3.10",
+    "refunds": "285.00",
+    "refunded_tax": "0.00",
+    "refund_count": 1,
+    "cost_of_goods": "306.00",
+    "sales_missing_cost": 0,
+    "profit": "105.90",
+    "collected": "430.24",
+    "payments": [
+      {
+        "method": "card",
+        "collected": "230.24",
+        "refunded": "0.00",
+        "net": "230.24",
+        "count": 2
+      },
+      {
+        "method": "cash",
+        "collected": "200.00",
+        "refunded": "0.00",
+        "net": "200.00",
+        "count": 1
+      },
+      {
+        "method": "zelle",
+        "collected": "285.00",
+        "refunded": "285.00",
+        "net": "0.00",
+        "count": 1
+      }
+    ],
+    "top_items": [
+      {
+        "item_id": "fbf1c6db-97cb-4c08-9c4e-fcc9c6f158e8",
+        "name": "Air Jordan 4 Retro Bred Reimagined",
+        "units": 1,
+        "revenue": "285.00"
+      },
+      {
+        "item_id": "23c33104-836c-4cf9-8aff-d257b8a3f058",
+        "name": "New Balance 9060 Sea Salt",
+        "units": 1,
+        "revenue": "185.00"
+      },
+      {
+        "item_id": "a1e54b7a-4e16-4181-9a3b-768c74d4e170",
+        "name": "Nike Dunk Low Retro White Black",
+        "units": 1,
+        "revenue": "150.82"
+      },
+      {
+        "item_id": "7b9c30c4-9004-42aa-9420-a11915eb7035",
+        "name": "Pokemon 151 Booster Bundle (Sealed)",
+        "units": 2,
+        "revenue": "79.18"
+      }
+    ]
+  },
   "item": {
-    "id": "56130a49-63c3-4751-ad3a-45501f2b5679",
-    "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+    "id": "a1e54b7a-4e16-4181-9a3b-768c74d4e170",
+    "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
     "name": "Nike Dunk Low Retro White Black",
     "category": "Sneakers",
     "sku": "DD1391-100",
@@ -617,7 +761,22 @@
     "color": "White/Black",
     "condition": "New",
     "serial_number": null,
-    "custom_attributes": {},
+    "custom_attributes": {
+      "variants": [
+        {
+          "size": "9",
+          "quantity": 1
+        },
+        {
+          "size": "10",
+          "quantity": 1
+        },
+        {
+          "size": "10.5",
+          "quantity": 0
+        }
+      ]
+    },
     "buy_price": "110.00",
     "expected_sell_price": "165.00",
     "actual_sell_price": "160.00",
@@ -630,24 +789,24 @@
     "notes": null,
     "source": null,
     "external_id": null,
-    "created_at": "2026-11-03T01:07:53.843288Z",
-    "updated_at": "2026-11-03T01:07:53.842064Z"
+    "created_at": "2026-11-03T01:39:37.635713Z",
+    "updated_at": "2026-11-03T01:39:37.630343Z"
   },
   "item_activity": [
     {
-      "id": "c35c2019-815c-4e86-83a0-ca628c146641",
-      "inventory_item_id": "56130a49-63c3-4751-ad3a-45501f2b5679",
+      "id": "635345dc-adec-44a8-9794-a9cec4148c66",
+      "inventory_item_id": "a1e54b7a-4e16-4181-9a3b-768c74d4e170",
       "delta_quantity": -1,
       "quantity_after": 2,
       "event_type": "sale",
       "source_type": "transaction",
-      "source_id": "cd5d4390-31db-42fc-9f88-bc0b02bb0c26",
-      "created_at": "2026-11-03T01:07:53.870169Z"
+      "source_id": "cbc39547-fdb3-46c6-8263-857ee4cb3786",
+      "created_at": "2026-11-03T01:39:37.670215Z"
     }
   ],
   "invoice": {
-    "id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
-    "user_id": "ad66835b-36ae-4e7f-8ed1-311a7b95b8d5",
+    "id": "6feb8386-8ffc-42b3-8bf9-bf877a50be82",
+    "user_id": "8d71a66b-b50c-484b-b1eb-ad496088a45b",
     "number": 1,
     "invoice_number": "INV0001",
     "customer_name": "Marcus Reed",
@@ -662,9 +821,9 @@
     "notes": null,
     "items": [
       {
-        "id": "1c66b1fe-06e2-434e-8bc5-5bc82453f8c8",
-        "invoice_id": "2b543fe3-993e-4a81-ab53-f38828f684e4",
-        "inventory_item_id": "4093e81b-74f4-4e94-aa3d-0ec9f131e55e",
+        "id": "2ae45d41-1942-42c2-ba83-fa163c0a00dd",
+        "invoice_id": "6feb8386-8ffc-42b3-8bf9-bf877a50be82",
+        "inventory_item_id": "e32ef139-d767-4ee8-9c7a-de896d99c7b5",
         "size_label": null,
         "description": "adidas Samba OG Cloud White",
         "quantity": 1,
@@ -672,7 +831,7 @@
         "line_total": "130.00"
       }
     ],
-    "created_at": "2026-11-03T01:07:53.910398Z",
-    "updated_at": "2026-11-03T01:07:53.910398Z"
+    "created_at": "2026-11-03T01:39:37.718899Z",
+    "updated_at": "2026-11-03T01:39:37.718899Z"
   }
 }

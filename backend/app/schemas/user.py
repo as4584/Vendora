@@ -3,6 +3,7 @@ import re
 import base64
 import binascii
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -101,6 +102,8 @@ class UserResponse(BaseModel):
     business_address: str | None = None
     business_phone: str | None = None
     invoice_accent_color: str | None = None
+    sales_tax_rate: Decimal | None = None
+    show_started_at: datetime | None = None
     subscription_tier: str
     is_partner: bool
     created_at: datetime
@@ -126,6 +129,8 @@ class UserProfileUpdate(BaseModel):
     business_address: str | None = Field(None, max_length=500)
     business_phone: str | None = Field(None, max_length=40)
     invoice_accent_color: str | None = None  # hex, e.g. #3B7BDB
+    # Default sales tax percent for checkout (e.g. 6.625). 0 turns it off.
+    sales_tax_rate: Decimal | None = Field(None, ge=0, le=30, max_digits=6, decimal_places=3)
 
     _validate_picture = field_validator("profile_picture", mode="before")(_validate_profile_picture)
     _validate_accent = field_validator("invoice_accent_color", mode="before")(_validate_accent_color)

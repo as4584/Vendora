@@ -12,7 +12,7 @@ describe('MoreScreen', () => {
 
   it('lists every secondary destination and routes on tap', () => {
     const screen = render(<MoreScreen />);
-    ['Invoices', 'Sync Center', 'Advanced Analytics', 'Plans & Billing', 'Settings', 'Support'].forEach((label) => {
+    ['Show Summary', 'Invoices', 'Sync Center', 'Advanced Analytics', 'Plans & Billing', 'Settings', 'Support'].forEach((label) => {
       expect(screen.getByText(label)).toBeTruthy();
     });
     fireEvent.press(screen.getByText('Invoices'));

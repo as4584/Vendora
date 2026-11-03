@@ -1,5 +1,8 @@
 """Dashboard Pydantic schemas — aggregated business metrics."""
+from datetime import datetime
 from decimal import Decimal
+from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -54,3 +57,46 @@ class AdvancedAnalyticsResponse(BaseModel):
     sell_through_rate: Decimal
     daily: list[AnalyticsPoint]
     categories: list[CategoryPerformance]
+
+
+class ShowPaymentRow(BaseModel):
+    method: str
+    collected: Decimal
+    refunded: Decimal
+    net: Decimal
+    count: int
+
+
+class ShowTopItem(BaseModel):
+    item_id: UUID
+    name: str
+    units: int
+    revenue: Decimal
+
+
+class ShowSummaryResponse(BaseModel):
+    """Close-out totals for one show / time window. Tax is never profit."""
+    since: datetime
+    until: datetime
+    show_started_at: Optional[datetime] = None
+    orders: int
+    units_sold: int
+    units_refunded: int
+    subtotal: Decimal
+    discounts: Decimal
+    net_sales: Decimal
+    tax_collected: Decimal
+    fees: Decimal
+    refunds: Decimal
+    refunded_tax: Decimal
+    refund_count: int
+    cost_of_goods: Decimal
+    sales_missing_cost: int
+    profit: Decimal
+    collected: Decimal
+    payments: list[ShowPaymentRow]
+    top_items: list[ShowTopItem]
+
+
+class ShowStartRequest(BaseModel):
+    started_at: Optional[datetime] = None  # default: now
