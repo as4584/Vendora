@@ -11,6 +11,7 @@ A full-stack mobile application built for resellers to manage inventory, track p
 
 Resellers (sneakers, electronics, clothing, etc.) use Vendora to run their business end-to-end:
 
+- **Smart Scan** — scan a shoebox and the item fills itself in: your own barcode memory first, then the box label read on the phone (Apple Vision). No outside databases. [See how it works →](docs/features/SMART_SCAN.md)
 - **Inventory tracking** — add items with photos, barcode scanning, condition, buy/sell price, platform
 - **Profit engine** — real-time P&L per item and across the portfolio
 - **Invoice generation** — create and send PDF invoices to buyers

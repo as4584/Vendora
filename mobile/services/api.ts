@@ -135,7 +135,7 @@ async function refreshAccessToken(): Promise<boolean | null> {
   }
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   options: RequestInit = {},
   allowRefresh = true,
