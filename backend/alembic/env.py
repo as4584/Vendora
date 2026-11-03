@@ -18,6 +18,7 @@ from app.models.subscription import Subscription, WebhookEvent  # noqa: F401 —
 from app.models.integration import LightspeedToken, EbayToken  # noqa: F401 — register model
 from app.models.stockx import StockxToken, StockxListing, StockxMarketCache  # noqa: F401
 from app.models.provider_outbox import ProviderOutbox  # noqa: F401
+from app.models.ebay_insights import EbayListingTraffic, EbayOrderFees, EbayPayout  # noqa: F401
 from app.models.square import SquareCredential  # noqa: F401 — register model
 from app.models.clover import CloverCredential  # noqa: F401 — register model
 from app.models.provider import ProviderSyncRun, ReconciliationIssue, ProviderWebhookEvent  # noqa: F401

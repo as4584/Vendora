@@ -61,6 +61,16 @@ class EbayStatusResponse(BaseModel):
     # False when the connection predates listing scopes: reconnect to list.
     can_list: bool = False
     environment: str = "sandbox"
+    # Scopes the stored connection lacks (reconnect grants them).
+    missing_scopes: list[str] = []
+
+
+class EbayOfferRequest(BaseModel):
+    price: Optional[Decimal] = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    discount_percent: Optional[int] = Field(default=None, ge=5, le=80)
+    duration_days: int = Field(default=2, ge=1, le=30)
+    message: Optional[str] = Field(default=None, max_length=1000)
+    quantity: int = Field(default=1, ge=1, le=100)
 
 
 class EbayListingCreateRequest(BaseModel):

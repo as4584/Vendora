@@ -49,6 +49,11 @@ LISTING_SCOPES = [
     "https://api.ebay.com/oauth/api_scope/sell.account",
     "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
     "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
+    # Insights: payout fees, listing traffic, real-time order notifications.
+    # (Send-offer-to-watchers, Negotiation API, is covered by sell.inventory.)
+    "https://api.ebay.com/oauth/api_scope/sell.finances",
+    "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly",
+    "https://api.ebay.com/oauth/api_scope/commerce.notification.subscription",
 ]
 _SCOPES = " ".join(LISTING_SCOPES)
 
@@ -501,7 +506,8 @@ class EbayService(ProviderAdapter):
 
         if existing:
             existing.gross_amount = gross
-            existing.net_amount = gross
+            # Keep eBay fees from the Finances sync (net = gross - fees).
+            existing.net_amount = gross - (existing.fee_amount or Decimal("0.00"))
             return existing, False
 
         txn = Transaction(

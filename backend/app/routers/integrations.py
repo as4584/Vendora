@@ -47,6 +47,7 @@ from app.schemas.integration import (
     EbayListingCreateRequest,
     EbayListingResponse,
     EbayListingUpdateRequest,
+    EbayOfferRequest,
     OutboxJobResponse,
 )
 from app.services.lightspeed import lightspeed_service
@@ -55,6 +56,7 @@ from app.services.clover import clover_service
 from app.services.ebay import ebay_service
 from app.services import ebay_signature
 from app.services import ebay_listing
+from app.services import ebay_insights
 from app.services import outbox as outbox_service
 from app.models.inventory import InventoryItem
 from app.models.provider_outbox import ProviderOutbox
@@ -201,6 +203,12 @@ def ebay_status(
         last_synced_at=last_synced_scalar.isoformat() if last_synced_scalar else None,
         can_list=bool(token.scopes) and ebay_listing._has_scope(token.scopes, "sell.inventory"),
         environment=ebay_service.env,
+        missing_scopes=[
+            sc.rsplit("/", 1)[-1]
+            for sc in ebay_service.requested_scopes
+            if not sc.endswith("/api_scope")
+            and not (token.scopes and ebay_listing._has_scope(token.scopes, sc.rsplit("/", 1)[-1]))
+        ],
     )
 
 
@@ -360,6 +368,159 @@ def ebay_listing_image(
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     return Response(content=data, media_type=media, headers={"Cache-Control": "public, max-age=3600"})
+
+
+# ─── eBay insights: fees + payouts, traffic, offers, notifications ───────────
+
+@router.post("/ebay/finances/sync")
+async def ebay_finances_sync(
+    days: int = Query(90, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pull eBay fees (per order) and payouts; set real fees/net on imported orders."""
+    return await ebay_insights.sync_finances(db, current_user.id, days=days)
+
+
+@router.get("/ebay/payouts")
+def ebay_payouts(
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """eBay payouts with reconciliation against imported orders."""
+    from app.models.ebay_insights import EbayPayout
+
+    rows = (
+        db.query(EbayPayout)
+        .filter(EbayPayout.user_id == current_user.id)
+        .order_by(EbayPayout.payout_date.desc().nullslast())
+        .limit(limit)
+        .all()
+    )
+    return [ebay_insights.payout_payload(p) for p in rows]
+
+
+@router.get("/ebay/fees")
+def ebay_fees(
+    order_id: Optional[str] = Query(None, max_length=100),
+    transaction_id: Optional[uuid.UUID] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Per-order eBay fee breakdown (recent orders, or one by order/transaction id)."""
+    rows = ebay_insights.item_fee_rows(db, current_user.id, limit=200 if (order_id or transaction_id) else 50)
+    if order_id:
+        rows = [r for r in rows if r["order_id"] == order_id]
+    if transaction_id:
+        rows = [r for r in rows if r["transaction_id"] == str(transaction_id)]
+    return rows
+
+
+@router.get("/ebay/listings/{item_id}/traffic")
+async def ebay_listing_traffic(
+    item_id: uuid.UUID,
+    refresh: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Views, impressions, CTR, conversion and watchers (cached daily)."""
+    return await ebay_insights.listing_traffic(db, current_user, item_id, refresh=refresh)
+
+
+@router.get("/ebay/listings/{item_id}/offers/eligibility")
+async def ebay_offer_eligibility(
+    item_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await ebay_insights.offer_eligibility(db, current_user, item_id)
+
+
+@router.post("/ebay/listings/{item_id}/offers")
+async def ebay_send_offer(
+    item_id: uuid.UUID,
+    body: EbayOfferRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send an offer to buyers watching this listing (Negotiation API)."""
+    return await ebay_insights.send_offer(
+        db, current_user, item_id, price=body.price, discount_percent=body.discount_percent,
+        duration_days=body.duration_days, message=body.message, quantity=body.quantity,
+    )
+
+
+@router.post("/ebay/notifications/subscribe")
+async def ebay_notifications_subscribe(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Subscribe this seller to order notifications (real-time import)."""
+    return await ebay_insights.subscribe_orders(db, current_user.id)
+
+
+@router.get("/ebay/notifications")
+def ebay_notifications_challenge(challenge_code: str = Query(...)):
+    """Destination validation challenge (same hash scheme as account deletion)."""
+    token = settings.EBAY_VERIFICATION_TOKEN
+    if not token:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="eBay notifications not configured.")
+    digest = hashlib.sha256(
+        (challenge_code + token + settings.EBAY_NOTIFICATION_ENDPOINT).encode("utf-8")
+    ).hexdigest()
+    return {"challengeResponse": digest}
+
+
+@router.post("/ebay/notifications", status_code=status.HTTP_200_OK)
+async def ebay_notifications(request: Request, db: Session = Depends(get_db)):
+    """Real-time order notifications. Verified like account deletion (412 on a
+    bad signature). The order is imported via the same idempotent path as the
+    polling sync; on any failure we still return 200 and polling catches up."""
+    body = await request.body()
+    try:
+        await ebay_signature.verify_request(ebay_service, body, request.headers.get("x-ebay-signature"))
+    except ebay_signature.SignatureError as exc:
+        logger.warning("Rejected eBay notification: %s", exc)
+        raise HTTPException(status_code=status.HTTP_412_PRECONDITION_FAILED, detail="Invalid signature.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify signature.")
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return {"ok": True, "status": "ignored"}
+    topic = str(((payload or {}).get("metadata") or {}).get("topic") or "").upper()
+    notification = (payload or {}).get("notification") or {}
+    data = notification.get("data") or {}
+    if topic not in ebay_insights.order_topics():
+        return {"ok": True, "status": "ignored"}
+    order_id = ebay_insights.extract_order_id(data)
+    token = ebay_insights.resolve_seller(db, data)
+    event_id = str(notification.get("notificationId") or f"{topic}:{order_id}")
+    if not order_id or token is None:
+        return {"ok": True, "status": "unmatched"}
+    evt, created = claim_webhook_event(
+        db, provider="ebay", event_id=event_id, event_type=topic,
+        raw_payload=body.decode("utf-8", errors="replace")[:20000], user_id=token.user_id,
+    )
+    if not created and (evt.processed or not evt.error):
+        return {"ok": True, "status": "duplicate"}
+    db.commit()
+    try:
+        await ebay_insights.import_order_now(db, token.user_id, order_id)
+        evt = db.get(type(evt), evt.id)
+        evt.processed = True
+        evt.error = None
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 - polling sync is the fallback
+        db.rollback()
+        evt = db.get(type(evt), evt.id)
+        if evt is not None:
+            evt.error = str(getattr(exc, "detail", exc))[:2000]
+            db.commit()
+        logger.warning("eBay notification import failed for order %s: %s", order_id, exc)
+        return {"ok": True, "status": "deferred"}
+    return {"ok": True, "status": "imported", "order_id": order_id}
 
 
 # ─── Provider outbox (marketplace write queue) ────────────────────────────────

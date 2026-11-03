@@ -235,12 +235,15 @@ class SellerSession:
         return cls(db, token)
 
     async def call(self, method: str, path: str, *, json: Any = None, params: Optional[dict] = None,
-                   ok: tuple[int, ...] = (200, 201, 204)) -> Optional[dict]:
-        url = f"{ebay_service.api_base}{path}"
-        resp = await ebay_http.send(method, url, decrypt_token(self.token.access_token), json=json, params=params)
+                   ok: tuple[int, ...] = (200, 201, 204), base: Optional[str] = None,
+                   headers: Optional[dict] = None) -> Optional[dict]:
+        url = f"{base or ebay_service.api_base}{path}"
+        bearer = decrypt_token(self.token.access_token)
+        resp = await ebay_http.send(method, url, bearer, json=json, params=params, headers=headers)
         if resp.status_code == 401:
             self.token = await ebay_service._refresh_access_token(self.db, self.token)
-            resp = await ebay_http.send(method, url, decrypt_token(self.token.access_token), json=json, params=params)
+            bearer = decrypt_token(self.token.access_token)
+            resp = await ebay_http.send(method, url, bearer, json=json, params=params, headers=headers)
         if resp.status_code not in ok:
             errors: list = []
             try:

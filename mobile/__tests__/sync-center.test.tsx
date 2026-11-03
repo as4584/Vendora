@@ -29,6 +29,9 @@ jest.mock('../services/api', () => ({
   triggerEbaySync: jest.fn(),
   listOutboxJobs: jest.fn(async () => []),
   retryOutboxJob: jest.fn(),
+  listEbayPayouts: jest.fn(async () => []),
+  listEbayFees: jest.fn(async () => []),
+  syncEbayFinances: jest.fn(),
 }));
 
 const DISCONNECTED = { connected: false, last_synced_at: null };

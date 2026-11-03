@@ -25,6 +25,7 @@ jest.mock('../services/api', () => ({
   endEbayListing: jest.fn(),
   getItemEbayComps: jest.fn(),
   searchEbayComps: jest.fn(),
+  getEbayTraffic: jest.fn(async () => ({ summary: null, price_hint: null, watchers: null })),
 }));
 
 const m = api as jest.Mocked<typeof api>;

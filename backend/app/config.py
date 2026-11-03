@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     # application. Leave False on a standard keyset: comps then use Browse
     # active listings, labelled as asking prices (never as sold prices).
     EBAY_MARKETPLACE_INSIGHTS: bool = False
+    # Notification API destination (must be public HTTPS and match the URL
+    # registered as the destination). Order topics to subscribe to; eBay's
+    # topic catalog (getTopics) is the source of truth for the names.
+    EBAY_NOTIFICATION_ENDPOINT: str = "https://vendora.lexmakesit.com/api/v1/integrations/ebay/notifications"
+    EBAY_ORDER_TOPICS: str = "ITEM_SOLD"
     # Marketplace Account Deletion compliance (required to enable a production keyset).
     # EBAY_VERIFICATION_TOKEN is a self-chosen 32–80 char string entered in the eBay portal.
     # EBAY_DELETION_ENDPOINT must EXACTLY match the endpoint URL configured there (used in the hash).
