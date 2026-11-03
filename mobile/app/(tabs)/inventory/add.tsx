@@ -6,7 +6,7 @@
  *  â€¢ Barcode scanner modal (expo-camera)
  *  â€¢ Auto-SKU generator
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     View,
     Text,
@@ -28,6 +28,15 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
 import { isTempId } from "../../../services/offline";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
+import { Button } from "../../../components/Button";
+import {
+    isLabelReaderAvailable,
+    readLabel,
+    rememberScan,
+    resolveScan,
+    syncScanMemory,
+    type ScanFields,
+} from "../../../services/smartScan";
 
 import { COLORS } from "../../../theme/tokens";
 const CATEGORY_PREFIXES: Record<string, string> = {
@@ -94,6 +103,18 @@ export default function AddItemScreen() {
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
     const scanLock = useRef(false);
+    // Smart scan: barcode memory first, then the box label (read on device)
+    const cameraRef = useRef<CameraView>(null);
+    const [scanStep, setScanStep] = useState<"barcode" | "label">("barcode");
+    const [readingLabel, setReadingLabel] = useState(false);
+    const [scanNote, setScanNote] = useState<string | null>(null);
+    const pendingBarcode = useRef<string>("");
+    const styleCodeRef = useRef<string | undefined>(undefined);
+
+    // Bring this account's barcode memory onto the phone so scans work offline.
+    useEffect(() => {
+        syncScanMemory().catch(() => undefined);
+    }, []);
 
     // â”€â”€ Photo picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const pickPhoto = async (side: PhotoSide) => {
@@ -172,13 +193,93 @@ export default function AddItemScreen() {
         setScannerOpen(true);
     };
 
-    const onBarcodeScanned = ({ data }: { data: string }) => {
+    /** Fill empty fields only, so nothing the seller typed is overwritten. */
+    const applyScanFields = (fields: ScanFields) => {
+        const fill = (cur: string, set: (v: string) => void, val?: string) => {
+            if (val && !cur.trim()) set(val);
+        };
+        fill(name, setName, fields.name);
+        fill(category, setCategory, fields.category);
+        fill(sku, setSku, fields.sku ?? fields.style_code);
+        fill(color, setColor, fields.color);
+        fill(condition, setCondition, fields.condition);
+        fill(buyPrice, setBuyPrice, fields.buy_price);
+        fill(expectedPrice, setExpectedPrice, fields.expected_sell_price);
+        fill(platform, setPlatform, fields.platform);
+        if (fields.style_code) styleCodeRef.current = fields.style_code;
+        if (fields.size) {
+            const finalCategory = category.trim() || fields.category || "";
+            const boxSize = fields.size;
+            if (isSizeCategory(finalCategory)) {
+                setVariants((prev) => (prev.length ? prev : [{ size: boxSize, quantity: 1 }]));
+            } else {
+                fill(size, setSize, boxSize);
+            }
+        }
+    };
+
+    const closeScanner = () => {
+        setScannerOpen(false);
+        setScanStep("barcode");
+        setReadingLabel(false);
+    };
+
+    const onBarcodeScanned = async ({ data }: { data: string }) => {
         if (scanLock.current) return;
         scanLock.current = true;
         setScanned(true);
-        setScannerOpen(false);
         setUpc(data);
-        Alert.alert("Barcode Scanned", `UPC: ${data}`);
+        pendingBarcode.current = data;
+        try {
+            const hit = await resolveScan(data);
+            if (hit.match === "memory" || hit.match === "inventory") {
+                applyScanFields(hit.fields);
+                closeScanner();
+                setScanNote(
+                    hit.match === "memory"
+                        ? `Filled from your scan memory${hit.times_seen > 1 ? ` (seen ${hit.times_seen} times)` : ""}. Check it and save.`
+                        : "Filled from an item you already have. Check it and save.",
+                );
+                return;
+            }
+        } catch {
+            // Memory unavailable: carry on to the label step.
+        }
+        if (isLabelReaderAvailable()) {
+            setScanStep("label");
+        } else {
+            closeScanner();
+            setScanNote("New barcode. Type the details once and Vendora will remember it next time.");
+        }
+    };
+
+    const captureLabel = async () => {
+        if (!cameraRef.current || readingLabel) return;
+        setReadingLabel(true);
+        try {
+            const photo = await cameraRef.current.takePictureAsync({ quality: 0.7 });
+            let fields = await readLabel(photo.uri);
+            if (fields.style_code) {
+                // A different size of a shoe you already have fills in the rest.
+                const family = await resolveScan(pendingBarcode.current, fields.style_code);
+                if (family.match) fields = { ...fields, ...family.fields, size: fields.size ?? family.fields.size };
+            }
+            applyScanFields(fields);
+            setScanNote(
+                Object.keys(fields).length
+                    ? "Read from the box label on your phone. Check it, fix anything, and save. Vendora will remember it."
+                    : "Couldn't read that label. Type the details once and Vendora will remember this barcode.",
+            );
+        } catch {
+            setScanNote("Couldn't read that label. Type the details once and Vendora will remember this barcode.");
+        } finally {
+            closeScanner();
+        }
+    };
+
+    const skipLabel = () => {
+        closeScanner();
+        setScanNote("New barcode. Type the details once and Vendora will remember it next time.");
     };
 
     // â”€â”€ Auto-SKU â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -243,6 +344,22 @@ export default function AddItemScreen() {
             };
 
             const created = await api.createItem(payload);
+
+            // Teach smart scan what this barcode is (phone first, then account).
+            if (payload.upc) {
+                rememberScan(payload.upc, {
+                    name: payload.name,
+                    category: payload.category,
+                    sku: payload.sku,
+                    style_code: styleCodeRef.current ?? payload.sku,
+                    size: payload.size ?? (variants.length === 1 ? variants[0].size : undefined),
+                    color: payload.color,
+                    condition: payload.condition,
+                    buy_price: payload.buy_price,
+                    expected_sell_price: payload.expected_sell_price,
+                    platform: payload.platform,
+                }).catch(() => undefined);
+            }
             const queuedOffline = isTempId(created.id);
 
             // Photos upload to a dedicated endpoint that needs a connection and a
@@ -288,6 +405,23 @@ export default function AddItemScreen() {
                 keyboardDismissMode="on-drag"
             >
                 {/* â”€â”€ Photos â”€â”€ */}
+                {/* Smart scan: the fastest way to add a boxed item */}
+                <Button
+                    label="Scan a box"
+                    leadingIcon="barcode-outline"
+                    size="lg"
+                    fullWidth
+                    onPress={openScanner}
+                    accessibilityLabel="Scan a box barcode and label"
+                    testID="smart-scan-button"
+                    style={styles.smartScanButton}
+                />
+                {scanNote ? (
+                    <View style={styles.scanNote} accessibilityLiveRegion="polite" testID="smart-scan-note">
+                        <Text style={styles.scanNoteText}>{scanNote}</Text>
+                    </View>
+                ) : null}
+
                 <Text style={styles.sectionTitle}>Photos</Text>
                 <View style={styles.photoRow}>
                     <TouchableOpacity
@@ -601,15 +735,35 @@ export default function AddItemScreen() {
             </ScrollView>
 
             {/* â”€â”€ Barcode Scanner Modal â”€â”€ */}
-            <Modal visible={scannerOpen} animationType="slide" onRequestClose={() => setScannerOpen(false)}>
+            <Modal visible={scannerOpen} animationType="slide" onRequestClose={closeScanner}>
                 <View style={styles.scannerContainer}>
                     <CameraView
+                        ref={cameraRef}
                         style={styles.camera}
                         facing="back"
                         barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] }}
                         onBarcodeScanned={scanned ? undefined : onBarcodeScanned}
                     />
-                    <ScannerOverlay hint="Point at a barcode to scan" onCancel={() => setScannerOpen(false)} />
+                    {scanStep === "barcode" ? (
+                        <ScannerOverlay hint="Point at the barcode on the box" onCancel={closeScanner} />
+                    ) : (
+                        <View style={styles.labelStep} testID="smart-scan-label-step">
+                            <Text style={styles.labelStepTitle}>New barcode</Text>
+                            <Text style={styles.labelStepHint}>
+                                Fit the box label in view and tap Read label. It is read on your phone.
+                            </Text>
+                            <Button
+                                label={readingLabel ? "Reading..." : "Read label"}
+                                leadingIcon="scan-outline"
+                                size="lg"
+                                fullWidth
+                                loading={readingLabel}
+                                haptic="success"
+                                onPress={captureLabel}
+                            />
+                            <Button label="Type it myself" variant="ghost" fullWidth onPress={skipLabel} style={styles.labelSkip} />
+                        </View>
+                    )}
                 </View>
             </Modal>
         </KeyboardAvoidingView>
@@ -712,6 +866,29 @@ const styles = StyleSheet.create({
 
     // Scanner modal
     scannerContainer: { flex: 1, backgroundColor: "#000" },
+    smartScanButton: { marginBottom: 12 },
+    scanNote: {
+        backgroundColor: COLORS.cardAlt,
+        borderColor: COLORS.primary,
+        borderWidth: 1,
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 16,
+    },
+    scanNoteText: { color: COLORS.text, fontSize: 14, lineHeight: 20 },
+    labelStep: {
+        position: "absolute",
+        left: 16,
+        right: 16,
+        bottom: 40,
+        backgroundColor: "rgba(10,10,26,0.92)",
+        borderRadius: 16,
+        padding: 16,
+        gap: 8,
+    },
+    labelStepTitle: { color: COLORS.text, fontSize: 18, fontWeight: "700" },
+    labelStepHint: { color: COLORS.textMuted, fontSize: 14, lineHeight: 20, marginBottom: 8 },
+    labelSkip: { marginTop: 4 },
     camera: { flex: 1 },
     scannerOverlay: {
         position: "absolute",

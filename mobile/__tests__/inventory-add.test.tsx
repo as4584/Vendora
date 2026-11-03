@@ -8,6 +8,7 @@ import * as api from '../services/api';
 const mockReplace = jest.fn();
 const mockRequestCameraPermission = jest.fn();
 let mockCameraPermission: { granted: boolean } | null = { granted: true };
+const mockTakePicture = jest.fn(async () => ({ uri: 'file:///label.jpg' }));
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace }),
@@ -26,14 +27,28 @@ jest.mock('expo-camera', () => {
   const { View } = require('react-native');
   return {
     useCameraPermissions: () => [mockCameraPermission, mockRequestCameraPermission],
-    CameraView: (props: unknown) =>
-      ReactModule.createElement(View, { ...props, testID: 'camera-view' }),
+    CameraView: ReactModule.forwardRef((props: object, ref: unknown) => {
+      ReactModule.useImperativeHandle(ref, () => ({ takePictureAsync: mockTakePicture }));
+      return ReactModule.createElement(View, { ...props, testID: 'camera-view' });
+    }),
   };
 });
 
 jest.mock('../services/api', () => ({
   createItem: jest.fn(),
   uploadItemPhotos: jest.fn(),
+}));
+
+const mockResolveScan = jest.fn();
+const mockRememberScan = jest.fn();
+const mockReadLabel = jest.fn();
+let mockLabelReader = true;
+jest.mock('../services/smartScan', () => ({
+  resolveScan: (...a: unknown[]) => mockResolveScan(...a),
+  rememberScan: (...a: unknown[]) => mockRememberScan(...a),
+  readLabel: (...a: unknown[]) => mockReadLabel(...a),
+  syncScanMemory: jest.fn(async () => 0),
+  isLabelReaderAvailable: () => mockLabelReader,
 }));
 
 const picker = ImagePicker as jest.Mocked<typeof ImagePicker>;
@@ -59,6 +74,10 @@ describe('add inventory screen', () => {
     picker.launchCameraAsync.mockResolvedValue({ canceled: true, assets: null } as any);
     mockedApi.createItem.mockResolvedValue({ id: 'item-1' } as api.InventoryItem);
     mockedApi.uploadItemPhotos.mockResolvedValue({ id: 'item-1' } as api.InventoryItem);
+    mockLabelReader = true;
+    mockResolveScan.mockResolvedValue({ barcode: 'x', match: null, fields: {}, times_seen: 0 });
+    mockRememberScan.mockResolvedValue(undefined);
+    mockReadLabel.mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -257,13 +276,14 @@ describe('add inventory screen', () => {
     fireEvent.press(screen.getByText('Cancel'));
     fireEvent.press(screen.getByLabelText('Scan barcode'));
     const camera = await screen.findByTestId('camera-view');
-    act(() => {
+    mockLabelReader = false;
+    await act(async () => {
       camera.props.onBarcodeScanned({ data: '998877' });
       camera.props.onBarcodeScanned({ data: 'duplicate-scan' });
     });
     expect(screen.getByLabelText('UPC or Barcode').props.value).toBe('998877');
-    expect(alertSpy).toHaveBeenCalledWith('Barcode Scanned', 'UPC: 998877');
-    expect(alertSpy).not.toHaveBeenCalledWith('Barcode Scanned', 'UPC: duplicate-scan');
+    expect(mockResolveScan).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Type the details once/);
 
     mockCameraPermission = null;
     mockRequestCameraPermission.mockResolvedValueOnce({ granted: false });
@@ -275,6 +295,58 @@ describe('add inventory screen', () => {
         'Allow camera access to scan barcodes.',
       ),
     );
+  });
+
+  it('fills the form from scan memory and remembers the save', async () => {
+    mockResolveScan.mockResolvedValueOnce({
+      barcode: '195866137738',
+      match: 'memory',
+      times_seen: 3,
+      fields: { name: 'Nike Dunk Low Panda', sku: 'DD1391-100', style_code: 'DD1391-100', color: 'White/Black', buy_price: '110.00' },
+    });
+    const screen = render(<AddItemScreen />);
+    fireEvent.press(screen.getByTestId('smart-scan-button'));
+    const camera = await screen.findByTestId('camera-view');
+    await act(async () => {
+      await camera.props.onBarcodeScanned({ data: '195866137738' });
+    });
+    expect(screen.getByLabelText('Item Name').props.value).toBe('Nike Dunk Low Panda');
+    expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/seen 3 times/);
+
+    fireEvent.press(screen.getByText('Add to Inventory'));
+    await waitFor(() => expect(mockRememberScan).toHaveBeenCalledWith('195866137738', expect.objectContaining({
+      name: 'Nike Dunk Low Panda', style_code: 'DD1391-100', buy_price: '110.00',
+    })));
+  });
+
+  it('reads the box label for a new barcode without overwriting typed fields', async () => {
+    mockReadLabel.mockResolvedValueOnce({ name: 'Label Name', style_code: 'FV5029-006', sku: 'FV5029-006', color: 'Black/Cement' });
+    const screen = render(<AddItemScreen />);
+    fireEvent.changeText(screen.getByLabelText('Item Name'), 'My own name');
+    fireEvent.press(screen.getByTestId('smart-scan-button'));
+    const camera = await screen.findByTestId('camera-view');
+    await act(async () => {
+      await camera.props.onBarcodeScanned({ data: '197862948123' });
+    });
+    expect(screen.getByTestId('smart-scan-label-step')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByText('Read label'));
+    });
+    await waitFor(() => expect(mockReadLabel).toHaveBeenCalledWith('file:///label.jpg'));
+    expect(mockResolveScan).toHaveBeenLastCalledWith('197862948123', 'FV5029-006');
+    expect(screen.getByLabelText('Item Name').props.value).toBe('My own name');
+    expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Read from the box label/);
+  });
+
+  it('lets the seller skip the label and type it', async () => {
+    const screen = render(<AddItemScreen />);
+    fireEvent.press(screen.getByTestId('smart-scan-button'));
+    const camera = await screen.findByTestId('camera-view');
+    await act(async () => {
+      await camera.props.onBarcodeScanned({ data: '12345678' });
+    });
+    fireEvent.press(screen.getByText('Type it myself'));
+    expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/remember it next time/);
   });
 
   it('shows tier-limit and general creation failures', async () => {
