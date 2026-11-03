@@ -11,12 +11,13 @@ import {
     KeyboardAvoidingView,
     Platform,
     Alert,
-    ActivityIndicator,
     ScrollView,
 } from "react-native";
 import { Link } from "expo-router";
 import { useAuth } from "../../context/auth";
 
+import { COLORS } from "../../theme/tokens";
+import { Button } from "../../components/Button";
 export default function RegisterScreen() {
     const { signUp } = useAuth();
     const [email, setEmail] = useState("");
@@ -112,18 +113,7 @@ export default function RegisterScreen() {
                         secureTextEntry
                     />
 
-                    <TouchableOpacity
-                        accessibilityRole="button"
-                        style={[styles.button, loading && styles.buttonDisabled]}
-                        onPress={handleRegister}
-                        disabled={loading}
-                    >
-                        {loading ? (
-                            <ActivityIndicator color="#fff" />
-                        ) : (
-                            <Text style={styles.buttonText}>Create Account</Text>
-                        )}
-                    </TouchableOpacity>
+                    <Button label="Create Account" onPress={handleRegister} loading={loading} size="lg" fullWidth style={styles.buttonSpacing} />
 
                     {/* Tier info */}
                     <View style={styles.tierBadge}>
@@ -171,7 +161,7 @@ const styles = StyleSheet.create({
     },
     tagline: {
         fontSize: 14,
-        color: "#6C5CE7",
+        color: COLORS.primary,
         marginTop: 4,
     },
     form: {
@@ -197,12 +187,13 @@ const styles = StyleSheet.create({
         borderColor: "#2A2A4A",
     },
     button: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 12,
         paddingVertical: 16,
         alignItems: "center",
         marginTop: 24,
     },
+    buttonSpacing: { marginTop: 24 },
     buttonDisabled: {
         opacity: 0.6,
     },
@@ -221,7 +212,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
     },
     tierText: {
-        color: "#6C5CE7",
+        color: COLORS.primary,
         fontSize: 13,
         fontWeight: "500",
     },
@@ -234,7 +225,7 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     linkHighlight: {
-        color: "#6C5CE7",
+        color: COLORS.primary,
         fontWeight: "600",
     },
 });

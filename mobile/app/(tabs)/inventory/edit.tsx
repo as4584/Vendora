@@ -25,6 +25,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 
+import { COLORS } from "../../../theme/tokens";
 const CLOTHING_KEYWORDS = [
     "clothing", "apparel", "shirt", "pants", "jeans", "dress", "jacket",
     "hoodie", "sweater", "shorts", "shoes", "sneakers", "boots", "sandals",
@@ -297,7 +298,7 @@ export default function EditItemScreen() {
     if (loadingItem) {
         return (
             <View style={styles.center}>
-                <ActivityIndicator size="large" color="#6C5CE7" />
+                <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
         );
     }
@@ -649,7 +650,7 @@ const styles = StyleSheet.create({
     center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0A0A1A" },
     content: { padding: 20, paddingBottom: 50 },
     backBtn: { marginBottom: 8, alignSelf: "flex-start" },
-    backBtnText: { color: "#6C5CE7", fontSize: 16, fontWeight: "700" },
+    backBtnText: { color: COLORS.primary, fontSize: 16, fontWeight: "700" },
     screenTitle: {
         color: "#FFFFFF",
         fontSize: 22,
@@ -659,7 +660,7 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 14,
         fontWeight: "800",
-        color: "#6C5CE7",
+        color: COLORS.primary,
         marginTop: 22,
         marginBottom: 10,
         textTransform: "uppercase",
@@ -682,7 +683,7 @@ const styles = StyleSheet.create({
     skuRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     skuInput: { flex: 1 },
     scanButton: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 10,
         width: 44,
         height: 44,
@@ -742,7 +743,7 @@ const styles = StyleSheet.create({
         borderColor: "#2A2A4A",
     },
     addSizeBtn: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 10,
         paddingHorizontal: 14,
         paddingVertical: 10,
@@ -768,7 +769,7 @@ const styles = StyleSheet.create({
     qtyBtnLargeText: { color: "#FFF", fontSize: 22, fontWeight: "700" },
     qtyValueLarge: { color: "#FFF", fontSize: 28, fontWeight: "800", minWidth: 50, textAlign: "center" },
     saveButton: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 14,
         paddingVertical: 18,
         alignItems: "center",

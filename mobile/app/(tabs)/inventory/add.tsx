@@ -29,6 +29,7 @@ import * as api from "../../../services/api";
 import { isTempId } from "../../../services/offline";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 
+import { COLORS } from "../../../theme/tokens";
 const CATEGORY_PREFIXES: Record<string, string> = {
     sneakers: "SNK",
     clothing: "CLO",
@@ -625,7 +626,7 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 13,
         fontWeight: "800",
-        color: "#6C5CE7",
+        color: COLORS.primary,
         marginTop: 22,
         marginBottom: 8,
         textTransform: "uppercase",
@@ -680,7 +681,7 @@ const styles = StyleSheet.create({
     autoButton: {
         backgroundColor: "#2A1B4E",
         borderWidth: 1,
-        borderColor: "#6C5CE7",
+        borderColor: COLORS.primary,
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 12,
@@ -700,7 +701,7 @@ const styles = StyleSheet.create({
 
     // Submit
     button: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 12,
         paddingVertical: 16,
         alignItems: "center",
@@ -782,7 +783,7 @@ const styles = StyleSheet.create({
         borderColor: "#2A2A4A",
     },
     addSizeBtn: {
-        backgroundColor: "#6C5CE7",
+        backgroundColor: COLORS.primary,
         borderRadius: 10,
         paddingHorizontal: 14,
         paddingVertical: 10,
