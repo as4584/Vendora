@@ -446,7 +446,7 @@ class SquareService(ProviderAdapter):
         amount_cents = total_money.get("amount", 0) or 0
         amount = Decimal(str(amount_cents)) / Decimal("100")
 
-        # Map Square status to Vendora status
+        # Map Square status to Resqlo status
         sq_status = (payment.get("status") or "").upper()
         status_map = {
             "COMPLETED": "completed",
@@ -494,7 +494,7 @@ class SquareService(ProviderAdapter):
     async def _do_sync(
         self, db: Session, user_id: uuid.UUID, run: object
     ) -> SyncResult:
-        """Pull Square catalog + inventory into Vendora.
+        """Pull Square catalog + inventory into Resqlo.
 
         Step 1: Fetch all ITEM catalog objects (paginated).
         Step 2: Collect all ITEM_VARIATION objects with their parent name.

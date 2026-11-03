@@ -155,7 +155,7 @@ class TestCSVExportContent:
 
         resp = client.get("/api/v1/export/inventory?template=warehouse", headers=pro_headers)
         assert resp.status_code == 200
-        assert "vendora_inventory_warehouse.csv" in resp.headers["content-disposition"]
+        assert "resqlo_inventory_warehouse.csv" in resp.headers["content-disposition"]
         rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8-sig"))))
 
         assert rows[0][0] == "The Cotton Wreath Hoodie Black"

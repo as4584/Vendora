@@ -4,7 +4,7 @@
  * On iOS, Apple requires digital subscriptions to be sold through its own
  * payment sheet, so Pro/Partner are bought here. Web (and Android for now)
  * keep the Stripe checkout. Either way the backend sets the same tier:
- * RevenueCat calls POST /api/v1/webhooks/revenuecat with the Vendora user id,
+ * RevenueCat calls POST /api/v1/webhooks/revenuecat with the Resqlo user id,
  * which we pass as the RevenueCat app user id.
  */
 import { Platform } from "react-native";
@@ -52,7 +52,7 @@ export async function loadPlans(userId: string): Promise<StorePlan[]> {
   await ensureConfigured(userId);
   const Purchases = await sdk();
   const offerings = await Purchases.getOfferings();
-  // The RevenueCat project is shared with other Resqlo apps, so Vendora uses
+  // The RevenueCat project is shared with other apps, so this app uses
   // its own offering rather than the project's "current" one.
   const offering = offerings.all[VENDORA_OFFERING] ?? offerings.current;
   const pkgs = offering?.availablePackages ?? [];

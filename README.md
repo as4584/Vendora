@@ -1,4 +1,4 @@
-# Vendora — Reseller Operating System
+# Resqlo — Reseller Operating System
 
 [![Backend CI](https://github.com/as4584/Vendora/actions/workflows/ci.yml/badge.svg)](https://github.com/as4584/Vendora/actions/workflows/ci.yml)
 [![Mobile Tests](https://github.com/as4584/Vendora/actions/workflows/mobile-tests.yml/badge.svg)](https://github.com/as4584/Vendora/actions/workflows/mobile-tests.yml)
@@ -9,7 +9,7 @@ A full-stack mobile application built for resellers to manage inventory, track p
 
 ## What It Does
 
-Resellers (sneakers, electronics, clothing, etc.) use Vendora to run their business end-to-end:
+Resellers (sneakers, electronics, clothing, etc.) use Resqlo to run their business end-to-end:
 
 - **Smart Scan** — scan a shoebox and the item fills itself in: your own barcode memory first, then the box label read on the phone (Apple Vision). No outside databases. [See how it works →](docs/features/SMART_SCAN.md)
 - **Inventory tracking** — add items with photos, barcode scanning, condition, buy/sell price, platform

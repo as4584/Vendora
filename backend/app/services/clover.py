@@ -6,7 +6,7 @@ Architecture decisions:
   - Quantity source: item.itemStock.quantity from GET /v3/merchants/{mid}/items
     expanded with itemStock. Items without itemStock have qty=0.
   - Phase 1: flat items only. Modifier groups / variants are out of scope.
-    Each Clover Item maps 1:1 to one Vendora InventoryItem.
+    Each Clover Item maps 1:1 to one Resqlo InventoryItem.
   - No OAuth in this phase: developer tokens or server tokens stored directly
     in CloverCredential via POST /integrations/clover/connect.
   - Transactions are out of scope for import-only phase.
@@ -372,7 +372,7 @@ class CloverService(ProviderAdapter):
     async def _do_sync(
         self, db: Session, user_id: uuid.UUID, run: object
     ) -> SyncResult:
-        """Pull Clover items into canonical Vendora inventory.
+        """Pull Clover items into canonical Resqlo inventory.
 
         Step 1: Fetch all items (paginated) with stock + category expansions.
         Step 2: Upsert each item into canonical inventory tables.

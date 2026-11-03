@@ -222,7 +222,7 @@ export default function AddItemScreen() {
             return;
         }
         let fields: ScanFields = read;
-        let note = "Read live from the box on your phone. Check it, fix anything, and save. Vendora will remember it.";
+        let note = "Read live from the box on your phone. Check it, fix anything, and save. Resqlo will remember it.";
         if (barcode) {
             setUpc(barcode);
             try {
@@ -312,7 +312,7 @@ export default function AddItemScreen() {
             setScanStep("label");
         } else {
             closeScanner();
-            setScanNote("New barcode. Type the details once and Vendora will remember it next time.");
+            setScanNote("New barcode. Type the details once and Resqlo will remember it next time.");
         }
     };
 
@@ -330,11 +330,11 @@ export default function AddItemScreen() {
             applyScanFields(fields);
             setScanNote(
                 Object.keys(fields).length
-                    ? "Read from the box label on your phone. Check it, fix anything, and save. Vendora will remember it."
-                    : "Couldn't read that label. Type the details once and Vendora will remember this barcode.",
+                    ? "Read from the box label on your phone. Check it, fix anything, and save. Resqlo will remember it."
+                    : "Couldn't read that label. Type the details once and Resqlo will remember this barcode.",
             );
         } catch {
-            setScanNote("Couldn't read that label. Type the details once and Vendora will remember this barcode.");
+            setScanNote("Couldn't read that label. Type the details once and Resqlo will remember this barcode.");
         } finally {
             closeScanner();
         }
@@ -342,7 +342,7 @@ export default function AddItemScreen() {
 
     const skipLabel = () => {
         closeScanner();
-        setScanNote("New barcode. Type the details once and Vendora will remember it next time.");
+        setScanNote("New barcode. Type the details once and Resqlo will remember it next time.");
     };
 
     // â”€â”€ Auto-SKU â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

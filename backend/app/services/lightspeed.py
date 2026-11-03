@@ -279,7 +279,7 @@ class LightspeedService(ProviderAdapter):
         return record
 
     async def push_item(self, db: Session, user_id: uuid.UUID, item_id: uuid.UUID) -> bool:
-        """Publish one Vendora item to Lightspeed; return True when newly created."""
+        """Publish one Resqlo item to Lightspeed; return True when newly created."""
         token = self.get_token(db, user_id)
         if not token:
             raise HTTPException(status_code=404, detail="Connect Lightspeed first.")
@@ -317,7 +317,7 @@ class LightspeedService(ProviderAdapter):
         return created
 
     async def push_linked_items(self, db: Session, user_id: uuid.UUID) -> dict[str, int]:
-        """Push all already-linked Vendora catalog records back to Lightspeed."""
+        """Push all already-linked Resqlo catalog records back to Lightspeed."""
         links = db.query(InventoryExternalLink).filter(
             InventoryExternalLink.user_id == user_id,
             InventoryExternalLink.provider == "lightspeed",
@@ -569,7 +569,7 @@ class LightspeedService(ProviderAdapter):
     ) -> SyncResult:
         """Provider-specific sync work.  Called by the ProviderAdapter template sync().
 
-        Pulls items and sales from Lightspeed, upserts into Vendora inventory and
+        Pulls items and sales from Lightspeed, upserts into Resqlo inventory and
         transactions, writes ledger entries, and records reconciliation issues for
         any stale links encountered.
         """

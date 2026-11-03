@@ -260,7 +260,7 @@ export default function InventoryListScreen() {
     setExporting(true);
     try {
       const token = await api.getToken();
-      await downloadAndShareRemote(api.exportInventoryXlsxUrl(), "vendora-inventory.xlsx", token);
+      await downloadAndShareRemote(api.exportInventoryXlsxUrl(), "resqlo-inventory.xlsx", token);
     } catch (err: any) {
       Alert.alert("Export failed", err?.message || "Could not export the Excel file.");
     } finally {
@@ -271,7 +271,7 @@ export default function InventoryListScreen() {
   const exportCsv = async () => {
     try {
       const csv = await api.exportInventoryWarehouseCSV();
-      await downloadTextFile(csv, "vendora-inventory.csv");
+      await downloadTextFile(csv, "resqlo-inventory.csv");
     } catch (err: any) {
       Alert.alert("Export failed", err?.message || "Could not export the inventory CSV.");
     }

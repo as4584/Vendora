@@ -1,4 +1,4 @@
-"""Intelligent product-name matching for bridging Vendora item names to StockX.
+"""Intelligent product-name matching for bridging Resqlo item names to StockX.
 
 Resellers name items loosely ("Jordan 1 Chicago", "AJ1 chicago lost&found",
 "nike dunk panda"), while StockX uses canonical titles ("Jordan 1 Retro High OG

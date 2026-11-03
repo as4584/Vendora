@@ -360,7 +360,7 @@ export default function SettingsScreen() {
       <InvoiceBrandingCard user={user} onSaved={refreshUser} />
 
       <Card style={{ gap: SPACING.sm }}>
-        <SectionLabel>Vendora Plus</SectionLabel>
+        <SectionLabel>Resqlo Plus</SectionLabel>
         <Text style={styles.helperText}>Billing, analytics, storefront, and support are now available in the app.</Text>
         <View style={styles.productActions}>
           <ActionButton label="Plans & Billing" onPress={() => router.push("/settings/subscription" as any)} tone="secondary" compact />
@@ -426,7 +426,7 @@ export default function SettingsScreen() {
         name="eBay"
         connected={ebStatus?.connected ?? false}
         lastSynced={ebStatus?.last_synced_at}
-        helper="Import your eBay listings and orders into Vendora (read-only)."
+        helper="Import your eBay listings and orders into Resqlo (read-only)."
         loading={ebLoading}
         syncing={ebSyncing}
         onConnect={handleConnectEbay}
@@ -446,7 +446,7 @@ export default function SettingsScreen() {
               Connect {connectionProvider === "square" ? "Square" : "Clover"}
             </SectionLabel>
             <Text style={styles.helperText}>
-              Credentials are sent directly to Vendora and stored encrypted on the server.
+              Credentials are sent directly to Resqlo and stored encrypted on the server.
             </Text>
             <Text style={styles.inputLabel}>Access token</Text>
             <TextInput
@@ -507,7 +507,7 @@ export default function SettingsScreen() {
 
       <Card style={{ gap: SPACING.sm }}>
         <SectionLabel>Danger Zone</SectionLabel>
-        <Text style={styles.helperText}>Permanently deletes your account and Vendora-owned data.</Text>
+        <Text style={styles.helperText}>Permanently deletes your account and Resqlo-owned data.</Text>
         <ActionButton label="Delete Account" onPress={() => setDeleteModalOpen(true)} tone="ghost" />
       </Card>
 

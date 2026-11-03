@@ -58,15 +58,15 @@ def export_inventory(
         return StreamingResponse(
             io.BytesIO(xlsx_bytes),
             media_type=_XLSX_MEDIA,
-            headers={"Content-Disposition": "attachment; filename=vendora_inventory.xlsx"},
+            headers={"Content-Disposition": "attachment; filename=resqlo_inventory.xlsx"},
         )
 
     if template == "warehouse":
         csv_content = export_inventory_warehouse_csv(db, current_user.id)
-        filename = "vendora_inventory_warehouse.csv"
+        filename = "resqlo_inventory_warehouse.csv"
     else:
         csv_content = export_inventory_csv(db, current_user.id)
-        filename = "vendora_inventory.csv"
+        filename = "resqlo_inventory.csv"
 
     return StreamingResponse(
         io.BytesIO(csv_content.encode("utf-8-sig")),
@@ -88,5 +88,5 @@ def export_transactions(
     return StreamingResponse(
         io.BytesIO(csv_content.encode("utf-8-sig")),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=vendora_transactions.csv"},
+        headers={"Content-Disposition": "attachment; filename=resqlo_transactions.csv"},
     )

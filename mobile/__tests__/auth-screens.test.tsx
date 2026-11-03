@@ -95,7 +95,7 @@ describe('authentication screens', () => {
       fireEvent.press(screen.getByText('Send Reset Link'));
       expect(alertSpy).toHaveBeenCalledWith(
         'Email required',
-        'Enter the email address for your Vendora account.',
+        'Enter the email address for your Resqlo account.',
       );
     });
 
@@ -105,7 +105,7 @@ describe('authentication screens', () => {
       fireEvent.press(screen.getByText('Send Reset Link'));
       await waitFor(() => expect(screen.getByText('Check your email')).toBeTruthy());
       expect(mockedApi.requestPasswordReset).toHaveBeenCalledWith('tester@vendora.test');
-      expect(screen.getByText(/If a Vendora account exists/)).toBeTruthy();
+      expect(screen.getByText(/If a Resqlo account exists/)).toBeTruthy();
       expect(screen.getByText(/try another email you may have signed up with/)).toBeTruthy();
     });
 

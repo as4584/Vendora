@@ -88,7 +88,7 @@ def lightspeed_status(
 
 @router.get("/lightspeed/connect", response_model=LightspeedAuthURLResponse)
 async def lightspeed_connect(current_user: User = Depends(get_current_user)):
-    """Return the OAuth URL so the reseller can authorize Vendora."""
+    """Return the OAuth URL so the reseller can authorize Resqlo."""
     state = lightspeed_service.build_state(current_user.id)
     return LightspeedAuthURLResponse(authorization_url=lightspeed_service.authorization_url(state))
 
@@ -120,7 +120,7 @@ async def lightspeed_sync(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """One-way sync: pull latest inventory and sales from Lightspeed into Vendora."""
+    """One-way sync: pull latest inventory and sales from Lightspeed into Resqlo."""
     result = await lightspeed_service.sync(db, current_user.id)
     return LightspeedSyncResponse(
         status="completed" if result.errors_count == 0 else "partial",
@@ -196,7 +196,7 @@ def ebay_status(
 
 @router.get("/ebay/connect", response_model=EbayAuthURLResponse)
 async def ebay_connect(current_user: User = Depends(get_current_user)):
-    """Return the eBay OAuth consent URL so the reseller can authorize Vendora."""
+    """Return the eBay OAuth consent URL so the reseller can authorize Resqlo."""
     state = ebay_service.build_state(current_user.id)
     return EbayAuthURLResponse(authorization_url=ebay_service.authorization_url(state))
 
@@ -227,7 +227,7 @@ async def ebay_sync(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Pull-only sync: import eBay inventory items and orders into Vendora."""
+    """Pull-only sync: import eBay inventory items and orders into Resqlo."""
     result = await ebay_service.sync(db, current_user.id)
     return EbaySyncResponse(
         status="completed" if result.errors_count == 0 else "partial",
@@ -275,7 +275,7 @@ async def ebay_deletion_notify(request: Request, db: Session = Depends(get_db)):
     eBay requires that we purge the eBay-linked data we hold for the deleted
     eBay account. We match on the eBay username/userId in the payload and
     remove only that account's eBay OAuth token and eBay inventory links —
-    never the Vendora account itself. Notices must carry a valid
+    never the Resqlo account itself. Notices must carry a valid
     x-ebay-signature (412 otherwise, as eBay specifies); verified notices
     always get 200 so eBay stops retrying.
     """
@@ -384,7 +384,7 @@ async def square_sync(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """One-way import: pull Square catalog + inventory counts into Vendora."""
+    """One-way import: pull Square catalog + inventory counts into Resqlo."""
     if not square_service.is_connected(db, current_user.id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -462,7 +462,7 @@ async def clover_sync(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """One-way import: pull Clover items and stock into Vendora."""
+    """One-way import: pull Clover items and stock into Resqlo."""
     if not clover_service.is_connected(db, current_user.id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -1,5 +1,5 @@
 /**
- * Vendora API Service
+ * Resqlo API Service
  *
  * Centralized HTTP client for communicating with the FastAPI backend.
  * All endpoints go through /api/v1/.
@@ -198,7 +198,7 @@ export async function request<T>(
         if (refreshed === null) {
           // Offline or server hiccup: don't sign the user out. A plain Error
           // is treated as a network failure by the offline layer.
-          throw new Error("Could not reach Vendora. Check your connection.");
+          throw new Error("Could not reach Resqlo. Check your connection.");
         }
       }
       await clearToken();

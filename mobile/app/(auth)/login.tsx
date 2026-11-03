@@ -50,12 +50,12 @@ export default function LoginScreen() {
                 {/* Logo / Brand */}
                 <View style={styles.brandContainer}>
                     <Image
-                        source={require("../../assets/brand/vendora-logo.png")}
+                        source={require("../../assets/brand/resqlo-logo.png")}
                         style={styles.brandLogo}
                         resizeMode="contain"
-                        accessibilityLabel="Vendora logo"
+                        accessibilityLabel="Resqlo logo"
                     />
-                    <Text style={styles.brandName}>Vendora</Text>
+                    <Text style={styles.brandName}>Resqlo</Text>
                     <Text style={styles.tagline}>Inventory, sales and invoices for show-floor sellers</Text>
                 </View>
 
@@ -139,6 +139,7 @@ const styles = StyleSheet.create({
     brandLogo: {
         width: 88,
         height: 88,
+        borderRadius: 20,
         marginBottom: 8,
     },
     brandName: {

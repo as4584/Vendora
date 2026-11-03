@@ -69,7 +69,7 @@ def get_public_seller_profile(
     return {
         "seller": {
             "id": str(user.id),
-            "business_name": user.business_name or "Vendora Seller",
+            "business_name": user.business_name or "Resqlo Seller",
             "is_partner": user.is_partner,
             "verified": user.is_partner,  # Partner = verified badge
             "member_since": user.created_at.isoformat() if user.created_at else None,
@@ -92,5 +92,5 @@ def get_public_seller_profile(
             }
             for item in active_items
         ],
-        "disclaimer": "This is a seller profile. Vendora does not guarantee listings or transactions; confirm item and payment details directly with the seller.",
+        "disclaimer": "This is a seller profile. Resqlo does not guarantee listings or transactions; confirm item and payment details directly with the seller.",
     }

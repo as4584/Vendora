@@ -22,7 +22,7 @@ export default function ForgotPasswordScreen() {
 
     const handleSubmit = async () => {
         if (!email.trim()) {
-            Alert.alert("Email required", "Enter the email address for your Vendora account.");
+            Alert.alert("Email required", "Enter the email address for your Resqlo account.");
             return;
         }
         setLoading(true);
@@ -54,7 +54,7 @@ export default function ForgotPasswordScreen() {
                     <View style={styles.successCard}>
                         <Text style={styles.successTitle}>Check your email</Text>
                         <Text style={styles.successText}>
-                            If a Vendora account exists for {email.trim()}, a reset link is on its way.
+                            If a Resqlo account exists for {email.trim()}, a reset link is on its way.
                         </Text>
                         <Text style={styles.successText}>
                             If there&apos;s no account for that email, we&apos;ll send it a short note saying so.

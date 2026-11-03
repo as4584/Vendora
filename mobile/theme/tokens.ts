@@ -1,5 +1,5 @@
 /**
- * Vendora design tokens.
+ * Resqlo design tokens.
  *
  * Direction (unslop pass): a pocket register for a show-floor table.
  * Character: quick, exact, a little street. World: sneaker boxes, price tags,

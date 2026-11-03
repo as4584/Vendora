@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Vendora",
+    "name": "Resqlo",
     "slug": "vendora",
     "version": "1.1.0",
     "orientation": "portrait",
@@ -36,13 +36,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Vendora uses the camera to scan barcodes on items."
+          "cameraPermission": "Resqlo uses the camera to scan barcodes on items."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Vendora needs photo access to attach images to inventory items."
+          "photosPermission": "Resqlo needs photo access to attach images to inventory items."
         }
       ],
       "expo-document-picker",

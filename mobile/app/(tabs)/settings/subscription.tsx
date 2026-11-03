@@ -81,7 +81,7 @@ export default function SubscriptionScreen() {
     try {
       const found = await iap.restore(user.id);
       if (found) await waitForUpgrade();
-      else Alert.alert("Nothing to restore", "No active Vendora subscription was found for this Apple ID.");
+      else Alert.alert("Nothing to restore", "No active Resqlo subscription was found for this Apple ID.");
     } catch (error: any) {
       Alert.alert("Restore failed", error?.message || "Could not restore purchases.");
     } finally { setWorking(null); }

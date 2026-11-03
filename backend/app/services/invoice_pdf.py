@@ -1,6 +1,6 @@
 """Invoice PDF generation service.
 
-Generates a styled A4 invoice PDF that matches Vendora's visual design —
+Generates a styled A4 invoice PDF that matches Resqlo's visual design —
 white background, blue table header, black BALANCE DUE footer, user
 profile picture (or initials circle) in the top-left corner.
 
@@ -96,7 +96,7 @@ def generate_invoice_pdf(
     T: float = 15      # top margin
     W: float = 170     # usable width  (A4 210 − 2×20)
 
-    # Per-business accent colour (falls back to Vendora blue).
+    # Per-business accent colour (falls back to Resqlo blue).
     accent = _hex_to_rgb(getattr(user, "invoice_accent_color", None)) or BLUE
 
     # ── Top accent bar (full width) ───────────────────────────────────────────

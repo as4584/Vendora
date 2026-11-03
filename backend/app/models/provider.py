@@ -2,7 +2,7 @@
 
 Two tables:
   - provider_sync_runs:       One record per sync attempt; updated on completion/failure.
-  - reconciliation_issues:    Detected drift/conflict between a provider and Vendora inventory.
+  - reconciliation_issues:    Detected drift/conflict between a provider and Resqlo inventory.
   - provider_webhook_events:  Idempotent log of raw provider webhook events.
 """
 import uuid
@@ -78,14 +78,14 @@ class ProviderSyncRun(Base):
 
 
 class ReconciliationIssue(Base):
-    """A detected mismatch or data quality problem between a provider and Vendora.
+    """A detected mismatch or data quality problem between a provider and Resqlo.
 
     Issues are open until resolved (manually or by a subsequent successful sync).
 
     issue_type values:
       stale_link          - external link points to a soft-deleted InventoryItem
-      stock_drift         - provider qty differs from Vendora ledger qty beyond threshold
-      missing_item        - item in Vendora has no matching provider record
+      stock_drift         - provider qty differs from Resqlo ledger qty beyond threshold
+      missing_item        - item in Resqlo has no matching provider record
       duplicate_external_id - two links share the same provider + external_id
       import_error        - per-item exception during sync
       unknown             - catch-all

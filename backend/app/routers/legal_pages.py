@@ -31,15 +31,15 @@ def _page(title: str, body: str) -> str:
     return (
         f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
         f'<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f"<title>{title} · Vendora</title><style>{_STYLE}</style></head><body>{body}</body></html>"
+        f"<title>{title} · Resqlo</title><style>{_STYLE}</style></head><body>{body}</body></html>"
     )
 
 
 def _privacy() -> str:
     email = settings.SUPPORT_EMAIL
     return _page("Privacy Policy", f"""
-<h1>Vendora Privacy Policy</h1><small>Last updated {UPDATED}</small>
-<p>Vendora is an inventory, sales and invoicing app for independent sellers, operated by LexMakesIt
+<h1>Resqlo Privacy Policy</h1><small>Last updated {UPDATED}</small>
+<p>Resqlo is an inventory, sales and invoicing app for independent sellers, operated by LexMakesIt
 ("we", "us"). This policy explains what we collect, why, and the choices you have.</p>
 
 <h2>What we collect</h2>
@@ -53,11 +53,11 @@ those services issue (encrypted) and the inventory/sales data we sync from them.
 <li><strong>Purchases:</strong> subscriptions are processed by Apple (in the iOS app) or Stripe (on the web). We receive your
 plan, status and renewal date, never your full card details.</li>
 </ul>
-<p>We do not use advertising trackers, sell your data, or share it with data brokers. Vendora does not track you across
+<p>We do not use advertising trackers, sell your data, or share it with data brokers. Resqlo does not track you across
 other companies' apps or websites.</p>
 
 <h2>How we use it</h2>
-<p>Only to run Vendora: sign you in, store and sync your inventory and sales, generate invoices, provide support,
+<p>Only to run Resqlo: sign you in, store and sync your inventory and sales, generate invoices, provide support,
 send account emails (such as password resets), and unlock the plan you paid for.</p>
 
 <h2>Service providers</h2>
@@ -74,7 +74,7 @@ servers. Apple subscriptions must also be cancelled in your App Store account se
 <p>Data is sent over HTTPS, passwords are hashed, and third-party tokens are encrypted at rest.</p>
 
 <h2>Children</h2>
-<p>Vendora is a business tool and is not directed at children under 13.</p>
+<p>Resqlo is a business tool and is not directed at children under 13.</p>
 
 <h2>Your rights</h2>
 <p>You may request a copy, correction or deletion of your data by emailing <a href="mailto:{email}">{email}</a>.
@@ -91,7 +91,7 @@ Residents of California, the EU/UK and other regions with privacy laws have thes
 def _support() -> str:
     email = settings.SUPPORT_EMAIL
     return _page("Support", f"""
-<h1>Vendora Support</h1>
+<h1>Resqlo Support</h1>
 <p>Need help? Email <a href="mailto:{email}">{email}</a> or use <strong>More &rarr; Support</strong> inside the app.
 We usually reply within one business day (Partner members get priority).</p>
 <h2>Common questions</h2>

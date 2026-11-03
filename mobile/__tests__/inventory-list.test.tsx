@@ -286,7 +286,7 @@ describe('InventoryListScreen', () => {
     await waitFor(() =>
       expect(fileActions.downloadTextFile).toHaveBeenCalledWith(
         'Product Name,,',
-        'vendora-inventory.csv',
+        'resqlo-inventory.csv',
       ),
     );
 
@@ -360,7 +360,7 @@ describe('InventoryListScreen', () => {
     await waitFor(() =>
       expect(fileActions.downloadAndShareRemote).toHaveBeenCalledWith(
         'https://api.test/export/inventory?format=xlsx',
-        'vendora-inventory.xlsx',
+        'resqlo-inventory.xlsx',
         'tok-123',
       ),
     );

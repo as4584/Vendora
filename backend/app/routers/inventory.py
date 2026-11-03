@@ -247,7 +247,7 @@ def _find_import_match(
     external_id: str,
     item_id: str | None = None,
 ) -> InventoryItem | None:
-    # A Vendora export carries each item's id: that is the strongest match,
+    # A Resqlo export carries each item's id: that is the strongest match,
     # and lets renamed items or manual items without SKU/UPC update in place.
     if item_id:
         try:
@@ -578,7 +578,7 @@ async def get_market_price(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Market price lookup. Queries UPC database + internal Vendora history."""
+    """Market price lookup. Queries UPC database + internal Resqlo history."""
     result: dict = {
         "query": query,
         "upc": upc,
@@ -888,7 +888,7 @@ def bulk_delete_items(
     if payload.delete_from_source and source_unsupported:
         note = (
             f"{source_unsupported} item(s) came from a read-only spreadsheet import, "
-            "so they were removed from Vendora but can't be edited in your original sheet."
+            "so they were removed from Resqlo but can't be edited in your original sheet."
         )
     return BulkDeleteResponse(
         deleted=deleted,

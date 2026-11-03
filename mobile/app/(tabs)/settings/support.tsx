@@ -17,7 +17,7 @@ export default function SupportScreen() {
     finally { setSaving(false); }
   };
   return <ScrollView testID="support-content" style={styles.container} contentContainerStyle={styles.content}>
-    <HeaderTitle title="Vendora Support" subtitle="Tell us what happened and the team will receive a tracked request." />
+    <HeaderTitle title="Resqlo Support" subtitle="Tell us what happened and the team will receive a tracked request." />
     <Card style={styles.card}><SectionLabel>Service level</SectionLabel><Pill label={user?.is_partner ? "PRIORITY" : "STANDARD"} tone={user?.is_partner ? "success" : "neutral"} /><Text style={styles.help}>{user?.is_partner ? "Partner requests are marked priority for the support team." : "Upgrade to Partner for priority routing."}</Text></Card>
     <Card style={styles.card}><Text style={styles.label}>Subject</Text><TextInput accessibilityLabel="Support subject" value={subject} onChangeText={setSubject} maxLength={160} style={styles.input} placeholder="What do you need help with?" placeholderTextColor={COLORS.textMuted} /><Text style={styles.label}>Details</Text><TextInput accessibilityLabel="Support message" value={message} onChangeText={setMessage} maxLength={5000} multiline style={[styles.input, styles.message]} placeholder="Steps, expected result, and what happened..." placeholderTextColor={COLORS.textMuted} /><ActionButton label={saving ? "Submitting..." : "Submit Request"} onPress={submit} disabled={saving} /></Card>
   </ScrollView>;
