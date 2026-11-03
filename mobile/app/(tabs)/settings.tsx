@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/auth";
 import * as api from "../../services/api";
+import { StockxSettingsCard } from "../../components/Stockx";
 import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/backgroundSync";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../components/ui";
 import { COLORS, SPACING } from "../../theme/tokens";
@@ -433,6 +434,7 @@ export default function SettingsScreen() {
         onSync={handleSyncEbay}
         onDisconnect={handleDisconnectEbay}
       />
+      <StockxSettingsCard />
 
       <Modal
         visible={connectionProvider !== null}

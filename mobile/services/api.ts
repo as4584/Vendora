@@ -1517,6 +1517,94 @@ export async function disconnectEbay(): Promise<{ disconnected: boolean; links_r
   return request("/integrations/ebay", { method: "DELETE" });
 }
 
+// ─── StockX ───────────────────────────────────────────
+// Money fields arrive as decimal strings; null means StockX returned nothing.
+
+export interface StockxStatus {
+  configured: boolean;
+  connected: boolean;
+  account_id: string | null;
+  expires_at: string | null;
+  matched_items: number;
+  open_listings: number;
+  outbox_errors: number;
+}
+
+export interface StockxCandidate {
+  product_id: string;
+  title: string;
+  style_id: string | null;
+  brand: string | null;
+  colorway: string | null;
+  score: number;
+}
+
+export interface StockxLink { product_id: string | null; variant_id: string | null; size: string | null }
+
+export interface StockxListing {
+  id: string;
+  inventory_item_id: string;
+  product_id: string;
+  variant_id: string;
+  size: string | null;
+  listing_id: string | null;
+  amount: string;
+  currency_code: string;
+  status: "pending" | "active" | "inactive" | "deleted" | "sold" | "failed";
+  last_error: string | null;
+}
+
+export interface StockxItem { links: StockxLink[]; listings: StockxListing[] }
+
+export interface StockxMarket {
+  product_id: string;
+  variant_id: string;
+  size: string | null;
+  currency_code: string;
+  lowest_ask: string | null;
+  highest_bid: string | null;
+  last_sale: string | null;
+  fetched_at: string;
+  stale: boolean;
+}
+
+export interface StockxOutboxJob {
+  id: string;
+  provider: string;
+  action: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  last_error: string | null;
+  next_attempt_at: string | null;
+  created_at: string;
+}
+
+const SX = "/integrations/stockx";
+
+export const getStockxStatus = () => request<StockxStatus>(`${SX}/status`);
+export const getStockxConnectUrl = () => request<{ authorization_url: string }>(`${SX}/connect`);
+export const disconnectStockx = () => request<{ disconnected: boolean; links_retained: number }>(SX, { method: "DELETE" });
+export const syncStockx = () => request<{ transactions_imported: number; outbox_processed: number }>(`${SX}/sync`, { method: "POST" });
+export const getStockxItem = (itemId: string) => request<StockxItem>(`${SX}/items/${itemId}`);
+export const getStockxMatch = (itemId: string) =>
+  request<{ best: StockxCandidate | null; shortlist: StockxCandidate[] }>(`${SX}/items/${itemId}/match`);
+export const confirmStockxMatch = (itemId: string, productId: string, sizes: Record<string, string> = {}) =>
+  request<StockxItem>(`${SX}/items/${itemId}/match`, { method: "POST", body: JSON.stringify({ product_id: productId, sizes }) });
+export const getStockxMarket = (itemId: string) => request<StockxMarket[]>(`${SX}/items/${itemId}/market`);
+export const getStockxQuote = (query: string, size?: string | null) => {
+  const params = new URLSearchParams({ query });
+  if (size) params.set("size", size);
+  return request<{ product: StockxCandidate | null; variant_id: string | null; market: StockxMarket | null }>(`${SX}/quote?${params.toString()}`);
+};
+export const placeStockxAsk = (itemId: string, variantId: string, amount: string) =>
+  request<StockxListing>(`${SX}/items/${itemId}/listings`, { method: "POST", body: JSON.stringify({ variant_id: variantId, amount }) });
+export const updateStockxAsk = (listingId: string, amount: string) =>
+  request<StockxListing>(`${SX}/listings/${listingId}`, { method: "PATCH", body: JSON.stringify({ amount }) });
+export const removeStockxAsk = (listingId: string) => request<StockxListing>(`${SX}/listings/${listingId}`, { method: "DELETE" });
+export const listStockxOutboxErrors = () => request<StockxOutboxJob[]>(`${SX}/outbox`);
+export const retryStockxOutbox = (jobId: string) => request<StockxOutboxJob>(`${SX}/outbox/${jobId}/retry`, { method: "POST" });
+
 // ─── Provider Health ──────────────────────────────────
 
 export interface ProviderHealthEntry {

@@ -28,6 +28,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
 import { isTempId } from "../../../services/offline";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
+import { StockxPriceHint } from "../../../components/Stockx";
 import { Button, IconButton } from "../../../components/Button";
 import { LiveBoxScanner, type LiveScanResult } from "../../../components/LiveBoxScanner";
 import {
@@ -642,6 +643,7 @@ export default function AddItemScreen() {
                         />
                     </View>
                 </View>
+                <StockxPriceHint name={name} size={size} />
 
                 <Text style={styles.label}>Platform</Text>
                 <TextInput

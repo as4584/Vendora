@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import * as api from "../../../services/api";
+import { StockxOutboxErrors } from "../../../components/Stockx";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill, SectionLabel, type IconName } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 
@@ -159,6 +160,8 @@ export default function SyncCenterScreen() {
       {runs.length > 4 ? (
         <ActionButton label={showAll ? "Show less" : "View All History"} onPress={() => setShowAll((v) => !v)} tone="secondary" />
       ) : null}
+
+      <StockxOutboxErrors />
 
       {issues.length > 0 ? (
         <>
