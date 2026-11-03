@@ -132,7 +132,7 @@ export default function InventoryImportScreen() {
         <SectionLabel>Flow</SectionLabel>
         <Stepper steps={["Upload", "Preview", "Commit"]} active={preview ? 1 : 0} />
         <Text style={styles.helperText}>
-          Re-importing a Vendora export updates the same items. Nothing is duplicated, and rows we can't read are flagged so you can fix them.
+          Re-importing a Vendora export updates the same items. Nothing is duplicated, and rows we can’t read are flagged so you can fix them.
         </Text>
         <ActionButton label={loading ? "Preparing Preview..." : "Choose CSV File"} onPress={handlePickFile} disabled={loading} />
         {fileName ? <Text style={styles.fileName}>Selected: {fileName}</Text> : null}

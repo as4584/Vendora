@@ -29,7 +29,6 @@ Coverage:
     - Square _do_sync succeeds with a plaintext access_token in the DB
     - Clover _do_sync succeeds with a plaintext access_token in the DB
 """
-import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -73,7 +72,7 @@ class TestEncryptDecrypt:
         assert decrypt_token(plaintext_token) == plaintext_token
 
     def test_tampered_ciphertext_raises_value_error(self):
-        encrypted = encrypt_token("real-token")
+        encrypt_token("real-token")
         tampered = ENC_PREFIX + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         with pytest.raises(ValueError, match="decryption failed"):
             decrypt_token(tampered)

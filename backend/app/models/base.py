@@ -1,9 +1,8 @@
 """Base model with soft-delete mixin and declarative base."""
-import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime
-from sqlalchemy.orm import DeclarativeBase, declared_attr
+from sqlalchemy.orm import DeclarativeBase
 
 
 class Base(DeclarativeBase):

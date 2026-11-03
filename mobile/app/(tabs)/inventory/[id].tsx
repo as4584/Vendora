@@ -70,6 +70,8 @@ export default function ItemDetailScreen() {
   }, [id]);
 
   useEffect(() => {
+    // Fetch-on-mount: loadItem's state updates are the point of the effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadItem();
   }, [loadItem]);
 

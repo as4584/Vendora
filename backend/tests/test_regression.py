@@ -3,10 +3,8 @@
 End-to-end scenarios that test the entire system from registration
 through sale, invoice, payment, dashboard, and export.
 """
-import json
 import uuid
 
-import pytest
 
 
 class TestFullUserLifecycle:

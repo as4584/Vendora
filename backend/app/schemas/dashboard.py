@@ -1,6 +1,5 @@
 """Dashboard Pydantic schemas — aggregated business metrics."""
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import BaseModel
 

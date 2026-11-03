@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models.invoice import Invoice
 from app.models.subscription import Subscription, WebhookEvent
 from app.models.user import User
-from app.services.invoice import transition_invoice, process_invoice_payment
+from app.services.invoice import process_invoice_payment
 from app.config import settings
 
 logger = logging.getLogger(__name__)

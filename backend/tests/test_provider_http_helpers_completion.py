@@ -11,7 +11,6 @@ from fastapi import HTTPException
 
 from app.models.integration import LightspeedToken
 from app.models.provider import ProviderSyncRun
-from app.models.inventory import InventoryItem
 from app.models.transaction import Transaction
 from app.security.token_encryption import decrypt_token, encrypt_token
 from app.services import lightspeed as lightspeed_module

@@ -2,7 +2,6 @@
 
 Coverage: Quick Sale, manual payment log, listing, refund flow, double-refund guard.
 """
-import pytest
 from fastapi import HTTPException
 
 

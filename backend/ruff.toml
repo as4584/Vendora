@@ -1,0 +1,7 @@
+# Lint gate for CI: correctness rules only (unused/undefined names, syntax).
+# Style rules can be added gradually; every rule here must stay at zero.
+target-version = "py312"
+extend-exclude = ["alembic/versions"]
+
+[lint]
+select = ["F", "E9"]

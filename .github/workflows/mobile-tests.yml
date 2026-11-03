@@ -67,6 +67,14 @@ jobs:
         working-directory: mobile
         run: npm run typecheck
 
+      - name: Lint
+        working-directory: mobile
+        run: npx expo lint --max-warnings 0
+
+      - name: Expo doctor (native deps match the SDK)
+        working-directory: mobile
+        run: npx expo-doctor
+
       - name: Run unit tests
         working-directory: mobile
         run: npm run test:ci

@@ -14,7 +14,7 @@ from sqlalchemy import (
     Column, String, Numeric, ForeignKey, CheckConstraint,
     Index, Uuid, JSON, text, UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB  # kept for generic compat
+from sqlalchemy.dialects.postgresql import JSONB  # kept for generic compat
 
 from app.models.base import Base, TimestampMixin, SoftDeleteMixin
 

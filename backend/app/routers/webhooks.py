@@ -10,7 +10,7 @@ Events handled:
     - customer.subscription.deleted → User downgraded to Free
     - invoice.payment_failed → Subscription past_due
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db

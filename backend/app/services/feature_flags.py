@@ -6,7 +6,6 @@ Per MONETIZATION_AND_LIMITS.md:
     Pro: unlimited items, Stripe, barcode, invoices, CSV, analytics
     Partner: verified badge, seller page, priority support
 """
-from typing import Optional
 
 
 # ─── Feature definitions ──────────────────────────────
