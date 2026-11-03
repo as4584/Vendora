@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View, Platform } from "react-native";
+import { Animated, Easing, StyleSheet, Text, View, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "../theme/tokens";
+import { Button } from "./Button";
 
 const FRAME = 250;
 const RAY_BAND = 56; // height of the glowing band that travels
@@ -69,9 +70,9 @@ export function ScannerOverlay({
       </View>
 
       {onCancel ? (
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel" style={styles.cancel} onPress={onCancel}>
-          <Text style={styles.cancelText}>Cancel</Text>
-        </TouchableOpacity>
+        <View style={styles.cancel}>
+          <Button label="Cancel" variant="secondary" onPress={onCancel} />
+        </View>
       ) : null}
     </View>
   );

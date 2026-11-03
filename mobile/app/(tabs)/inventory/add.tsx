@@ -15,7 +15,6 @@ import {
     StyleSheet,
     ScrollView,
     Alert,
-    ActivityIndicator,
     Modal,
     Image,
     Dimensions,
@@ -624,32 +623,11 @@ export default function AddItemScreen() {
                             <View key={idx} style={styles.variantRow}>
                                 <Text style={styles.variantSize}>{v.size}</Text>
                                 <View style={styles.qtyControls}>
-                                    <TouchableOpacity
-                                        accessibilityLabel={`Decrease quantity for ${v.size}`}
-                                        accessibilityRole="button"
-                                        style={styles.qtyBtn}
-                                        onPress={() => adjustVariantQty(idx, -1)}
-                                    >
-                                        <Text style={styles.qtyBtnText}>−</Text>
-                                    </TouchableOpacity>
+                                    <IconButton icon="remove" label={`Decrease quantity for ${v.size}`} onPress={() => adjustVariantQty(idx, -1)} />
                                     <Text style={styles.qtyValue}>{v.quantity}</Text>
-                                    <TouchableOpacity
-                                        accessibilityLabel={`Increase quantity for ${v.size}`}
-                                        accessibilityRole="button"
-                                        style={styles.qtyBtn}
-                                        onPress={() => adjustVariantQty(idx, 1)}
-                                    >
-                                        <Text style={styles.qtyBtnText}>+</Text>
-                                    </TouchableOpacity>
+                                    <IconButton icon="add" label={`Increase quantity for ${v.size}`} onPress={() => adjustVariantQty(idx, 1)} />
                                 </View>
-                                <TouchableOpacity
-                                    accessibilityLabel={`Remove size ${v.size}`}
-                                    accessibilityRole="button"
-                                    style={styles.removeBtn}
-                                    onPress={() => removeVariant(idx)}
-                                >
-                                    <Text style={styles.removeBtnText}>✕</Text>
-                                </TouchableOpacity>
+                                <IconButton icon="close" label={`Remove size ${v.size}`} onPress={() => removeVariant(idx)} />
                             </View>
                         ))}
 
@@ -664,14 +642,7 @@ export default function AddItemScreen() {
                                 onSubmitEditing={addVariant}
                                 returnKeyType="done"
                             />
-                            <TouchableOpacity
-                                accessibilityLabel="Add Size"
-                                accessibilityRole="button"
-                                style={styles.addSizeBtn}
-                                onPress={addVariant}
-                            >
-                                <Text style={styles.addSizeBtnText}>+ Add Size</Text>
-                            </TouchableOpacity>
+                            <Button label="+ Add Size" variant="secondary" size="sm" onPress={addVariant} accessibilityLabel="Add Size" />
                         </View>
                         <Text style={styles.sizeHint}>
                             Total units: {variants.reduce((a, v) => a + v.quantity, 0)}
@@ -684,40 +655,24 @@ export default function AddItemScreen() {
                     <>
                         <Text style={styles.sectionTitle}>Quantity</Text>
                         <View style={styles.qtyRow}>
-                            <TouchableOpacity
-                                accessibilityLabel="Decrease quantity"
-                                accessibilityRole="button"
-                                style={styles.qtyBtnLarge}
-                                onPress={() => setQuantity((q) => Math.max(1, q - 1))}
-                            >
-                                <Text style={styles.qtyBtnLargeText}>−</Text>
-                            </TouchableOpacity>
+                            <IconButton icon="remove" label="Decrease quantity" onPress={() => setQuantity((q) => Math.max(1, q - 1))} />
                             <Text style={styles.qtyValueLarge}>{quantity}</Text>
-                            <TouchableOpacity
-                                accessibilityLabel="Increase quantity"
-                                accessibilityRole="button"
-                                style={styles.qtyBtnLarge}
-                                onPress={() => setQuantity((q) => q + 1)}
-                            >
-                                <Text style={styles.qtyBtnLargeText}>+</Text>
-                            </TouchableOpacity>
+                            <IconButton icon="add" label="Increase quantity" onPress={() => setQuantity((q) => q + 1)} />
                         </View>
                     </>
                 )}
 
                 {/* ── Submit ── */}
-                <TouchableOpacity
-                    accessibilityRole="button"
-                    style={[styles.button, loading && styles.buttonDisabled]}
-                    onPress={handleSubmit}
+                <Button
+                    label="Add to Inventory"
+                    size="lg"
+                    fullWidth
+                    haptic="success"
+                    loading={loading}
                     disabled={loading}
-                >
-                    {loading ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.buttonText}>Add to Inventory</Text>
-                    )}
-                </TouchableOpacity>
+                    onPress={handleSubmit}
+                    style={styles.submitButton}
+                />
             </ScrollView>
 
             {/* â”€â”€ Barcode Scanner Modal â”€â”€ */}
@@ -851,6 +806,7 @@ const styles = StyleSheet.create({
     buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
 
     // Scanner modal
+    submitButton: { marginTop: 24 },
     scannerContainer: { flex: 1, backgroundColor: "#000" },
     smartScanButton: { marginBottom: 12 },
     scanNote: {

@@ -15,6 +15,7 @@ import { isOnline } from "../../../services/offline";
 import { ActionButton, Card, HeaderTitle, Icon, Pill, SectionLabel, Stepper } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCurrency, resolveQty } from "../../../utils/inventory";
+import { IconButton } from "../../../components/Button";
 
 const PAYMENT_METHODS = ["cash", "venmo", "cashapp", "paypal", "zelle", "stripe", "other"];
 
@@ -179,9 +180,9 @@ export default function QuickSaleScreen() {
                 selectTextOnFocus
               />
               <View style={styles.qtyStepper}>
-                <TouchableOpacity accessibilityLabel={`Decrease ${line.item.name}`} style={styles.qtyBtn} onPress={() => changeQty(line.item.id, -1)}><Icon name="remove" size={16} color={COLORS.text} /></TouchableOpacity>
+                <IconButton icon="remove" label={`Decrease ${line.item.name}`} onPress={() => changeQty(line.item.id, -1)} />
                 <Text style={styles.qtyValue}>{line.qty}</Text>
-                <TouchableOpacity accessibilityLabel={`Increase ${line.item.name}`} style={styles.qtyBtn} onPress={() => changeQty(line.item.id, 1)}><Icon name="add" size={16} color={COLORS.text} /></TouchableOpacity>
+                <IconButton icon="add" label={`Increase ${line.item.name}`} onPress={() => changeQty(line.item.id, 1)} />
               </View>
               <Text style={styles.lineTotal}>{formatCurrency((linePrice(line) * line.qty).toFixed(2))}</Text>
             </View>
