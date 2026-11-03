@@ -167,6 +167,13 @@ class InventoryExternalLink(Base, TimestampMixin):
     external_parent_id = Column(String(255), nullable=True)
     variant_label = Column(String(50), nullable=True)
     last_synced_at = Column(sa.DateTime(timezone=True), nullable=True)
+    # Marketplace listing state (eBay write-back). NULL for import-only links.
+    offer_id = Column(String(64), nullable=True)
+    listing_id = Column(String(64), nullable=True)
+    # draft | active | ended | error
+    listing_status = Column(String(20), nullable=True)
+    listed_price = Column(Numeric(10, 2), nullable=True)
+    listed_quantity = Column(sa.Integer, nullable=True)
 
 
 # ─── Spreadsheet import ───────────────────────────────────────────────────────

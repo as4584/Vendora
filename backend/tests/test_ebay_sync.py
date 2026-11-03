@@ -79,7 +79,7 @@ class TestEbayEnvironment:
         assert "client_id=app-id" in url
         assert "redirect_uri=My-RuName-123" in url
         assert "state=xyz" in url
-        assert "sell.inventory.readonly" in url
+        assert "sell.inventory+" in url and "sell.account" in url
 
     def test_unconfigured_raises_503(self):
         svc = EbayService()

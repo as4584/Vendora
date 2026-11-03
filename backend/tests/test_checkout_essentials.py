@@ -295,7 +295,14 @@ class TestShowSummary:
                            headers=auth_headers).json()
         assert empty["orders"] == 0 and empty["payments"] == [] and D(empty["profit"]) == 0
 
-        started = client.put(f"{API}/dashboard/show-start", json={}, headers=auth_headers)
+        # Start the show strictly after the sale. "Now" can equal the sale's
+        # created_at on a coarse clock (the window is inclusive), which made
+        # this flaky; an explicit start one millisecond later is deterministic.
+        sale_at = db.query(Transaction.created_at).filter(Transaction.user_id == test_user.id).scalar()
+        assert client.put(f"{API}/dashboard/show-start", json={}, headers=auth_headers).json()["show_started_at"]
+        started = client.put(f"{API}/dashboard/show-start",
+                             json={"started_at": (sale_at + timedelta(milliseconds=1)).isoformat()},
+                             headers=auth_headers)
         assert started.status_code == 200
         assert started.json()["show_started_at"]
         after = client.get(f"{API}/dashboard/show-summary", headers=auth_headers).json()

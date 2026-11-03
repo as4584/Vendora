@@ -16,6 +16,8 @@ import * as api from "../../../services/api";
 import { StockxItemCard } from "../../../components/Stockx";
 import { Ionicons } from "@expo/vector-icons";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
+import { EbayListingCard } from "../../../components/EbayListingCard";
+import { EbayCompsCard } from "../../../components/EbayCompsCard";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 
@@ -352,6 +354,10 @@ export default function ItemDetailScreen() {
         <View style={[styles.actionRow, { marginTop: SPACING.sm }]}><ActionButton label={pricingLoading ? "Checking..." : "Check Market Price"} onPress={loadMarketPricing} disabled={pricingLoading} tone="secondary" compact /><ActionButton label={publishing ? "Publishing..." : "Publish to Lightspeed"} onPress={publishToLightspeed} disabled={publishing} tone="secondary" compact /></View>
       </Card>
       <StockxItemCard itemId={item.id} />
+
+      <EbayCompsCard itemId={item.id} />
+
+      <EbayListingCard item={item} available={qty} onChanged={() => void loadItem()} />
 
       <Card>
         <SectionLabel>Linked Invoices</SectionLabel>

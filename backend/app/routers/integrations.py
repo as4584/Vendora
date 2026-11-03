@@ -10,7 +10,7 @@ import uuid
 import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -44,12 +44,20 @@ from app.schemas.integration import (
     EbayStatusResponse,
     EbaySyncResponse,
     EbayDisconnectResponse,
+    EbayListingCreateRequest,
+    EbayListingResponse,
+    EbayListingUpdateRequest,
+    OutboxJobResponse,
 )
 from app.services.lightspeed import lightspeed_service
 from app.services.square import square_service
 from app.services.clover import clover_service
 from app.services.ebay import ebay_service
 from app.services import ebay_signature
+from app.services import ebay_listing
+from app.services import outbox as outbox_service
+from app.models.inventory import InventoryItem
+from app.models.provider_outbox import ProviderOutbox
 from app.services.providers.base import claim_webhook_event
 
 logger = logging.getLogger(__name__)
@@ -166,7 +174,7 @@ def lightspeed_disconnect(
     return LightspeedDisconnectResponse(disconnected=True, links_retained=links)
 
 
-# ─── eBay (pull-only) ───────────────────────────────────────────────────────────
+# ─── eBay ───────────────────────────────────────────────────────────
 
 @router.get("/ebay/status", response_model=EbayStatusResponse)
 def ebay_status(
@@ -176,7 +184,7 @@ def ebay_status(
     """Return whether the current user has connected their eBay account."""
     token = ebay_service.get_token(db, current_user.id)
     if not token:
-        return EbayStatusResponse(connected=False)
+        return EbayStatusResponse(connected=False, environment=ebay_service.env)
 
     last_synced_scalar = (
         db.query(func.max(InventoryExternalLink.last_synced_at))
@@ -191,6 +199,8 @@ def ebay_status(
         account_id=token.account_id,
         expires_at=token.expires_at.isoformat(),
         last_synced_at=last_synced_scalar.isoformat() if last_synced_scalar else None,
+        can_list=bool(token.scopes) and ebay_listing._has_scope(token.scopes, "sell.inventory"),
+        environment=ebay_service.env,
     )
 
 
@@ -214,7 +224,8 @@ async def ebay_callback(code: str, state: str, db: Session = Depends(get_db)):
         access_token=token_payload["access_token"],
         refresh_token=token_payload.get("refresh_token", ""),
         expires_at=token_payload["expires_at"],
-        scopes=token_payload.get("scope"),
+        # eBay's code exchange omits the granted scope; record what we requested.
+        scopes=token_payload.get("scope") or " ".join(ebay_service.requested_scopes),
     )
     return RedirectResponse(
         "vendora://settings?integration=ebay&status=connected",
@@ -248,6 +259,191 @@ def ebay_disconnect(
 ):
     links = ebay_service.disconnect(db, current_user.id)
     return EbayDisconnectResponse(disconnected=True, links_retained=links)
+
+
+# ─── eBay listings (write-back) ────────────────────────────────────────────────
+
+def _listing_response(item_id: uuid.UUID, payload: dict) -> EbayListingResponse:
+    return EbayListingResponse(item_id=item_id, **payload)
+
+
+@router.post("/ebay/listings", response_model=EbayListingResponse, status_code=status.HTTP_201_CREATED)
+async def ebay_create_listing(
+    body: EbayListingCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List an item on eBay: inventory item -> offer -> publish."""
+    payload = await ebay_listing.create_listing(
+        db,
+        current_user,
+        body.item_id,
+        price=body.price,
+        quantity=body.quantity,
+        title=body.title,
+        condition=body.condition,
+        category_id=body.category_id,
+        description=body.description,
+        postal_code=body.postal_code,
+    )
+    return _listing_response(body.item_id, payload)
+
+
+@router.get("/ebay/listings/{item_id}", response_model=EbayListingResponse)
+def ebay_get_listing(
+    item_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Listing status for an item (listed=false when it has no eBay listing)."""
+    link = ebay_listing.get_ebay_link(db, current_user.id, item_id)
+    return _listing_response(item_id, ebay_listing.link_payload(link))
+
+
+@router.patch("/ebay/listings/{item_id}", response_model=EbayListingResponse)
+async def ebay_update_listing(
+    item_id: uuid.UUID,
+    body: EbayListingUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Revise price and/or quantity (bulkUpdatePriceQuantity). Quantity 0 ends it."""
+    payload = await ebay_listing.update_listing(
+        db, current_user, item_id, price=body.price, quantity=body.quantity
+    )
+    return _listing_response(item_id, payload)
+
+
+@router.delete("/ebay/listings/{item_id}", response_model=EbayListingResponse)
+async def ebay_end_listing(
+    item_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """End the eBay listing (withdrawOffer). The offer is kept so it can be relisted."""
+    payload = await ebay_listing.end_listing(db, current_user, item_id)
+    return _listing_response(item_id, payload)
+
+
+@router.get("/ebay/comps")
+async def ebay_comps(
+    q: str = Query(..., min_length=2, max_length=100),
+    condition: Optional[str] = Query(None, pattern="^(new|used)$"),
+    current_user: User = Depends(get_current_user),
+):
+    """eBay price comps (active asks unless sold data is enabled; see ``kind``)."""
+    return await ebay_listing.fetch_comps(q, condition=condition)
+
+
+@router.get("/ebay/images/{item_id}/{side}/{signature}.jpg", include_in_schema=False)
+def ebay_listing_image(
+    item_id: uuid.UUID,
+    side: str,
+    signature: str,
+    db: Session = Depends(get_db),
+):
+    """Public, signed image URL for eBay to fetch item photos stored as data URLs."""
+    if side not in ("front", "back") or not hmac.compare_digest(
+        signature, ebay_listing.image_signature(item_id, side)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    item = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.id == item_id, InventoryItem.deleted_at.is_(None))
+        .one_or_none()
+    )
+    value = (item.photo_front_url if side == "front" else item.photo_back_url) if item else None
+    if not value or not value.startswith("data:image/"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    try:
+        data, media = ebay_listing.decode_data_url(value)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return Response(content=data, media_type=media, headers={"Cache-Control": "public, max-age=3600"})
+
+
+# ─── Provider outbox (marketplace write queue) ────────────────────────────────
+
+def _outbox_response(job: ProviderOutbox, names: dict) -> OutboxJobResponse:
+    resp = OutboxJobResponse.model_validate(job)
+    resp.item_name = names.get(job.inventory_item_id)
+    return resp
+
+
+def _item_names(db: Session, jobs: list[ProviderOutbox]) -> dict:
+    """Item name per job: the item column (eBay) or the StockX listing's item."""
+    from app.models.stockx import StockxListing
+
+    item_ids = {j.inventory_item_id for j in jobs if j.inventory_item_id}
+    listing_ids = set()
+    for j in jobs:
+        raw = (j.payload or {}).get("stockx_listing_id") if not j.inventory_item_id else None
+        if raw:
+            try:
+                listing_ids.add(uuid.UUID(str(raw)))
+            except ValueError:
+                pass
+    listing_item = dict(
+        db.query(StockxListing.id, StockxListing.inventory_item_id).filter(StockxListing.id.in_(listing_ids)).all()
+    ) if listing_ids else {}
+    item_ids |= set(listing_item.values())
+    names = dict(
+        db.query(InventoryItem.id, InventoryItem.name).filter(InventoryItem.id.in_(item_ids)).all()
+    ) if item_ids else {}
+    out = {}
+    for j in jobs:
+        iid = j.inventory_item_id
+        if iid is None:
+            raw = (j.payload or {}).get("stockx_listing_id")
+            try:
+                iid = listing_item.get(uuid.UUID(str(raw))) if raw else None
+            except ValueError:
+                iid = None
+        out[j.id] = names.get(iid)
+    return out
+
+
+def _outbox_response(job: ProviderOutbox, names: dict) -> OutboxJobResponse:
+    resp = OutboxJobResponse.model_validate(job)
+    resp.item_name = names.get(job.id)
+    return resp
+
+
+@router.get("/outbox", response_model=list[OutboxJobResponse])
+def list_outbox(
+    only_errors: bool = Query(True, description="Only jobs that are not done and have an error"),
+    provider: Optional[str] = Query(None, pattern="^(stockx|ebay)$"),
+    limit: int = Query(100, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Marketplace write jobs for every provider (one list for Sync Center)."""
+    q = db.query(ProviderOutbox).filter(ProviderOutbox.user_id == current_user.id)
+    if provider:
+        q = q.filter(ProviderOutbox.provider == provider)
+    if only_errors:
+        q = q.filter(ProviderOutbox.status != "done", ProviderOutbox.last_error.isnot(None))
+    jobs = q.order_by(ProviderOutbox.created_at.desc()).limit(limit).all()
+    names = _item_names(db, jobs)
+    return [_outbox_response(j, names) for j in jobs]
+
+
+@router.post("/outbox/{job_id}/retry", response_model=OutboxJobResponse)
+async def retry_outbox_job(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retry a failed marketplace write now (any provider)."""
+    job = (
+        db.query(ProviderOutbox)
+        .filter(ProviderOutbox.id == job_id, ProviderOutbox.user_id == current_user.id)
+        .one_or_none()
+    )
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job = await outbox_service.retry_job(db, job)
+    return _outbox_response(job, _item_names(db, [job]))
 
 
 # ─── eBay Marketplace Account Deletion (public; required for production) ─────────

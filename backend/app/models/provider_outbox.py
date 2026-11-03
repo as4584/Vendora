@@ -28,6 +28,7 @@ class ProviderOutbox(Base, TimestampMixin):
         Index("uq_provider_outbox_idempotency_key", "idempotency_key", unique=True),
         Index("ix_provider_outbox_user_id", "user_id"),
         Index("ix_provider_outbox_status_next", "status", "next_attempt_at"),
+        Index("ix_provider_outbox_item", "inventory_item_id"),
     )
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -42,3 +43,6 @@ class ProviderOutbox(Base, TimestampMixin):
     next_attempt_at = Column(DateTime(timezone=True), nullable=True)
     last_error = Column(sa.Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    # Item the job concerns (eBay quantity pushes coalesce per item). Nullable:
+    # StockX jobs reference their listing in the payload.
+    inventory_item_id = Column(Uuid, ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=True)

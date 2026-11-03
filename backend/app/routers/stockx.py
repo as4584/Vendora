@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -17,12 +17,11 @@ from app.models.inventory import InventoryExternalLink, InventoryItem
 from app.models.provider_outbox import ProviderOutbox
 from app.models.stockx import StockxListing
 from app.models.user import User
+from app.services.outbox import process_outbox as shared_process_outbox
 from app.services.stockx import (
     OPEN_LISTING_STATUSES,
     PROVIDER,
     StockxAPIError,
-    process_job,
-    process_outbox,
     stockx_service,
 )
 
@@ -124,19 +123,6 @@ class SyncOut(BaseModel):
     transactions_existing: int
     skipped: int
     outbox_processed: int
-
-
-class OutboxOut(BaseModel):
-    model_config = {"from_attributes": True}
-    id: uuid.UUID
-    provider: str
-    action: str
-    status: str
-    attempts: int
-    max_attempts: int
-    last_error: Optional[str]
-    next_attempt_at: Optional[datetime]
-    created_at: datetime
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -351,7 +337,7 @@ async def stockx_sync(db: Session = Depends(get_db), current_user: User = Depend
         result = await stockx_service.sync(db, current_user.id)
     except StockxAPIError as exc:
         raise _api_error(exc) from exc
-    processed = await process_outbox(db, user_id=current_user.id)
+    processed = await shared_process_outbox(db, user_id=current_user.id)
     return SyncOut(
         run_id=result.run_id,
         transactions_imported=result.transactions_imported,
@@ -359,47 +345,6 @@ async def stockx_sync(db: Session = Depends(get_db), current_user: User = Depend
         skipped=result.items_skipped,
         outbox_processed=processed,
     )
-
-
-@router.get("/outbox", response_model=list[OutboxOut])
-def stockx_outbox(
-    only_errors: bool = Query(True),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    query = db.query(ProviderOutbox).filter(
-        ProviderOutbox.user_id == current_user.id, ProviderOutbox.provider == PROVIDER
-    )
-    if only_errors:
-        query = query.filter(ProviderOutbox.status != "done", ProviderOutbox.last_error.isnot(None))
-    return query.order_by(ProviderOutbox.created_at.desc()).limit(100).all()
-
-
-@router.post("/outbox/{job_id}/retry", response_model=OutboxOut)
-async def stockx_outbox_retry(
-    job_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
-):
-    job = (
-        db.query(ProviderOutbox)
-        .filter(
-            ProviderOutbox.id == job_id,
-            ProviderOutbox.user_id == current_user.id,
-            ProviderOutbox.provider == PROVIDER,
-        )
-        .first()
-    )
-    if job is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Job not found")
-    if job.status == "done":
-        return job
-    if job.attempts >= job.max_attempts:
-        job.max_attempts = job.attempts + 1  # a manual retry always gets one more try
-    job.status = "pending"
-    job.next_attempt_at = datetime.now(timezone.utc)
-    db.commit()
-    await process_job(db, job)
-    db.refresh(job)
-    return job
 
 
 # ── pricing hint for Add stock (no saved item yet) ───────────────────────────

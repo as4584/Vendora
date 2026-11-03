@@ -550,15 +550,15 @@ class TestSelloutOutbox:
         await sx.process_outbox(db, now=now + timedelta(hours=1))
         assert job.status == "failed"
 
-        errors = client.get("/api/v1/integrations/stockx/outbox", headers=auth_headers).json()
+        errors = client.get("/api/v1/integrations/outbox", headers=auth_headers).json()
         assert errors[0]["last_error"] == "boom"
         assert client.get("/api/v1/integrations/stockx/status", headers=auth_headers).json()["outbox_errors"] == 1
 
         fake.routes[("DELETE", "/selling/listings/lst-1")] = [(200, {})]
-        resp = client.post(f"/api/v1/integrations/stockx/outbox/{job.id}/retry", headers=auth_headers)
+        resp = client.post(f"/api/v1/integrations/outbox/{job.id}/retry", headers=auth_headers)
         assert resp.json()["status"] == "done"
-        assert client.post(f"/api/v1/integrations/stockx/outbox/{job.id}/retry", headers=auth_headers).json()["status"] == "done"
-        assert client.post(f"/api/v1/integrations/stockx/outbox/{uuid.uuid4()}/retry", headers=auth_headers).status_code == 404
+        assert client.post(f"/api/v1/integrations/outbox/{job.id}/retry", headers=auth_headers).json()["status"] == "done"
+        assert client.post(f"/api/v1/integrations/outbox/{uuid.uuid4()}/retry", headers=auth_headers).status_code == 404
 
     async def test_not_connected_job_records_error(self, db, test_user, configured):
         item = _item(db, test_user, quantity=1)

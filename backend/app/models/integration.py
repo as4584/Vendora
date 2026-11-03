@@ -49,6 +49,8 @@ class EbayToken(Base, TimestampMixin):
     refresh_token = Column(String(4096), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     scopes = Column(String(1024), nullable=True)
+    # Inventory location created once for listings (createInventoryLocation).
+    merchant_location_key = Column(String(36), nullable=True)
 
     def is_expired(self) -> bool:
         return datetime.now(timezone.utc) >= self.expires_at
