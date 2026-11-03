@@ -7,10 +7,26 @@ import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "../context/auth";
 import { NetworkProvider } from "../context/network";
 import { OfflineBanner } from "../components/OfflineBanner";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { View, ActivityIndicator, Platform, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { COLORS } from "../theme/tokens";
+// Navigation theme: dark everywhere, so wide screens (iPad) and screen
+// transitions never show the default light background behind content.
+// (react-navigation is vendored inside expo-router in SDK 57.)
+import { DarkTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
+
+const NAV_THEME = {
+    ...DarkTheme,
+    colors: {
+        ...DarkTheme.colors,
+        primary: COLORS.primary,
+        background: COLORS.bg,
+        card: COLORS.bgElevated,
+        text: COLORS.text,
+        border: COLORS.border,
+    },
+};
 function RootLayoutNav() {
     const { isAuthenticated, isLoading } = useAuth();
     const segments = useSegments();
@@ -42,13 +58,23 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
+    // Web: paint the page itself dark, so the area beside the capped-width
+    // content on wide screens matches the app instead of showing white.
+    useEffect(() => {
+        if (Platform.OS === "web" && typeof document !== "undefined") {
+            document.documentElement.style.backgroundColor = COLORS.bg;
+            document.body.style.backgroundColor = COLORS.bg;
+        }
+    }, []);
     return (
         <SafeAreaProvider>
             <AuthProvider>
                 <NetworkProvider>
-                    <StatusBar style="light" />
-                    <OfflineBanner />
-                    <RootLayoutNav />
+                    <ThemeProvider value={NAV_THEME}>
+                        <StatusBar style="light" />
+                        <OfflineBanner />
+                        <RootLayoutNav />
+                    </ThemeProvider>
                 </NetworkProvider>
             </AuthProvider>
         </SafeAreaProvider>

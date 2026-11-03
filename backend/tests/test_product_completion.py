@@ -37,7 +37,7 @@ class TestAdvancedAnalytics:
         data = response.json()
         assert data["period_days"] == 7
         assert Decimal(data["revenue"]) == Decimal("100")
-        assert Decimal(data["net"]) == Decimal("95")
+        assert Decimal(data["net"]) == Decimal("55")  # 95 net - 2 units x $20 cost
         assert data["categories"][0]["category"] == "Shoes"
         assert data["categories"][0]["units_sold"] == 2
         assert len(data["daily"]) == 7

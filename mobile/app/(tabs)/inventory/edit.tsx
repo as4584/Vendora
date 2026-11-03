@@ -26,6 +26,7 @@ import * as api from "../../../services/api";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 
 import { COLORS } from "../../../theme/tokens";
+import { Button, IconButton } from "../../../components/Button";
 const CLOTHING_KEYWORDS = [
     "clothing", "apparel", "shirt", "pants", "jeans", "dress", "jacket",
     "hoodie", "sweater", "shorts", "shoes", "sneakers", "boots", "sandals",
@@ -316,9 +317,7 @@ export default function EditItemScreen() {
                 keyboardDismissMode="on-drag"
             >
                 {/* Back button */}
-                <TouchableOpacity accessibilityRole="button" style={styles.backBtn} onPress={back}>
-                    <Text style={styles.backBtnText}>← Back</Text>
-                </TouchableOpacity>
+                <Button label="← Back" variant="primary" size="md" onPress={back} />
 
                 <Text style={styles.screenTitle}>Edit Item</Text>
 
@@ -421,14 +420,7 @@ export default function EditItemScreen() {
                         onChangeText={setUpc}
                         keyboardType="numeric"
                     />
-                    <TouchableOpacity
-                        accessibilityLabel="Scan barcode"
-                        accessibilityRole="button"
-                        style={styles.scanButton}
-                        onPress={openScanner}
-                    >
-                        <Text style={styles.scanButtonText}>🔍</Text>
-                    </TouchableOpacity>
+                    <Button label="🔍" variant="primary" size="md" onPress={openScanner} accessibilityLabel="Scan barcode" />
                 </View>
 
                 <View style={styles.row}>
@@ -528,32 +520,11 @@ export default function EditItemScreen() {
                             <View key={idx} style={styles.variantRow}>
                                 <Text style={styles.variantSize}>{v.size}</Text>
                                 <View style={styles.qtyControls}>
-                                    <TouchableOpacity
-                                        accessibilityLabel={`Decrease quantity for ${v.size}`}
-                                        accessibilityRole="button"
-                                        style={styles.qtyBtn}
-                                        onPress={() => adjustVariantQty(idx, -1)}
-                                    >
-                                        <Text style={styles.qtyBtnText}>−</Text>
-                                    </TouchableOpacity>
+                                    <IconButton icon="remove" label={`Decrease quantity for ${v.size}`} onPress={() => adjustVariantQty(idx, -1)} />
                                     <Text style={styles.qtyValue}>{v.quantity}</Text>
-                                    <TouchableOpacity
-                                        accessibilityLabel={`Increase quantity for ${v.size}`}
-                                        accessibilityRole="button"
-                                        style={styles.qtyBtn}
-                                        onPress={() => adjustVariantQty(idx, 1)}
-                                    >
-                                        <Text style={styles.qtyBtnText}>+</Text>
-                                    </TouchableOpacity>
+                                    <IconButton icon="add" label={`Increase quantity for ${v.size}`} onPress={() => adjustVariantQty(idx, 1)} />
                                 </View>
-                                <TouchableOpacity
-                                    accessibilityLabel={`Remove size ${v.size}`}
-                                    accessibilityRole="button"
-                                    style={styles.removeBtn}
-                                    onPress={() => removeVariant(idx)}
-                                >
-                                    <Text style={styles.removeBtnText}>✕</Text>
-                                </TouchableOpacity>
+                                <IconButton icon="close" label={`Remove size ${v.size}`} onPress={() => removeVariant(idx)} />
                             </View>
                         ))}
 
@@ -568,14 +539,7 @@ export default function EditItemScreen() {
                                 onSubmitEditing={addVariant}
                                 returnKeyType="done"
                             />
-                            <TouchableOpacity
-                                accessibilityLabel="Add Size"
-                                accessibilityRole="button"
-                                style={styles.addSizeBtn}
-                                onPress={addVariant}
-                            >
-                                <Text style={styles.addSizeBtnText}>+ Add Size</Text>
-                            </TouchableOpacity>
+                            <Button label="+ Add Size" variant="secondary" size="sm" onPress={addVariant} accessibilityLabel="Add Size" />
                         </View>
                         <Text style={styles.sizeHint}>
                             Total units: {variants.reduce((a, v) => a + v.quantity, 0)}
@@ -588,40 +552,24 @@ export default function EditItemScreen() {
                     <>
                         <Text style={styles.sectionTitle}>Quantity</Text>
                         <View style={styles.qtyRow}>
-                            <TouchableOpacity
-                                accessibilityLabel="Decrease quantity"
-                                accessibilityRole="button"
-                                style={styles.qtyBtnLarge}
-                                onPress={() => setQuantity((q) => Math.max(0, q - 1))}
-                            >
-                                <Text style={styles.qtyBtnLargeText}>−</Text>
-                            </TouchableOpacity>
+                            <IconButton icon="remove" label="Decrease quantity" onPress={() => setQuantity((q) => Math.max(0, q - 1))} />
                             <Text style={styles.qtyValueLarge}>{quantity}</Text>
-                            <TouchableOpacity
-                                accessibilityLabel="Increase quantity"
-                                accessibilityRole="button"
-                                style={styles.qtyBtnLarge}
-                                onPress={() => setQuantity((q) => q + 1)}
-                            >
-                                <Text style={styles.qtyBtnLargeText}>+</Text>
-                            </TouchableOpacity>
+                            <IconButton icon="add" label="Increase quantity" onPress={() => setQuantity((q) => q + 1)} />
                         </View>
                     </>
                 )}
 
                 {/* ── Save Button ── */}
-                <TouchableOpacity
-                    accessibilityRole="button"
-                    style={[styles.saveButton, saving && { opacity: 0.6 }]}
-                    onPress={handleSave}
+                <Button
+                    label="Save Changes"
+                    size="lg"
+                    fullWidth
+                    haptic="success"
+                    loading={saving}
                     disabled={saving}
-                >
-                    {saving ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.saveText}>💾 Save Changes</Text>
-                    )}
-                </TouchableOpacity>
+                    onPress={handleSave}
+                    style={styles.saveButtonSpacing}
+                />
             </ScrollView>
 
             {/* ── Barcode Scanner Modal ── */}
@@ -646,6 +594,7 @@ export default function EditItemScreen() {
 }
 
 const styles = StyleSheet.create({
+    saveButtonSpacing: { marginTop: 24 },
     container: { flex: 1, backgroundColor: "#0A0A1A" },
     center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0A0A1A" },
     content: { padding: 20, paddingBottom: 50 },

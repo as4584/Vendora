@@ -107,6 +107,8 @@ export default function DashboardScreen() {
   const netSeries = daily.map((d) => Number(d.net));
   const revSeries = daily.map((d) => Number(d.revenue));
   const heroSpark = netSeries.length > 1 ? netSeries : [0, 0];
+  // A trend needs at least two days of activity; one spike on a flat line reads as a glitch.
+  const showHeroSpark = netSeries.filter((v) => v !== 0).length >= 2;
 
   // Today-vs-yesterday delta for the hero card.
   let heroDelta: { text: string; tone: "up" | "down" | "muted" } | null = null;
@@ -146,9 +148,11 @@ export default function DashboardScreen() {
         <Text style={styles.heroLabel}>Today&apos;s Profit</Text>
         <Text style={styles.heroValue}>{money(data.net_profit_today)}</Text>
         {heroDelta ? <Text style={styles.heroDelta}>{heroDelta.text}</Text> : null}
-        <View style={styles.heroSparkWrap}>
-          <Sparkline data={heroSpark} height={64} stroke="#FFFFFF" fillOpacity={0.22} />
-        </View>
+        {showHeroSpark ? (
+          <View style={styles.heroSparkWrap}>
+            <Sparkline data={heroSpark} height={64} stroke="#FFFFFF" fillOpacity={0.22} />
+          </View>
+        ) : null}
       </GradientCard>
 
       {/* 2x2 stat grid */}
@@ -183,7 +187,7 @@ export default function DashboardScreen() {
             {netDelta ? <Text style={[styles.overviewStatDelta, { color: netDelta.tone === "up" ? COLORS.success : COLORS.danger }]}>{netDelta.text}</Text> : null}
           </View>
         </View>
-        {revSeries.length > 1 ? (
+        {revSeries.filter((v) => v !== 0).length >= 2 ? (
           <View style={styles.overviewChart}>
             <Sparkline data={revSeries} height={80} stroke={COLORS.primaryBright} fillOpacity={0.16} />
           </View>
