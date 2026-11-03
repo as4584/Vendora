@@ -400,3 +400,39 @@ async def stockx_outbox_retry(
     await process_job(db, job)
     db.refresh(job)
     return job
+
+
+# ── pricing hint for Add stock (no saved item yet) ───────────────────────────
+
+class QuoteOut(BaseModel):
+    product: Optional[CandidateOut] = None
+    variant_id: Optional[str] = None
+    market: Optional[MarketOut] = None
+
+
+@router.get("/quote", response_model=QuoteOut)
+async def stockx_quote(
+    query: str = Query(min_length=2, max_length=255),
+    size: Optional[str] = Query(None, max_length=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Best confident catalog match for a typed name plus that size's market data."""
+    from app.services import stockx_match
+    from app.services.stockx import _candidate_out, find_variant
+
+    try:
+        products = await stockx_service.search(db, current_user.id, query)
+        best, _ranked = stockx_match.best_match(query, [str(p.get("title") or "") for p in products], refs=products)
+        if best is None:
+            return QuoteOut()
+        product = _candidate_out(best.ref, best.score)
+        variants = await stockx_service.get_variants(db, current_user.id, product["product_id"])
+    except StockxAPIError as exc:
+        raise _api_error(exc) from exc
+    variant = find_variant(variants, size)
+    if variant is None:
+        return QuoteOut(product=CandidateOut(**product))
+    variant_id = str(variant["variantId"])
+    data = await stockx_service.market_data(db, current_user.id, product["product_id"], variant_id)
+    return QuoteOut(product=CandidateOut(**product), variant_id=variant_id, market=MarketOut(**data, size=size))
