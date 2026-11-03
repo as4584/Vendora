@@ -28,7 +28,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
 import { isTempId } from "../../../services/offline";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
-import { Button } from "../../../components/Button";
+import { Button, IconButton } from "../../../components/Button";
 import {
     isLabelReaderAvailable,
     readLabel,
@@ -490,20 +490,13 @@ export default function AddItemScreen() {
                             <TextInput
                                 accessibilityLabel="SKU"
                                 style={[styles.input, styles.skuInput]}
-                                placeholder="SKU-001"
+                                placeholder="SKU"
                                 placeholderTextColor="#555"
                                 value={sku}
                                 onChangeText={setSku}
                                 autoCapitalize="characters"
                             />
-                            <TouchableOpacity
-                                accessibilityLabel="Generate SKU"
-                                accessibilityRole="button"
-                                style={styles.autoButton}
-                                onPress={handleAutoSKU}
-                            >
-                                <Text style={styles.autoButtonText}>⚡</Text>
-                            </TouchableOpacity>
+                            <IconButton icon="flash-outline" label="Generate SKU" onPress={handleAutoSKU} />
                         </View>
                     </View>
                 </View>
@@ -520,14 +513,7 @@ export default function AddItemScreen() {
                         onChangeText={setUpc}
                         keyboardType="numeric"
                     />
-                    <TouchableOpacity
-                        accessibilityLabel="Scan barcode"
-                        accessibilityRole="button"
-                        style={styles.scanButton}
-                        onPress={openScanner}
-                    >
-                        <Text style={styles.scanButtonText}>🔍</Text>
-                    </TouchableOpacity>
+                    <IconButton icon="barcode-outline" label="Scan barcode" onPress={openScanner} />
                 </View>
 
                 <View style={styles.row}>
@@ -806,7 +792,7 @@ const styles = StyleSheet.create({
         borderColor: "#2A2A4A",
     },
     row: { flexDirection: "row", gap: 12 },
-    halfField: { flex: 1 },
+    halfField: { flex: 1, minWidth: 0 },
 
     // Photos
     photoRow: { flexDirection: "row", gap: 12, marginBottom: 4 },
@@ -830,8 +816,8 @@ const styles = StyleSheet.create({
     photoLabel: { color: "#555", fontSize: 12, fontWeight: "600" },
 
     // SKU row with auto-button
-    skuRow: { flexDirection: "row", gap: 8, alignItems: "flex-end" },
-    skuInput: { flex: 1 },
+    skuRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+    skuInput: { flex: 1, minWidth: 0 },
     autoButton: {
         backgroundColor: "#2A1B4E",
         borderWidth: 1,
