@@ -1,6 +1,7 @@
 import ExpoModulesCore
 import UIKit
 import Vision
+import VisionKit
 
 /// Reads the printed text on a shoebox / product label with Apple Vision.
 /// Everything runs on the phone: no network, no outside service.
@@ -9,6 +10,24 @@ public class LabelReaderModule: Module {
     Name("LabelReader")
 
     Constant("isAvailable") { true }
+
+    /// True when the live VisionKit scanner can run: A12+ chip and camera
+    /// access not denied. DataScannerViewController is main-actor isolated,
+    /// so its class properties are read on the main actor.
+    AsyncFunction("isLiveScanAvailable") { () async -> Bool in
+      return await MainActor.run {
+        DataScannerViewController.isSupported && DataScannerViewController.isAvailable
+      }
+    }
+
+    /// Live scanner view (see LiveScannerView.swift).
+    View(LiveScannerView.self) {
+      Events("onLines", "onScanError")
+
+      Prop("active") { (view: LiveScannerView, active: Bool) in
+        view.setActive(active)
+      }
+    }
 
     AsyncFunction("recognize") { (uri: String, promise: Promise) in
       guard let image = LabelReaderModule.loadImage(uri), let cgImage = image.cgImage else {

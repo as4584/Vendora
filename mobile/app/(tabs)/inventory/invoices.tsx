@@ -12,10 +12,12 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as api from "../../../services/api";
+import { invoiceLabel, invoiceBalance } from "../../../utils/invoices";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, sizeBreakdown } from "../../../utils/inventory";
 import { downloadPdfFile } from "../../../utils/fileActions";
+import { InvoicePayments, invoiceStatusLabel, invoiceStatusTone } from "../../../components/InvoicePayments";
 
 interface DraftLineItem {
   description: string;
@@ -201,7 +203,12 @@ export default function InvoicesScreen() {
       setRecentlyAddedName(null);
       setLineItems([{ description: "", quantity: "1", unit_price: "" }]);
       setSelectedInvoice(invoice);
-      Alert.alert("Invoice created", `${invoice.customer_name} - ${formatCurrency(invoice.total)}`);
+      Alert.alert(
+        invoice._pending ? "Saved offline" : "Invoice created",
+        invoice._pending
+          ? `${invoice.customer_name} - ${formatCurrency(invoice.total)}. It gets its invoice number when you're back online.`
+          : `${invoice.customer_name} - ${formatCurrency(invoice.total)}`,
+      );
       setView("history");
     } catch (err: any) {
       Alert.alert("Invoice failed", err?.message || "Could not create the invoice.");
@@ -450,7 +457,13 @@ export default function InvoicesScreen() {
             <Card style={styles.previewCard}>
               <View style={styles.previewHeader}>
                 <View style={{ flex: 1 }}>
-                  <SectionLabel>{selectedInvoice.invoice_number ? `Invoice ${selectedInvoice.invoice_number}` : "Open Invoice"}</SectionLabel>
+                  <SectionLabel>
+                    {selectedInvoice._pending
+                      ? invoiceLabel(selectedInvoice)
+                      : selectedInvoice.invoice_number
+                        ? `Invoice ${selectedInvoice.invoice_number}`
+                        : "Open Invoice"}
+                  </SectionLabel>
                   <Text style={styles.previewTitle}>{selectedInvoice.customer_name}</Text>
                   <Text style={styles.helperText}>
                     {selectedInvoice.customer_email || "No customer email"} - {formatCompactDate(selectedInvoice.created_at)}
@@ -465,16 +478,7 @@ export default function InvoicesScreen() {
               </View>
 
               <View style={styles.previewStatusRow}>
-                <Pill
-                  label={selectedInvoice.status.toUpperCase()}
-                  tone={
-                    selectedInvoice.status === "paid"
-                      ? "success"
-                      : selectedInvoice.status === "sent"
-                        ? "info"
-                        : "warning"
-                  }
-                />
+                <Pill label={invoiceStatusLabel(selectedInvoice)} tone={invoiceStatusTone(selectedInvoice)} />
                 <Text style={styles.invoiceTotal}>{formatCurrency(selectedInvoice.total)}</Text>
               </View>
 
@@ -495,6 +499,14 @@ export default function InvoicesScreen() {
 
               {selectedInvoice.notes ? <Text style={styles.helperText}>{selectedInvoice.notes}</Text> : null}
 
+              <InvoicePayments
+                invoice={selectedInvoice}
+                onRecorded={(updated) => {
+                  setSelectedInvoice(updated);
+                  setInvoices((previous) => previous.map((i) => (i.id === updated.id ? updated : i)));
+                }}
+              />
+
               <ActionButton
                 label="Preview"
                 onPress={() =>
@@ -511,7 +523,7 @@ export default function InvoicesScreen() {
                 onPress={() => handleOpenInvoice(selectedInvoice.id)}
                 tone="secondary"
                 compact
-                disabled={openingInvoiceId === selectedInvoice.id}
+                disabled={openingInvoiceId === selectedInvoice.id || !!selectedInvoice._pending}
               />
             </Card>
           ) : null}
@@ -524,7 +536,8 @@ export default function InvoicesScreen() {
                 <View style={styles.invoiceSummary}>
                   <Text style={styles.optionTitle}>{invoice.customer_name}</Text>
                   <Text style={styles.optionMeta}>
-                    {invoice.invoice_number ? `${invoice.invoice_number} - ` : ""}{invoice.items.length} item lines - {formatCompactDate(invoice.created_at)}
+                    {invoice._pending ? `${invoiceLabel(invoice)} - ` : invoice.invoice_number ? `${invoice.invoice_number} - ` : ""}
+                    {invoice.items.length} item lines - {formatCompactDate(invoice.created_at)}
                   </Text>
                   {invoice.customer_email ? (
                     <Text style={styles.optionMeta}>{invoice.customer_email}</Text>
@@ -532,17 +545,13 @@ export default function InvoicesScreen() {
                 </View>
 
                 <View style={styles.invoiceAside}>
-                  <Pill
-                    label={invoice.status.toUpperCase()}
-                    tone={
-                      invoice.status === "paid"
-                        ? "success"
-                        : invoice.status === "sent"
-                          ? "info"
-                          : "warning"
-                    }
-                  />
+                  <Pill label={invoiceStatusLabel(invoice)} tone={invoiceStatusTone(invoice)} />
                   <Text style={styles.invoiceTotal}>{formatCurrency(invoice.total)}</Text>
+                  {invoice.status === "partially_paid" ? (
+                    <Text style={styles.optionMeta}>
+                      {formatCurrency(invoiceBalance(invoice).toFixed(2))} due
+                    </Text>
+                  ) : null}
                 </View>
 
                 <View style={styles.invoiceActions}>

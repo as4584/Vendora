@@ -77,8 +77,13 @@ def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
         "items": [{"inventory_item_id": str(items[2].id), "description": items[2].name, "quantity": 1, "unit_price": "130.00"}],
     }, headers=auth_headers)
     assert inv.status_code in (200, 201), inv.text
+    # A deposit taken at the show, so the invoice screens show a balance due.
+    paid = client.post(f"/api/v1/invoices/{inv.json()['id']}/payments", json={
+        "amount": "50.00", "method": "cash", "note": "Deposit at the show",
+    }, headers=auth_headers)
+    assert paid.status_code == 201, paid.text
 
-    out = {"item_id": str(items[0].id), "invoice_id": inv.json()["id"]}
+    out ={"item_id": str(items[0].id), "invoice_id": inv.json()["id"]}
     paths = dict(SCREENS)
     paths["item"] = f"/inventory/{items[0].id}"
     paths["item_activity"] = f"/inventory/{items[0].id}/activity?limit=20"

@@ -4,8 +4,23 @@
  */
 import { isOnline } from "../offline";
 import { request } from "../api";
-import { isLabelReaderAvailable, readLabelText } from "../../modules/label-reader";
+import {
+  getLiveScannerView,
+  isLabelReaderAvailable,
+  isLiveScanAvailable,
+  readLabelText,
+} from "../../modules/label-reader";
 import { parseBoxLabel, type ScanFields } from "./parseLabel";
+
+export {
+  createFieldVoter,
+  isScanComplete,
+  CHECKLIST,
+  DEFAULT_STABLE_FRAMES,
+  type LiveSnapshot,
+  type LiveField,
+} from "./stability";
+export { isLiveScanAvailable, getLiveScannerView };
 import {
   mergeFields,
   rememberScan as rememberWith,

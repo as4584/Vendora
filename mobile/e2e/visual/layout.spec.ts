@@ -16,7 +16,15 @@ const SIZES = [
   { name: 'ipad', width: 820, height: 1180 },
 ];
 
-const SCREENS: { name: string; path: string; ready?: string; authed?: boolean }[] = [
+const SCREENS: {
+  name: string;
+  path: string;
+  ready?: string;
+  authed?: boolean;
+  /** Text of controls to tap, in order, before the screenshot. */
+  steps?: string[];
+  fullPage?: boolean;
+}[] = [
   { name: 'login', path: '/login', authed: false },
   { name: 'register', path: '/register', authed: false },
   { name: 'forgot-password', path: '/forgot-password', authed: false },
@@ -28,7 +36,14 @@ const SCREENS: { name: string; path: string; ready?: string; authed?: boolean }[
   { name: 'sale', path: '/inventory/sale' },
   { name: 'sale-cart', path: `/inventory/sale?add=${fixtures.item_id}`, ready: 'Cart · 1 item' },
   { name: 'invoices', path: '/inventory/invoices' },
-  { name: 'invoice-preview', path: `/inventory/invoice-preview?id=${fixtures.invoice_id}` },
+  { name: 'invoice-preview', path: `/inventory/invoice-preview?id=${fixtures.invoice_id}`, ready: 'Marcus Reed', fullPage: true },
+  {
+    name: 'invoice-record-payment',
+    path: '/inventory/invoices',
+    ready: 'Recent Invoices',
+    steps: ['Recent Invoices', 'Open Invoice', 'Record payment'],
+    fullPage: true,
+  },
   { name: 'import', path: '/inventory/import' },
   { name: 'more', path: '/more' },
   { name: 'settings', path: '/settings' },
@@ -115,13 +130,33 @@ test.describe('layout gate', () => {
           await page.evaluate(() => localStorage.clear());
         }
         await page.goto('/');
-        await page.evaluate((p) => {
-          window.history.pushState({}, '', p);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        }, screen.path);
-        if (screen.ready) await expect(page.getByText(screen.ready).first()).toBeVisible();
+        // Navigating before the router has mounted leaves the app on its
+        // start screen, so wait for it to settle and retry the push once.
+        await page.waitForLoadState('networkidle');
+        const navigate = () =>
+          page.evaluate((p) => {
+            window.history.pushState({}, '', p);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }, screen.path);
+        await navigate();
+        if (screen.ready) {
+          const ready = page.getByText(screen.ready).first();
+          try {
+            await expect(ready).toBeVisible({ timeout: 5_000 });
+          } catch {
+            await navigate();
+            await expect(ready).toBeVisible();
+          }
+        }
+        for (const step of screen.steps ?? []) {
+          await page.getByText(step, { exact: true }).first().click();
+          await page.waitForTimeout(250);
+        }
         await page.waitForTimeout(700);
-        await page.screenshot({ path: `test-results/visual/${size.name}/${screen.name}.png`, fullPage: false });
+        await page.screenshot({
+          path: `test-results/visual/${size.name}/${screen.name}.png`,
+          fullPage: !!screen.fullPage,
+        });
         expect(await overflowing(page), `${screen.name} overflows at ${size.width}px`).toEqual([]);
       });
     }

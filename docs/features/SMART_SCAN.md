@@ -11,7 +11,34 @@ paid lookup services. The app learns from you.
 
 ---
 
-## How it works
+## Live scanner (iPhone XS/XR and newer)
+
+On iPhones with an A12 chip or newer, **Scan a box** opens a live scanner
+built on Apple VisionKit (`DataScannerViewController`). It reads the barcode
+and the printed label **at the same time**, with no button to press:
+
+- A checklist at the bottom fills in as each field is read: **Barcode, Name,
+  Style code, Size, Color**.
+- A field only counts once the camera reads the **same value 3 updates in a
+  row**. Live text jitters (`DD1391-100` one frame, `DD1391-10O` the next),
+  so a one-frame misread never lands in the form. A frame where a field is out
+  of view doesn't count for or against it.
+- When **barcode + name + size** are in (plus the **style code** whenever the
+  label shows one), the phone gives a success tap and the scanner closes on
+  its own. Tap **Done** to finish early with whatever has been read.
+- Then the same rules as below apply: **scan memory first** (remembered values
+  beat what was read), style-family match for a new size of a shoe you know,
+  and **nothing you typed is overwritten**.
+
+Recognition runs entirely on the phone. If the phone can't run the live
+scanner (older chip, camera access denied, Expo Go, Android, web), or it
+stops mid-scan, Vendora falls back to the tap-to-read flow below.
+
+> Status: the live scanner's Swift (`LiveScannerView.swift`) has not yet been
+> run on a device. The JS side (voting, checklist, fallback) is unit tested
+> with the native view mocked.
+
+## How it works (tap-to-read)
 
 When you tap **Scan a box** and point at the barcode:
 
@@ -54,6 +81,9 @@ and that barcode is remembered from then on.
 | Piece | Where |
 |---|---|
 | On-device label reader (Apple Vision `VNRecognizeTextRequest`) | `mobile/modules/label-reader/` (local Expo module) |
+| Live scanner native view (VisionKit `DataScannerViewController`, `.barcode()` + `.text()`, events `onLines` / `onScanError`, `isLiveScanAvailable()`) | `mobile/modules/label-reader/ios/LiveScannerView.swift` |
+| Stability voting (N identical consecutive reads) + completion rule | `mobile/services/smartScan/stability.ts` |
+| Live scanner UI (checklist, Done, auto-close) | `mobile/components/LiveBoxScanner.tsx` |
 | Label parser: style code, size, colorway, brand, name | `mobile/services/smartScan/parseLabel.ts` |
 | Phone memory, offline queue, account sync | `mobile/services/smartScan/memory.ts` |
 | Add Stock flow (barcode, then label, then confirm) | `mobile/app/(tabs)/inventory/add.tsx` |
@@ -75,6 +105,11 @@ UPC-A and its 13-digit EAN form (`0` + UPC) are treated as the same barcode.
 
 - `backend/tests/test_scan_memory.py`: lookup order, corrections, style
   family, inventory match, per-account privacy, validation, auth
+- `mobile/__tests__/live-scan.test.tsx`: stability voting, completion rule,
+  the live checklist and auto-close with the native view mocked, native
+  wrapper fallbacks
+- `mobile/__tests__/inventory-add.test.tsx`: live flow in Add Stock (memory
+  first, typed fields kept, fallback to tap-to-read)
 - `mobile/__tests__/smart-scan.test.ts`: real label text from Nike, Jordan,
   adidas, New Balance and kids boxes, plus offline memory, sync conflicts and
   the retry queue

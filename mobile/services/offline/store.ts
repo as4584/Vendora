@@ -14,6 +14,7 @@ export const KEYS = {
   failed: "offline:failed", // FailedSync[] — changes the server rejected
   dashboardCache: "offline:cache:dashboard", // last Dashboard payload
   lastSync: "offline:last_sync", // ISO string of last successful server read
+  pendingInvoices: "offline:pending_invoices", // InvoiceData[] created offline, not yet synced
 } as const;
 
 export async function readJSON<T>(key: string, fallback: T): Promise<T> {
@@ -52,5 +53,6 @@ export async function clearOfflineData(): Promise<void> {
     KEYS.failed,
     KEYS.dashboardCache,
     KEYS.lastSync,
+    KEYS.pendingInvoices,
   ]);
 }

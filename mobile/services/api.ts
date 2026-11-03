@@ -18,6 +18,10 @@ import {
   queueUpdateItem,
   queueQuickSale,
   queueSaleOrder,
+  queueCreateInvoice,
+  getPendingInvoices,
+  getPendingInvoice,
+  isTempId,
   cacheDashboard,
   readCachedDashboard,
 } from "./offline";
@@ -960,8 +964,41 @@ export interface InvoiceData {
   stripe_payment_intent_id: string | null;
   notes: string | null;
   items: InvoiceItem[];
+  /** Sum of recorded payments (decimal string). */
+  amount_paid?: string;
+  /** total - amount_paid (decimal string). */
+  balance_due?: string;
+  payments?: InvoicePayment[];
   created_at: string;
   updated_at: string;
+  /** Local-only: created offline, waiting for the server to assign a number. */
+  _pending?: boolean;
+}
+
+export type InvoicePaymentMethod =
+  | "cash"
+  | "card"
+  | "zelle"
+  | "venmo"
+  | "cashapp"
+  | "paypal"
+  | "stripe"
+  | "other";
+
+export interface InvoicePayment {
+  id: string;
+  invoice_id: string;
+  amount: string;
+  method: InvoicePaymentMethod | string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface RecordInvoicePaymentPayload {
+  amount: string;
+  method: InvoicePaymentMethod;
+  note?: string;
+  client_request_id?: string;
 }
 
 export interface PaginatedInvoices {
@@ -986,6 +1023,8 @@ export interface CreateInvoicePayload {
   shipping?: string;
   discount?: string;
   notes?: string;
+  /** Idempotency key; set automatically so a retried create never duplicates. */
+  client_request_id?: string;
 }
 
 export interface UpdateInvoicePayload {
@@ -1004,12 +1043,40 @@ export interface UpdateInvoicePayload {
   notes?: string;
 }
 
+function requestKey(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Create an invoice; queued in the outbox when offline (shows as Pending sync). */
 export async function createInvoice(
   payload: CreateInvoicePayload
 ): Promise<InvoiceData> {
-  return request<InvoiceData>("/invoices", {
+  const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("inv") };
+  if (!isOnline()) return queueCreateInvoice(body);
+  try {
+    return await request<InvoiceData>("/invoices", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // Same key on replay: if the first POST did land, the server returns it.
+    if (isNetworkError(e)) return queueCreateInvoice(body);
+    throw e;
+  }
+}
+
+/** Record a partial or full payment. Online only: the balance must be checked
+ * against the server's ledger, and offline invoices have no server id yet. */
+export async function recordInvoicePayment(
+  invoiceId: string,
+  payload: RecordInvoicePaymentPayload
+): Promise<InvoiceData> {
+  if (isTempId(invoiceId)) {
+    throw new Error("This invoice is still waiting to sync. Record the payment once it has an invoice number.");
+  }
+  return request<InvoiceData>(`/invoices/${invoiceId}/payments`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, client_request_id: payload.client_request_id ?? requestKey("pay") }),
   });
 }
 
@@ -1036,10 +1103,33 @@ export async function listInvoices(
   qs.set("per_page", String(perPage));
   if (status) qs.set("status", status);
   if (inventoryItemId) qs.set("inventory_item_id", inventoryItemId);
-  return request<PaginatedInvoices>(`/invoices?${qs.toString()}`);
+  // Offline-created invoices lead the unfiltered first page until they sync.
+  const showPending = page === 1 && !status && !inventoryItemId;
+  const pending = showPending ? await getPendingInvoices() : [];
+  const offlinePage = (): PaginatedInvoices => ({
+    items: pending,
+    total: pending.length,
+    page,
+    per_page: perPage,
+    pages: pending.length ? 1 : 0,
+  });
+  if (!isOnline()) return offlinePage();
+  try {
+    const res = await request<PaginatedInvoices>(`/invoices?${qs.toString()}`);
+    if (!pending.length) return res;
+    return { ...res, items: [...pending, ...res.items], total: res.total + pending.length };
+  } catch (e) {
+    if (isNetworkError(e)) return offlinePage();
+    throw e;
+  }
 }
 
 export async function getInvoice(id: string): Promise<InvoiceData> {
+  if (isTempId(id)) {
+    const local = await getPendingInvoice(id);
+    if (local) return local;
+    throw new Error("This invoice has synced or was removed. Pull to refresh.");
+  }
   return request<InvoiceData>(`/invoices/${id}`);
 }
 

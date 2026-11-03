@@ -2,7 +2,7 @@
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,6 +35,8 @@ class InvoiceCreate(BaseModel):
     shipping: Decimal = Field(default=Decimal("0.00"), ge=0)
     discount: Decimal = Field(default=Decimal("0.00"), ge=0)
     notes: Optional[str] = Field(None, max_length=1000)
+    # Set by the offline outbox; a replay returns the invoice it already made.
+    client_request_id: Optional[str] = Field(None, min_length=8, max_length=100)
 
 
 class InvoiceUpdate(BaseModel):
@@ -65,6 +67,9 @@ class InvoiceResponse(BaseModel):
     stripe_payment_intent_id: Optional[str] = None
     notes: Optional[str] = None
     items: list[InvoiceItemResponse] = Field(default_factory=list)
+    amount_paid: Decimal = Decimal("0.00")
+    balance_due: Decimal = Decimal("0.00")
+    payments: list["InvoicePaymentResponse"] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -78,3 +83,27 @@ class InvoiceListResponse(BaseModel):
 
 class InvoiceStatusUpdate(BaseModel):
     status: str
+
+
+PaymentMethod = Literal["cash", "card", "zelle", "venmo", "cashapp", "paypal", "stripe", "other"]
+
+
+class InvoicePaymentCreate(BaseModel):
+    amount: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    method: PaymentMethod
+    note: Optional[str] = Field(None, max_length=500)
+    client_request_id: Optional[str] = Field(None, min_length=8, max_length=100)
+
+
+class InvoicePaymentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    invoice_id: UUID
+    amount: Decimal
+    method: str
+    note: Optional[str] = None
+    created_at: datetime
+
+
+InvoiceResponse.model_rebuild()

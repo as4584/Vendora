@@ -43,7 +43,24 @@ const mockResolveScan = jest.fn();
 const mockRememberScan = jest.fn();
 const mockReadLabel = jest.fn();
 let mockLabelReader = true;
+let mockLive = false;
+let mockLiveResult: Record<string, string> = {};
+jest.mock('../components/LiveBoxScanner', () => {
+  const R = require('react');
+  const { Pressable } = require('react-native');
+  const btn = (testID: string, onPress: () => void) => R.createElement(Pressable, { key: testID, testID, onPress });
+  return {
+    LiveBoxScanner: (props: any) =>
+      R.createElement(R.Fragment, null, [
+        btn('mock-live-finish', () => props.onFinish(mockLiveResult)),
+        btn('mock-live-cancel', props.onCancel),
+        btn('mock-live-unavailable', () => props.onUnavailable('Live scanning stopped.')),
+      ]),
+  };
+});
 jest.mock('../services/smartScan', () => ({
+  isLiveScanAvailable: async () => mockLive,
+  mergeFields: (remembered: object, read: object) => ({ ...read, ...remembered }),
   resolveScan: (...a: unknown[]) => mockResolveScan(...a),
   rememberScan: (...a: unknown[]) => mockRememberScan(...a),
   readLabel: (...a: unknown[]) => mockReadLabel(...a),
@@ -75,6 +92,8 @@ describe('add inventory screen', () => {
     mockedApi.createItem.mockResolvedValue({ id: 'item-1' } as api.InventoryItem);
     mockedApi.uploadItemPhotos.mockResolvedValue({ id: 'item-1' } as api.InventoryItem);
     mockLabelReader = true;
+    mockLive = false;
+    mockLiveResult = {};
     mockResolveScan.mockResolvedValue({ barcode: 'x', match: null, fields: {}, times_seen: 0 });
     mockRememberScan.mockResolvedValue(undefined);
     mockReadLabel.mockResolvedValue({});
@@ -270,7 +289,7 @@ describe('add inventory screen', () => {
     fireEvent.press(screen.getByLabelText('Scan barcode'));
     await screen.findByTestId('camera-view');
     const Modal = require('react-native').Modal;
-    fireEvent(screen.UNSAFE_getByType(Modal), 'requestClose');
+    fireEvent(screen.UNSAFE_getAllByType(Modal)[0], 'requestClose');
     fireEvent.press(screen.getByLabelText('Scan barcode'));
     await screen.findByTestId('camera-view');
     fireEvent.press(screen.getByText('Cancel'));
@@ -361,5 +380,110 @@ describe('add inventory screen', () => {
     mockedApi.createItem.mockRejectedValueOnce(new Error('Network offline'));
     fireEvent.press(screen.getByText('Add to Inventory'));
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Error', 'Network offline'));
+  });
+
+  describe('live box scanner', () => {
+    async function openLive() {
+      mockLive = true;
+      const screen = render(<AddItemScreen />);
+      // Let the availability check resolve.
+      await act(async () => undefined);
+      fireEvent.press(screen.getByTestId('smart-scan-button'));
+      await screen.findByTestId('mock-live-finish');
+      return screen;
+    }
+
+    it('uses the live scanner when supported and fills from what it read', async () => {
+      mockLiveResult = { barcode: '197862948123', name: 'Jordan 4 Retro', style_code: 'FV5029-006', sku: 'FV5029-006', size: '10' };
+      const screen = await openLive();
+      expect(screen.queryByTestId('camera-view')).toBeNull();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mock-live-finish'));
+      });
+      expect(mockResolveScan).toHaveBeenCalledWith('197862948123', 'FV5029-006');
+      expect(screen.getByLabelText('UPC or Barcode').props.value).toBe('197862948123');
+      expect(screen.getByLabelText('Item Name').props.value).toBe('Jordan 4 Retro');
+      expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Read live/);
+    });
+
+    it('memory wins over the live read and typed fields are never overwritten', async () => {
+      mockResolveScan.mockResolvedValueOnce({
+        barcode: '1', match: 'memory', times_seen: 2,
+        fields: { name: 'Remembered Name', color: 'Bred', buy_price: '150.00' },
+      });
+      mockLiveResult = { barcode: '1', name: 'Read Name', color: 'Black/Red', sku: 'X1' };
+      mockLive = true;
+      const screen = render(<AddItemScreen />);
+      await act(async () => undefined);
+      fireEvent.changeText(screen.getByLabelText('SKU'), 'MY-SKU');
+      fireEvent.press(screen.getByTestId('smart-scan-button'));
+      await screen.findByTestId('mock-live-finish');
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mock-live-finish'));
+      });
+      expect(screen.getByLabelText('Item Name').props.value).toBe('Remembered Name');
+      expect(screen.getByLabelText('Color').props.value).toBe('Bred');
+      expect(screen.getByLabelText('SKU').props.value).toBe('MY-SKU');
+      expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/scan memory/);
+    });
+
+    it('takes the box size over a style-family match', async () => {
+      mockResolveScan.mockResolvedValueOnce({
+        barcode: '2', match: 'style', times_seen: 1, fields: { name: 'Family Name', size: '9' },
+      });
+      mockLiveResult = { barcode: '2', style_code: 'DD1391-100', size: '11', color: 'White/Black' };
+      const screen = await openLive();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mock-live-finish'));
+      });
+      expect(screen.getByLabelText('Item Name').props.value).toBe('Family Name');
+      expect(screen.getByLabelText('Color').props.value).toBe('White/Black');
+    });
+
+    it('still applies the read when memory lookup fails, and handles empty reads', async () => {
+      mockResolveScan.mockRejectedValueOnce(new Error('offline'));
+      mockLiveResult = { barcode: '3', name: 'Only Read' };
+      let screen = await openLive();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mock-live-finish'));
+      });
+      expect(screen.getByLabelText('Item Name').props.value).toBe('Only Read');
+
+      mockLiveResult = {};
+      screen = await openLive();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mock-live-finish'));
+      });
+      expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Nothing was read/);
+    });
+
+    it('reads label text without a barcode', async () => {
+      mockLiveResult = { name: 'No Barcode Shoe' };
+      const screen = await openLive();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('mock-live-finish'));
+      });
+      expect(mockResolveScan).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Item Name').props.value).toBe('No Barcode Shoe');
+    });
+
+    it('cancels, and falls back to tap-to-read when the live scanner is unavailable', async () => {
+      const screen = await openLive();
+      fireEvent.press(screen.getByTestId('mock-live-cancel'));
+      expect(screen.queryByTestId('mock-live-finish')).toBeNull();
+
+      fireEvent.press(screen.getByTestId('smart-scan-button'));
+      await screen.findByTestId('mock-live-unavailable');
+      const Modal = require('react-native').Modal;
+      fireEvent(screen.UNSAFE_getAllByType(Modal)[1], 'requestClose');
+      expect(screen.queryByTestId('mock-live-finish')).toBeNull();
+
+      fireEvent.press(screen.getByTestId('smart-scan-button'));
+      await act(async () => {
+        fireEvent.press(await screen.findByTestId('mock-live-unavailable'));
+      });
+      expect(await screen.findByTestId('camera-view')).toBeTruthy();
+      expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Live scanning stopped/);
+    });
   });
 });
