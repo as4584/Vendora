@@ -248,7 +248,7 @@ describe('SettingsScreen', () => {
 
     await waitFor(() => {
       expect(getByText('test@vendora.test')).toBeTruthy();
-      expect(getByText('PRO')).toBeTruthy();
+      expect(getByText('Pro')).toBeTruthy();
     });
   });
 

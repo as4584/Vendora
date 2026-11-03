@@ -23,6 +23,7 @@ import {
     Alert,
     Dimensions,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as api from "../../../../services/api";
 
@@ -50,9 +51,9 @@ function computeMargin(buy: string | null, sell: string | null): number | null {
 }
 
 function marginColor(pct: number): string {
-    if (pct >= 30) return "#00B894";
-    if (pct >= 15) return "#FDCB6E";
-    return "#E17055";
+    if (pct >= 30) return "#4CC38A";
+    if (pct >= 15) return "#E5B04A";
+    return "#E5584D";
 }
 
 // ─── Variant helpers ─────────────────────────────────────────────────────────
@@ -67,12 +68,12 @@ function totalVariantQty(variants: api.SizeVariant[]): number {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-    in_stock: "#00B894",
+    in_stock: "#4CC38A",
     listed: "#0984E3",
-    sold: "#E17055",
-    shipped: "#FDCB6E",
+    sold: "#E5584D",
+    shipped: "#E5B04A",
     paid: COLORS.primary,
-    archived: "#636E72",
+    archived: "#8C8C96",
 };
 
 const SCREEN_H = Dimensions.get("window").height;
@@ -130,7 +131,7 @@ function ItemQuickSheetContent({
 
     const clothing = isClothingItem(item.category);
     const margin = computeMargin(item.buy_price, item.expected_sell_price);
-    const dotColor = STATUS_COLORS[item.status] ?? "#636E72";
+    const dotColor = STATUS_COLORS[item.status] ?? "#8C8C96";
     const normalizedBrand = brandDraft.trim().toLowerCase();
 
     // ── Variant helpers ──────────────────────────────────────────────────────
@@ -261,7 +262,7 @@ function ItemQuickSheetContent({
                             />
                         ) : (
                             <View style={[styles.photo, styles.photoPlaceholder]}>
-                                <Text style={styles.photoIcon}>📦</Text>
+                                <Ionicons name="image-outline" size={26} color="#8C8C96" />
                             </View>
                         )}
 
@@ -278,7 +279,7 @@ function ItemQuickSheetContent({
                                     onSubmitEditing={() => setEditingName(false)}
                                     onBlur={() => setEditingName(false)}
                                     placeholder="Item name"
-                                    placeholderTextColor="#666"
+                                    placeholderTextColor="#8C8C96"
                                 />
                             ) : (
                                 <TouchableOpacity
@@ -308,7 +309,7 @@ function ItemQuickSheetContent({
                                     onSubmitEditing={() => setEditingBrand(false)}
                                     onBlur={() => setEditingBrand(false)}
                                     placeholder="Brand"
-                                    placeholderTextColor="#666"
+                                    placeholderTextColor="#8C8C96"
                                 />
                             ) : (
                                 <TouchableOpacity
@@ -391,7 +392,7 @@ function ItemQuickSheetContent({
                         </View>
                         <View style={styles.pricingCell}>
                             <Text style={styles.pricingLabel}>Expected</Text>
-                            <Text style={[styles.pricingValue, { color: "#00B894" }]}>
+                            <Text style={[styles.pricingValue, { color: "#4CC38A" }]}>
                                 {item.expected_sell_price
                                     ? `$${parseFloat(item.expected_sell_price).toFixed(2)}`
                                     : "—"}
@@ -449,7 +450,7 @@ function ItemQuickSheetContent({
                                     accessibilityLabel="New Size"
                                     style={styles.sizeInput}
                                     placeholder='e.g. M, 32x32, 10.5'
-                                    placeholderTextColor="#555"
+                                    placeholderTextColor="#8C8C96"
                                     value={newSize}
                                     onChangeText={setNewSize}
                                     onSubmitEditing={addVariant}
@@ -505,7 +506,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: "#12122A",
+        backgroundColor: "#141418",
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         maxHeight: SCREEN_H * 0.88,
@@ -514,7 +515,7 @@ const styles = StyleSheet.create({
     handle: {
         width: 40,
         height: 4,
-        backgroundColor: "#3A3A5A",
+        backgroundColor: "#2C2C34",
         borderRadius: 2,
         alignSelf: "center",
         marginTop: 10,
@@ -535,7 +536,7 @@ const styles = StyleSheet.create({
         width: 90,
         height: 90,
         borderRadius: 12,
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
     },
     photoPlaceholder: {
         justifyContent: "center",
@@ -543,42 +544,42 @@ const styles = StyleSheet.create({
     },
     photoIcon: { fontSize: 32 },
     titleBlock: { flex: 1, justifyContent: "center", gap: 4 },
-    itemName: { color: "#FFF", fontSize: 16, fontWeight: "800", lineHeight: 20 },
+    itemName: { color: "#FFF", fontSize: 16, fontWeight: "600", lineHeight: 20 },
     itemNameInput: {
         color: "#FFF",
         fontSize: 16,
-        fontWeight: "800",
+        fontWeight: "600",
         lineHeight: 20,
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
         borderRadius: 8,
         paddingHorizontal: 10,
         paddingVertical: 7,
     },
     itemNameHint: {
-        color: "#777",
+        color: "#8C8C96",
         fontSize: 10,
         marginTop: 2,
     },
     brandText: {
-        color: "#B7B7C7",
+        color: "#A6A6B0",
         fontSize: 11,
-        fontWeight: "700",
+        fontWeight: "600",
         marginTop: 2,
     },
     brandHint: {
-        color: "#777",
+        color: "#8C8C96",
         fontSize: 10,
         marginTop: 1,
     },
     brandInput: {
         color: "#FFF",
         fontSize: 12,
-        fontWeight: "700",
-        backgroundColor: "#1A1A2E",
+        fontWeight: "600",
+        backgroundColor: "#1C1C22",
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
         borderRadius: 8,
         paddingHorizontal: 10,
         paddingVertical: 7,
@@ -591,42 +592,42 @@ const styles = StyleSheet.create({
         marginTop: 6,
     },
     brandChip: {
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
         borderRadius: 999,
         paddingHorizontal: 10,
         paddingVertical: 5,
     },
     brandChipActive: {
         borderColor: COLORS.primary,
-        backgroundColor: "#1E1B3A",
+        backgroundColor: "#24203A",
     },
     brandChipText: {
-        color: "#B7B7C7",
+        color: "#A6A6B0",
         fontSize: 11,
-        fontWeight: "700",
+        fontWeight: "600",
     },
     brandChipTextActive: {
         color: COLORS.primary,
     },
-    category: { color: COLORS.primary, fontSize: 11, fontWeight: "600", textTransform: "uppercase" },
+    category: { color: COLORS.primary, fontSize: 11, fontWeight: "600" },
     statusRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
     statusDot: { width: 7, height: 7, borderRadius: 4 },
-    statusLabel: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+    statusLabel: { fontSize: 11, fontWeight: "600" },
 
     // Pricing
     pricingRow: {
         flexDirection: "row",
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 12,
         padding: 12,
         marginBottom: 16,
         gap: 4,
     },
     pricingCell: { flex: 1, alignItems: "center" },
-    pricingLabel: { color: "#777", fontSize: 10, fontWeight: "600", marginBottom: 4, textTransform: "uppercase" },
-    pricingValue: { color: "#FFF", fontSize: 15, fontWeight: "700" },
+    pricingLabel: { color: "#8C8C96", fontSize: 10, fontWeight: "600", marginBottom: 4 },
+    pricingValue: { color: "#FFF", fontSize: 15, fontWeight: "600" },
 
     // Section
     section: {
@@ -639,39 +640,37 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     sectionTitle: {
-        color: COLORS.primary,
-        fontSize: 12,
-        fontWeight: "800",
-        textTransform: "uppercase",
-        letterSpacing: 0.8,
+        color: COLORS.text,
+        fontSize: 17,
+        fontWeight: "600",
     },
-    sectionSub: { color: "#888", fontSize: 11 },
-    emptyVariants: { color: "#666", fontSize: 13, textAlign: "center", paddingVertical: 8 },
+    sectionSub: { color: "#A6A6B0", fontSize: 11 },
+    emptyVariants: { color: "#8C8C96", fontSize: 13, textAlign: "center", paddingVertical: 8 },
 
     // Variant row
     variantRow: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 8,
         marginBottom: 6,
     },
-    variantSize: { flex: 1, color: "#FFF", fontSize: 14, fontWeight: "700" },
+    variantSize: { flex: 1, color: "#FFF", fontSize: 14, fontWeight: "600" },
     qtyControls: { flexDirection: "row", alignItems: "center", gap: 10 },
     qtyBtn: {
         width: 30,
         height: 30,
         borderRadius: 8,
-        backgroundColor: "#2A2A4A",
+        backgroundColor: "#2C2C34",
         justifyContent: "center",
         alignItems: "center",
     },
-    qtyBtnText: { color: "#FFF", fontSize: 18, fontWeight: "700", lineHeight: 22 },
-    qtyValue: { color: "#FFF", fontSize: 16, fontWeight: "700", minWidth: 28, textAlign: "center" },
+    qtyBtnText: { color: "#FFF", fontSize: 18, fontWeight: "600", lineHeight: 22 },
+    qtyValue: { color: "#FFF", fontSize: 16, fontWeight: "600", minWidth: 28, textAlign: "center" },
     removeBtn: { marginLeft: 10, padding: 4 },
-    removeBtnText: { color: "#E17055", fontSize: 14, fontWeight: "700" },
+    removeBtnText: { color: "#E5584D", fontSize: 14, fontWeight: "600" },
 
     // Add size row
     addSizeRow: {
@@ -682,14 +681,14 @@ const styles = StyleSheet.create({
     },
     sizeInput: {
         flex: 1,
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 10,
         color: "#FFF",
         fontSize: 14,
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
     },
     addSizeBtn: {
         backgroundColor: COLORS.primary,
@@ -697,7 +696,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         paddingVertical: 10,
     },
-    addSizeBtnText: { color: "#FFF", fontSize: 13, fontWeight: "700" },
+    addSizeBtnText: { color: "#FFF", fontSize: 13, fontWeight: "600" },
 
     // Non-clothing qty stepper
     qtyRow: {
@@ -705,7 +704,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         gap: 20,
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 12,
         padding: 12,
     },
@@ -713,12 +712,12 @@ const styles = StyleSheet.create({
         width: 42,
         height: 42,
         borderRadius: 12,
-        backgroundColor: "#2A2A4A",
+        backgroundColor: "#2C2C34",
         justifyContent: "center",
         alignItems: "center",
     },
-    qtyBtnLargeText: { color: "#FFF", fontSize: 22, fontWeight: "700" },
-    qtyValueLarge: { color: "#FFF", fontSize: 28, fontWeight: "800", minWidth: 50, textAlign: "center" },
+    qtyBtnLargeText: { color: "#FFF", fontSize: 22, fontWeight: "600" },
+    qtyValueLarge: { color: "#FFF", fontSize: 28, fontWeight: "600", minWidth: 50, textAlign: "center" },
 
     // Actions
     actions: { gap: 10, marginTop: 4 },
@@ -728,23 +727,23 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
         alignItems: "center",
     },
-    saveBtnText: { color: "#FFF", fontSize: 15, fontWeight: "700" },
+    saveBtnText: { color: "#FFF", fontSize: 15, fontWeight: "600" },
     editBtn: {
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 12,
         paddingVertical: 13,
         alignItems: "center",
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
     },
     editBtnText: { color: "#CCC", fontSize: 15, fontWeight: "600" },
     deleteBtn: {
-        backgroundColor: "#2A1218",
+        backgroundColor: "#33191A",
         borderRadius: 12,
         paddingVertical: 13,
         alignItems: "center",
         borderWidth: 1,
-        borderColor: "#E17055",
+        borderColor: "#E5584D",
     },
-    deleteBtnText: { color: "#E17055", fontSize: 15, fontWeight: "700" },
+    deleteBtnText: { color: "#E5584D", fontSize: 15, fontWeight: "600" },
 });

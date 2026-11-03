@@ -29,6 +29,15 @@ const STATUS_TONES: Record<string, "success" | "warning" | "danger" | "info" | "
   archived: "neutral",
 };
 
+const DOT_COLORS: Record<string, string> = {
+  success: COLORS.success,
+  info: COLORS.info,
+  danger: COLORS.danger,
+  warning: COLORS.warning,
+  primary: COLORS.primaryBright,
+  neutral: COLORS.textSoft,
+};
+
 /**
  * Case-insensitive subsequence match: every character of `query` must appear in
  * `text` in the same order, but not necessarily adjacent or at a word boundary.
@@ -83,7 +92,7 @@ function InventoryCard({
             {frontPhoto || backPhoto ? (
               <Image source={{ uri: frontPhoto || backPhoto || undefined }} style={styles.thumbImg} resizeMode="cover" />
             ) : (
-              <View style={[styles.thumbImg, styles.photoFallback]}><Text style={styles.photoFallbackText}>No photo</Text></View>
+              <View accessibilityLabel="No photo" style={[styles.thumbImg, styles.photoFallback]}><Icon name="image-outline" size={22} color={COLORS.textSoft} /></View>
             )}
           </View>
 
@@ -98,16 +107,20 @@ function InventoryCard({
               <Text style={styles.itemPrice}>{formatCurrency(item.expected_sell_price)}</Text>
             </View>
 
-            <View style={styles.pillRow}>
+            {/* One quiet status line: dot + status, stock count, and only the exceptions. */}
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: DOT_COLORS[STATUS_TONES[item.status] || "neutral"] }]} />
+              <Text style={styles.statusText}>{STATUS_LABELS[item.status] || item.status}</Text>
+              <Text style={styles.statusSep}>·</Text>
+              <Text style={[styles.statusText, qty === 0 ? { color: COLORS.danger } : lowStock ? { color: COLORS.warning } : null]}>
+                {lowStock ? `Low stock ${qty}` : `Stock ${qty}`}
+              </Text>
               {item._pending ? <Pill label="Sync pending" tone="warning" /> : null}
-              <Pill label={STATUS_LABELS[item.status] || item.status} tone={STATUS_TONES[item.status] || "neutral"} />
-              <Pill label={lowStock ? `Low stock ${qty}` : `Stock ${qty}`} tone={qty === 0 ? "danger" : lowStock ? "warning" : "success"} />
-              <Pill label={sourceLabel} tone="info" />
             </View>
 
             <Text style={styles.sizeLine}>{sizeBreakdown(item)}</Text>
             <Text style={styles.secondaryLine}>
-              Cost {formatCurrency(item.buy_price)} • Vendor {item.vendor_name || "Unassigned"}
+              Cost {formatCurrency(item.buy_price)} · <Text>{sourceLabel}</Text>{item.vendor_name ? ` · ${item.vendor_name}` : ""}
             </Text>
           </View>
         </View>
@@ -344,7 +357,7 @@ export default function InventoryListScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
         ListHeaderComponent={
           <View style={{ gap: SPACING.md, marginBottom: SPACING.md }}>
-            <HeaderTitle title="Inventory" subtitle={`${total} items ready for stock, sync, and spreadsheet review.`} />
+            <HeaderTitle title="Inventory" subtitle={`${total} ${total === 1 ? "item" : "items"}`} />
 
             <View style={styles.actionRow}>
               {selectMode ? (
@@ -364,7 +377,7 @@ export default function InventoryListScreen() {
                   <TextInput
                     accessibilityLabel="Search inventory"
                     style={styles.searchInputFlex}
-                    placeholder="Search items, SKU, or keyword…"
+                    placeholder="Search name or SKU"
                     placeholderTextColor={COLORS.textSoft}
                     value={searchQuery}
                     onChangeText={onSearchChange}
@@ -379,7 +392,7 @@ export default function InventoryListScreen() {
                 <View style={styles.activeFilters}>
                   {statusFilter ? <Pill label={STATUS_LABELS[statusFilter] || statusFilter} tone={STATUS_TONES[statusFilter] || "primary"} /> : null}
                   {sourceFilter ? <Pill label={SOURCE_LABELS[sourceFilter] || sourceFilter} tone="info" /> : null}
-                  <TouchableOpacity accessibilityLabel="Clear filters" onPress={clearFilters}><Pill label="Clear ✕" tone="neutral" /></TouchableOpacity>
+                  <TouchableOpacity accessibilityLabel="Clear filters" onPress={clearFilters}><Pill label="Clear" tone="neutral" /></TouchableOpacity>
                 </View>
               ) : null}
             </Card>
@@ -507,11 +520,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  filterBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  filterBadgeText: { color: "#fff", fontSize: 10, fontWeight: "600" },
   activeFilters: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, marginTop: SPACING.sm },
   exportOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: SPACING.xl },
   exportCard: { backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.xl, alignItems: "center", gap: SPACING.md, maxWidth: 320 },
-  exportTitle: { color: COLORS.text, fontSize: 16, fontWeight: "800", textAlign: "center" },
+  exportTitle: { color: COLORS.text, fontSize: 16, fontWeight: "600", textAlign: "center" },
   exportHint: { color: COLORS.textMuted, fontSize: 13, textAlign: "center", lineHeight: 19 },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
   filterSheet: {
@@ -525,13 +538,11 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   filterSheetHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: SPACING.sm },
-  filterSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: "800" },
+  filterSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: "600" },
   filterGroupLabel: {
-    color: COLORS.textSoft,
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    color: COLORS.textMuted,
+    fontSize: 13,
+    fontWeight: "600",
     marginTop: SPACING.md,
     marginBottom: 4,
   },
@@ -544,7 +555,7 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   filterOptionText: { color: COLORS.textMuted, fontSize: 15, fontWeight: "600" },
-  filterOptionTextActive: { color: COLORS.text, fontWeight: "800" },
+  filterOptionTextActive: { color: COLORS.text, fontWeight: "600" },
   itemCard: { padding: SPACING.md },
   itemCardSelected: { borderColor: COLORS.primary, borderWidth: 2 },
   itemCardRow: { flexDirection: "row", gap: SPACING.md },
@@ -553,28 +564,31 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", alignSelf: "center",
   },
   checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  checkboxTick: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  checkboxTick: { color: "#fff", fontSize: 14, fontWeight: "600" },
   bulkBar: {
     position: "absolute", left: SPACING.lg, right: SPACING.lg, bottom: SPACING.lg,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, borderWidth: 1,
     borderRadius: 16, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
   },
-  bulkCount: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
-  thumbBox: { width: 84, height: 84, borderRadius: 12, overflow: "hidden", backgroundColor: COLORS.cardAlt },
+  bulkCount: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
+  thumbBox: { width: 72, height: 72, borderRadius: 8, overflow: "hidden", backgroundColor: COLORS.cardAlt },
   thumbImg: { width: "100%", height: "100%" },
   photoFallback: { alignItems: "center", justifyContent: "center" },
-  photoFallbackText: { color: COLORS.textSoft, fontSize: 11, fontWeight: "700" },
-  itemBody: { flex: 1, minWidth: 0, gap: SPACING.sm },
+  photoFallbackText: { color: COLORS.textSoft, fontSize: 11, fontWeight: "600" },
+  itemBody: { flex: 1, minWidth: 0, gap: 6 },
   itemTopRow: { flexDirection: "row", gap: SPACING.sm },
-  itemName: { color: COLORS.text, fontSize: 16, fontWeight: "800" },
+  itemName: { color: COLORS.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
   itemMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
-  itemPrice: { color: COLORS.success, fontSize: 16, fontWeight: "800" },
-  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs },
-  sizeLine: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
+  itemPrice: { color: COLORS.text, fontSize: 16, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  statusRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusText: { color: COLORS.textMuted, fontSize: 13, fontWeight: "500" },
+  statusSep: { color: COLORS.textSoft, fontSize: 13 },
+  sizeLine: { color: COLORS.text, fontSize: 13, fontWeight: "500", fontVariant: ["tabular-nums"] },
   secondaryLine: { color: COLORS.textMuted, fontSize: 12 },
   empty: { alignItems: "center", paddingVertical: SPACING.lg, gap: SPACING.xs },
-  emptyTitle: { color: COLORS.text, fontSize: 16, fontWeight: "800", marginTop: SPACING.sm, textAlign: "center" },
+  emptyTitle: { color: COLORS.text, fontSize: 16, fontWeight: "600", marginTop: SPACING.sm, textAlign: "center" },
   emptyText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, textAlign: "center", maxWidth: 260 },
   emptyCta: { marginTop: SPACING.sm, alignSelf: "stretch" },
   footerLoader: { paddingVertical: SPACING.md },

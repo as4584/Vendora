@@ -33,7 +33,7 @@ export default function TabsLayout() {
         headerStyle: { backgroundColor: COLORS.bg },
         headerShadowVisible: false,
         headerTintColor: COLORS.text,
-        headerTitleStyle: { fontWeight: "800", fontSize: 18 },
+        headerTitleStyle: { fontWeight: "600", fontSize: 17 },
         // iPad / wide screens: keep content at a readable phone-to-tablet width.
         sceneStyle: { backgroundColor: COLORS.bg, width: "100%", maxWidth: 760, alignSelf: "center" },
         tabBarStyle: {
@@ -46,7 +46,7 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: COLORS.primaryBright,
         tabBarInactiveTintColor: COLORS.textSoft,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "700", letterSpacing: 0.1 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
         tabBarItemStyle: { paddingVertical: 2 },
       }}
     >
@@ -78,7 +78,7 @@ export default function TabsLayout() {
       {/* Hidden routes — reachable via More or in-app navigation */}
       <Tabs.Screen name="inventory/invoices" options={{ href: null, headerTitle: "Invoices" }} />
       <Tabs.Screen name="settings" options={{ href: null, headerShown: false }} />
-      <Tabs.Screen name="inventory/[id]" options={{ href: null, headerTitle: "Inventory Detail" }} />
+      <Tabs.Screen name="inventory/[id]" options={{ href: null, headerTitle: "" }} />
       <Tabs.Screen name="inventory/edit" options={{ href: null, headerTitle: "Edit Item" }} />
       <Tabs.Screen name="inventory/invoice-preview" options={{ href: null, headerTitle: "Invoice Preview" }} />
       <Tabs.Screen name="inventory/components/ItemQuickSheet" options={{ href: null }} />
@@ -106,11 +106,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
     borderWidth: 3,
     borderColor: COLORS.bg,
   },

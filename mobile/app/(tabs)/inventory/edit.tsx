@@ -19,6 +19,7 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -286,7 +287,7 @@ export default function EditItemScreen() {
                 );
             }
 
-            Alert.alert("✅ Updated", "Item changes saved!", [
+            Alert.alert("Updated", "Item changes saved", [
                 { text: "OK", onPress: back },
             ]);
         } catch (err: any) {
@@ -306,7 +307,7 @@ export default function EditItemScreen() {
 
     return (
         <KeyboardAvoidingView
-            style={{ flex: 1, backgroundColor: "#0A0A1A" }}
+            style={{ flex: 1, backgroundColor: "#0E0E11" }}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
         >
@@ -334,7 +335,7 @@ export default function EditItemScreen() {
                             <Image source={{ uri: frontPhoto }} style={styles.photoThumb} resizeMode="cover" />
                         ) : (
                             <View style={styles.photoPlaceholder}>
-                                <Text style={styles.photoIcon}>📸</Text>
+                                <Ionicons name="camera-outline" size={26} color="#8C8C96" />
                                 <Text style={styles.photoLabel}>Front</Text>
                             </View>
                         )}
@@ -349,7 +350,7 @@ export default function EditItemScreen() {
                             <Image source={{ uri: backPhoto }} style={styles.photoThumb} resizeMode="cover" />
                         ) : (
                             <View style={styles.photoPlaceholder}>
-                                <Text style={styles.photoIcon}>📸</Text>
+                                <Ionicons name="camera-outline" size={26} color="#8C8C96" />
                                 <Text style={styles.photoLabel}>Back</Text>
                             </View>
                         )}
@@ -363,7 +364,7 @@ export default function EditItemScreen() {
                     accessibilityLabel="Item Name"
                     style={styles.input}
                     placeholder="e.g. Jordan 1 Retro High OG"
-                    placeholderTextColor="#555"
+                    placeholderTextColor="#8C8C96"
                     value={name}
                     onChangeText={setName}
                 />
@@ -376,7 +377,7 @@ export default function EditItemScreen() {
                     accessibilityLabel="Brand"
                     style={styles.input}
                     placeholder="Nike, Adidas, etc."
-                    placeholderTextColor="#555"
+                    placeholderTextColor="#8C8C96"
                     value={brand}
                     onChangeText={setBrand}
                 />
@@ -388,7 +389,7 @@ export default function EditItemScreen() {
                             accessibilityLabel="Category"
                             style={styles.input}
                             placeholder="sneakers"
-                            placeholderTextColor="#555"
+                            placeholderTextColor="#8C8C96"
                             value={category}
                             onChangeText={setCategory}
                             autoCapitalize="none"
@@ -400,7 +401,7 @@ export default function EditItemScreen() {
                             accessibilityLabel="SKU"
                             style={styles.input}
                             placeholder="SKU-001"
-                            placeholderTextColor="#555"
+                            placeholderTextColor="#8C8C96"
                             value={sku}
                             onChangeText={setSku}
                             autoCapitalize="characters"
@@ -415,12 +416,12 @@ export default function EditItemScreen() {
                         accessibilityLabel="UPC or Barcode"
                         style={[styles.input, styles.skuInput]}
                         placeholder="Scan or type barcode"
-                        placeholderTextColor="#555"
+                        placeholderTextColor="#8C8C96"
                         value={upc}
                         onChangeText={setUpc}
                         keyboardType="numeric"
                     />
-                    <Button label="🔍" variant="primary" size="md" onPress={openScanner} accessibilityLabel="Scan barcode" />
+                    <IconButton icon="barcode-outline" label="Scan barcode" onPress={openScanner} />
                 </View>
 
                 <View style={styles.row}>
@@ -430,7 +431,7 @@ export default function EditItemScreen() {
                             accessibilityLabel="Size"
                             style={styles.input}
                             placeholder="10"
-                            placeholderTextColor="#555"
+                            placeholderTextColor="#8C8C96"
                             value={size}
                             onChangeText={setSize}
                         />
@@ -441,7 +442,7 @@ export default function EditItemScreen() {
                             accessibilityLabel="Color"
                             style={styles.input}
                             placeholder="red/black"
-                            placeholderTextColor="#555"
+                            placeholderTextColor="#8C8C96"
                             value={color}
                             onChangeText={setColor}
                         />
@@ -453,7 +454,7 @@ export default function EditItemScreen() {
                     accessibilityLabel="Condition"
                     style={styles.input}
                     placeholder="new, used, refurbished"
-                    placeholderTextColor="#555"
+                    placeholderTextColor="#8C8C96"
                     value={condition}
                     onChangeText={setCondition}
                 />
@@ -467,7 +468,7 @@ export default function EditItemScreen() {
                             accessibilityLabel="Buy Price"
                             style={styles.input}
                             placeholder="0.00"
-                            placeholderTextColor="#555"
+                            placeholderTextColor="#8C8C96"
                             value={buyPrice}
                             onChangeText={setBuyPrice}
                             keyboardType="decimal-pad"
@@ -479,7 +480,7 @@ export default function EditItemScreen() {
                             accessibilityLabel="Expected Sell Price"
                             style={styles.input}
                             placeholder="0.00"
-                            placeholderTextColor="#555"
+                            placeholderTextColor="#8C8C96"
                             value={expectedPrice}
                             onChangeText={setExpectedPrice}
                             keyboardType="decimal-pad"
@@ -492,7 +493,7 @@ export default function EditItemScreen() {
                     accessibilityLabel="Actual Sell Price"
                     style={styles.input}
                     placeholder="0.00"
-                    placeholderTextColor="#555"
+                    placeholderTextColor="#8C8C96"
                     value={actualPrice}
                     onChangeText={setActualPrice}
                     keyboardType="decimal-pad"
@@ -503,7 +504,7 @@ export default function EditItemScreen() {
                     accessibilityLabel="Platform"
                     style={styles.input}
                     placeholder="eBay, StockX, Mercari…"
-                    placeholderTextColor="#555"
+                    placeholderTextColor="#8C8C96"
                     value={platform}
                     onChangeText={setPlatform}
                 />
@@ -533,7 +534,7 @@ export default function EditItemScreen() {
                                 accessibilityLabel="New Size"
                                 style={styles.sizeInput}
                                 placeholder="e.g. M, 32x32, 10.5"
-                                placeholderTextColor="#555"
+                                placeholderTextColor="#8C8C96"
                                 value={newVariantSize}
                                 onChangeText={setNewVariantSize}
                                 onSubmitEditing={addVariant}
@@ -595,36 +596,34 @@ export default function EditItemScreen() {
 
 const styles = StyleSheet.create({
     saveButtonSpacing: { marginTop: 24 },
-    container: { flex: 1, backgroundColor: "#0A0A1A" },
-    center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0A0A1A" },
+    container: { flex: 1, backgroundColor: "#0E0E11" },
+    center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0E0E11" },
     content: { padding: 20, paddingBottom: 50 },
     backBtn: { marginBottom: 8, alignSelf: "flex-start" },
-    backBtnText: { color: COLORS.primary, fontSize: 16, fontWeight: "700" },
+    backBtnText: { color: COLORS.primary, fontSize: 16, fontWeight: "600" },
     screenTitle: {
         color: "#FFFFFF",
         fontSize: 22,
-        fontWeight: "800",
+        fontWeight: "600",
         marginBottom: 16,
     },
     sectionTitle: {
-        fontSize: 14,
-        fontWeight: "800",
-        color: COLORS.primary,
-        marginTop: 22,
+        fontSize: 17,
+        fontWeight: "600",
+        color: COLORS.text,
+        marginTop: 24,
         marginBottom: 10,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
     },
-    label: { color: "#B7B7C7", fontSize: 12, fontWeight: "600", marginBottom: 4, marginTop: 6 },
+    label: { color: "#A6A6B0", fontSize: 12, fontWeight: "600", marginBottom: 4, marginTop: 6 },
     input: {
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 10,
         paddingHorizontal: 14,
         paddingVertical: 12,
         color: "#FFFFFF",
         fontSize: 15,
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
         marginBottom: 6,
     },
     row: { flexDirection: "row", gap: 10 },
@@ -647,49 +646,49 @@ const styles = StyleSheet.create({
         height: 100,
         borderRadius: 12,
         borderWidth: 1.5,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
         overflow: "hidden",
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
     },
     photoThumb: { width: "100%", height: "100%" },
     photoPlaceholder: { flex: 1, justifyContent: "center", alignItems: "center" },
     photoIcon: { fontSize: 28 },
-    photoLabel: { color: "#555", fontSize: 11, marginTop: 4 },
-    sizeHint: { color: "#888", fontSize: 12, marginBottom: 4 },
+    photoLabel: { color: "#8C8C96", fontSize: 11, marginTop: 4 },
+    sizeHint: { color: "#A6A6B0", fontSize: 12, marginBottom: 4 },
     variantRow: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 8,
         marginBottom: 6,
     },
-    variantSize: { flex: 1, color: "#FFF", fontSize: 14, fontWeight: "700" },
+    variantSize: { flex: 1, color: "#FFF", fontSize: 14, fontWeight: "600" },
     qtyControls: { flexDirection: "row", alignItems: "center", gap: 10 },
     qtyBtn: {
         width: 30,
         height: 30,
         borderRadius: 8,
-        backgroundColor: "#2A2A4A",
+        backgroundColor: "#2C2C34",
         justifyContent: "center",
         alignItems: "center",
     },
-    qtyBtnText: { color: "#FFF", fontSize: 18, fontWeight: "700", lineHeight: 22 },
-    qtyValue: { color: "#FFF", fontSize: 16, fontWeight: "700", minWidth: 28, textAlign: "center" },
+    qtyBtnText: { color: "#FFF", fontSize: 18, fontWeight: "600", lineHeight: 22 },
+    qtyValue: { color: "#FFF", fontSize: 16, fontWeight: "600", minWidth: 28, textAlign: "center" },
     removeBtn: { marginLeft: 10, padding: 4 },
-    removeBtnText: { color: "#E17055", fontSize: 14, fontWeight: "700" },
+    removeBtnText: { color: "#E5584D", fontSize: 14, fontWeight: "600" },
     addSizeRow: { flexDirection: "row", gap: 8, marginTop: 6, alignItems: "center" },
     sizeInput: {
         flex: 1,
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 10,
         color: "#FFF",
         fontSize: 14,
         borderWidth: 1,
-        borderColor: "#2A2A4A",
+        borderColor: "#2C2C34",
     },
     addSizeBtn: {
         backgroundColor: COLORS.primary,
@@ -697,13 +696,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         paddingVertical: 10,
     },
-    addSizeBtnText: { color: "#FFF", fontSize: 13, fontWeight: "700" },
+    addSizeBtnText: { color: "#FFF", fontSize: 13, fontWeight: "600" },
     qtyRow: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
         gap: 20,
-        backgroundColor: "#1A1A2E",
+        backgroundColor: "#1C1C22",
         borderRadius: 12,
         padding: 12,
     },
@@ -711,12 +710,12 @@ const styles = StyleSheet.create({
         width: 42,
         height: 42,
         borderRadius: 12,
-        backgroundColor: "#2A2A4A",
+        backgroundColor: "#2C2C34",
         justifyContent: "center",
         alignItems: "center",
     },
-    qtyBtnLargeText: { color: "#FFF", fontSize: 22, fontWeight: "700" },
-    qtyValueLarge: { color: "#FFF", fontSize: 28, fontWeight: "800", minWidth: 50, textAlign: "center" },
+    qtyBtnLargeText: { color: "#FFF", fontSize: 22, fontWeight: "600" },
+    qtyValueLarge: { color: "#FFF", fontSize: 28, fontWeight: "600", minWidth: 50, textAlign: "center" },
     saveButton: {
         backgroundColor: COLORS.primary,
         borderRadius: 14,
@@ -724,7 +723,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginTop: 24,
     },
-    saveText: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
+    saveText: { color: "#FFFFFF", fontSize: 18, fontWeight: "600" },
     scannerContainer: { flex: 1, backgroundColor: "#000" },
     scannerClose: {
         position: "absolute",
@@ -735,5 +734,5 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
         paddingVertical: 14,
     },
-    scannerCloseText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
+    scannerCloseText: { color: "#FFF", fontSize: 16, fontWeight: "600" },
 });

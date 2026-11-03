@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  previewTitle: { color: COLORS.text, fontSize: 13, fontWeight: "700" },
+  previewTitle: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
   previewBody: { color: COLORS.textMuted, fontSize: 12, marginTop: 3 },
   errorText: { color: COLORS.danger, fontSize: 12, lineHeight: 18 },
   warningText: { color: COLORS.warning, fontSize: 12, lineHeight: 18 },

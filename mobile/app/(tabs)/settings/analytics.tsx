@@ -57,9 +57,9 @@ export default function AnalyticsScreen() {
 function Metric({ label, value }: { label: string; value: string }) { return <Card style={styles.metric}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text></Card>; }
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg }, content: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: 48 }, center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm }, metric: { width: "48%", gap: 6 }, metricLabel: { color: COLORS.textMuted, fontSize: 12 }, metricValue: { color: COLORS.text, fontSize: 20, fontWeight: "800" },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm }, metric: { width: "48%", gap: 6 }, metricLabel: { color: COLORS.textMuted, fontSize: 12 }, metricValue: { color: COLORS.text, fontSize: 20, fontWeight: "600" },
   chartWrap: { marginTop: SPACING.md, marginHorizontal: -SPACING.xs },
-  category: { paddingVertical: SPACING.sm }, categoryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }, categoryName: { color: COLORS.text, fontWeight: "700" }, categoryPct: { color: COLORS.textMuted, fontWeight: "700", fontSize: 13 },
+  category: { paddingVertical: SPACING.sm }, categoryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }, categoryName: { color: COLORS.text, fontWeight: "600" }, categoryPct: { color: COLORS.textMuted, fontWeight: "600", fontSize: 13 },
   track: { height: 6, borderRadius: RADII.pill, backgroundColor: COLORS.cardAlt, marginTop: 8, overflow: "hidden" }, trackFill: { height: "100%", borderRadius: RADII.pill, backgroundColor: COLORS.primaryBright },
   categoryMeta: { color: COLORS.textMuted, marginTop: 6, fontSize: 12 }, empty: { color: COLORS.textMuted, marginTop: SPACING.sm },
 });

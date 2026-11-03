@@ -165,7 +165,7 @@ export default function SubscriptionScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg }, content: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: 48 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg, padding: SPACING.lg, gap: SPACING.sm },
-  errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "800" },
+  errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "600" },
   card: { gap: SPACING.sm }, row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   muted: { color: COLORS.textMuted, fontSize: 12 }, copy: { color: COLORS.textSoft, fontSize: 14, lineHeight: 21 },
   legal: { color: COLORS.textMuted, fontSize: 11, lineHeight: 17 },

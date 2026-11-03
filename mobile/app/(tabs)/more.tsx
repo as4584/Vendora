@@ -52,6 +52,6 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   rowText: { flex: 1, gap: 3 },
-  rowLabel: { color: COLORS.text, fontSize: 15, fontWeight: "700" },
+  rowLabel: { color: COLORS.text, fontSize: 15, fontWeight: "600" },
   rowHelper: { color: COLORS.textMuted, fontSize: 12 },
 });

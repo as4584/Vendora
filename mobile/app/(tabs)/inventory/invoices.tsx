@@ -594,7 +594,7 @@ const styles = StyleSheet.create({
   dualRowStack: { flexDirection: "column" },
   flexInput: { flex: 1, minWidth: 0 },
   adjustmentField: { flex: 1, minWidth: 0, gap: 6 },
-  fieldLabel: { color: COLORS.text, fontSize: 12, fontWeight: "800" },
+  fieldLabel: { color: COLORS.text, fontSize: 12, fontWeight: "600" },
   inventoryOption: {
     flexDirection: "row",
     alignItems: "center",
@@ -606,7 +606,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   inventoryTextWrap: { flex: 1, minWidth: 0 },
-  optionTitle: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
+  optionTitle: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
   optionMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
   inlineAction: {
     borderRadius: 999,
@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  inlineActionText: { color: "#AFCEFF", fontSize: 12, fontWeight: "800" },
+  inlineActionText: { color: "#AFCEFF", fontSize: 12, fontWeight: "600" },
   sizeChoiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
   sizeChoice: {
     minWidth: 58,
@@ -629,8 +629,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 2,
   },
-  sizeChoiceText: { color: COLORS.text, fontSize: 12, fontWeight: "900" },
-  sizeChoiceQty: { color: COLORS.textMuted, fontSize: 10, fontWeight: "700" },
+  sizeChoiceText: { color: COLORS.text, fontSize: 12, fontWeight: "600" },
+  sizeChoiceQty: { color: COLORS.textMuted, fontSize: 10, fontWeight: "600" },
   lineItemCard: {
     gap: SPACING.sm,
     backgroundColor: COLORS.bgElevated,
@@ -656,7 +656,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     gap: 6,
   },
-  totalLine: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
+  totalLine: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
   helperText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
   invoiceRow: {
     flexDirection: "row",
@@ -678,7 +678,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: SPACING.sm,
   },
-  previewTitle: { color: COLORS.text, fontSize: 18, fontWeight: "800" },
+  previewTitle: { color: COLORS.text, fontSize: 18, fontWeight: "600" },
   previewStatusRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -700,9 +700,9 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.cardAlt,
   },
-  previewLineTotal: { color: COLORS.text, fontSize: 13, fontWeight: "700" },
+  previewLineTotal: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
   invoiceSummary: { flex: 1, minWidth: 220 },
   invoiceAside: { alignItems: "flex-end", gap: 6 },
   invoiceActions: { width: "100%", marginTop: SPACING.xs },
-  invoiceTotal: { color: COLORS.success, fontSize: 14, fontWeight: "800" },
+  invoiceTotal: { color: COLORS.success, fontSize: 14, fontWeight: "600" },
 });

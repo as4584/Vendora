@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   text: {
     color: "#0A0E1A",
     fontSize: 12.5,
-    fontWeight: "700",
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
 });

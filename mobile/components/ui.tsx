@@ -52,7 +52,8 @@ export function GradientCard({
   colors?: readonly [string, string, ...string[]];
 }) {
   return (
-    <LinearGradient colors={colors as any} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.gradientCard, style]}>
+    // Only a subtle neutral tone shift: hue-to-hue gradients read as template UI.
+    <LinearGradient colors={colors as any} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={[styles.gradientCard, style]}>
       {children}
     </LinearGradient>
   );
@@ -175,12 +176,12 @@ export function Pill({
   textStyle?: TextStyle | TextStyle[];
 }) {
   const palette = {
-    neutral: { bg: COLORS.bgElevated, border: COLORS.border, text: COLORS.textMuted },
-    primary: { bg: "#21193C", border: "#4D3CA9", text: "#C9BCFF" },
-    success: { bg: "#123426", border: "#2B7C5A", text: "#9EE7C6" },
-    warning: { bg: "#3E2B11", border: "#9B6D20", text: "#F6D38A" },
-    danger: { bg: "#3A1C1A", border: "#94514A", text: "#F5B2AB" },
-    info: { bg: "#182744", border: "#336FB5", text: "#AFCEFF" },
+    neutral: { bg: COLORS.cardAlt, border: "transparent", text: COLORS.textMuted },
+    primary: { bg: "rgba(124,92,255,0.16)", border: "transparent", text: "#C4B6FF" },
+    success: { bg: "rgba(76,195,138,0.13)", border: "transparent", text: "#8FDDB6" },
+    warning: { bg: "rgba(229,176,74,0.13)", border: "transparent", text: "#EFCB85" },
+    danger: { bg: "rgba(229,88,77,0.14)", border: "transparent", text: "#F2A49D" },
+    info: { bg: "rgba(110,168,245,0.13)", border: "transparent", text: "#A9CBF8" },
   }[tone];
 
   return (
@@ -349,7 +350,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   gradientCard: {
-    borderRadius: RADII.lg + 2,
+    borderRadius: RADII.lg,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
     padding: SPACING.lg,
     overflow: "hidden",
   },
@@ -375,21 +378,19 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: COLORS.text,
-    fontSize: 22,
-    fontWeight: "800",
-    letterSpacing: -0.3,
+    fontSize: 24,
+    fontVariant: ["tabular-nums"],
+    fontWeight: "600",
   },
   statDelta: {
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   sectionLabel: {
-    color: COLORS.textSoft,
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: SPACING.sm,
+    color: COLORS.textMuted,
+    fontSize: 13,
+    fontWeight: "500",
+    marginBottom: SPACING.xs,
   },
   headerRow: {
     flexDirection: "row",
@@ -400,8 +401,9 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: COLORS.text,
-    fontSize: 26,
-    fontWeight: "800",
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: "600",
   },
   headerSubtitle: {
     color: COLORS.textMuted,
@@ -409,14 +411,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   pill: {
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   pillText: {
-    fontSize: 11,
-    fontWeight: "700",
+    fontSize: 12,
+    fontWeight: "500",
   },
   metricCard: {
     flex: 1,
@@ -435,7 +437,8 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     fontSize: 24,
-    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+    fontWeight: "600",
   },
   metricHelper: {
     color: COLORS.textSoft,
@@ -461,12 +464,12 @@ const styles = StyleSheet.create({
   },
   glyphText: {
     color: COLORS.text,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   actionTileLabel: {
     color: COLORS.text,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   actionTileHelper: {
     color: COLORS.textMuted,
@@ -506,7 +509,7 @@ const styles = StyleSheet.create({
   stepCircleText: {
     color: COLORS.text,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   stepLabel: {
     color: COLORS.textMuted,
@@ -541,7 +544,7 @@ const styles = StyleSheet.create({
   tabGlyphText: {
     color: COLORS.text,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   chipRow: {
     gap: SPACING.sm,

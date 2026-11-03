@@ -135,5 +135,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  cancelText: { color: COLORS.text, fontSize: 15, fontWeight: "700" },
+  cancelText: { color: COLORS.text, fontSize: 15, fontWeight: "600" },
 });

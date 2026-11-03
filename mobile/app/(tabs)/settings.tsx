@@ -330,7 +330,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView testID="settings-content" style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.sm }]}>
-      <HeaderTitle title="Settings" subtitle="Account profile, provider sync, and readiness signals for the seeded inventory workflow." />
+      <HeaderTitle title="Settings" subtitle="Account, invoice details and connected stores" />
 
       <Card style={{ gap: SPACING.md }}>
         <SectionLabel>Account</SectionLabel>
@@ -353,7 +353,7 @@ export default function SettingsScreen() {
             <Text style={styles.helperText}>{user?.business_name || "Ninja Resale"}</Text>
             <Text style={styles.helperText}>Tap profile photo to update the invoice identity.</Text>
           </View>
-          <Pill label={user?.is_partner ? "✓ PARTNER" : user?.subscription_tier?.toUpperCase() || "FREE"} tone={user?.is_partner ? "success" : "primary"} />
+          <Pill label={user?.is_partner ? "Partner" : user?.subscription_tier ? user.subscription_tier.charAt(0).toUpperCase() + user.subscription_tier.slice(1) : "Free"} tone={user?.is_partner ? "success" : "primary"} />
         </TouchableOpacity>
       </Card>
 
@@ -593,7 +593,7 @@ function InvoiceBrandingCard({ user, onSaved }: { user: api.User | null; onSaved
 
   return (
     <Card style={{ gap: SPACING.md }}>
-      <SectionLabel>Invoice Branding</SectionLabel>
+      <SectionLabel>Invoice branding</SectionLabel>
       <Text style={styles.helperText}>Your color, logo and contact details show on every invoice PDF. (Logo = your profile photo above.)</Text>
 
       <Text style={styles.brandFieldLabel}>Brand color</Text>
@@ -639,8 +639,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.primary,
   },
-  avatarLetter: { color: COLORS.text, fontSize: 28, fontWeight: "800" },
-  emailText: { color: COLORS.text, fontSize: 15, fontWeight: "800" },
+  avatarLetter: { color: COLORS.text, fontSize: 28, fontWeight: "600" },
+  emailText: { color: COLORS.text, fontSize: 15, fontWeight: "600" },
   helperText: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
   input: {
     backgroundColor: COLORS.bgElevated,
@@ -651,17 +651,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  brandFieldLabel: { color: COLORS.text, fontSize: 12, fontWeight: "800", marginTop: 4 },
+  brandFieldLabel: { color: COLORS.text, fontSize: 12, fontWeight: "600", marginTop: 4 },
   swatchRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   swatch: { width: 34, height: 34, borderRadius: 999, borderWidth: 2, borderColor: "transparent" },
   swatchActive: { borderColor: COLORS.text },
   hexRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
   swatchLg: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
   syncOverviewRow: { flexDirection: "row", justifyContent: "space-between", gap: SPACING.md },
-  syncStatValue: { color: COLORS.text, fontSize: 22, fontWeight: "800" },
+  syncStatValue: { color: COLORS.text, fontSize: 22, fontWeight: "600" },
   syncStatLabel: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
   providerHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: SPACING.sm },
-  providerName: { color: COLORS.text, fontSize: 15, fontWeight: "800" },
+  providerName: { color: COLORS.text, fontSize: 15, fontWeight: "600" },
   providerActions: { flexDirection: "row", justifyContent: "flex-start", flexWrap: "wrap", gap: SPACING.xs },
   productActions: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs },
   modalBackdrop: {
@@ -676,7 +676,7 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     gap: SPACING.sm,
   },
-  inputLabel: { color: COLORS.textSoft, fontSize: 12, fontWeight: "700", marginTop: SPACING.xs },
+  inputLabel: { color: COLORS.textSoft, fontSize: 12, fontWeight: "600", marginTop: SPACING.xs },
   connectionInput: {
     backgroundColor: COLORS.bgElevated,
     borderColor: COLORS.border,
