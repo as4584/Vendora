@@ -5,7 +5,9 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, HttpUrl
+from decimal import Decimal
+
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class LightspeedAuthURLResponse(BaseModel):
@@ -45,7 +47,7 @@ class LightspeedDisconnectResponse(BaseModel):
     links_retained: int
 
 
-# ─── eBay (pull-only) ──────────────────────────────────────────────────────────
+# ─── eBay ──────────────────────────────────────────────────────────
 
 class EbayAuthURLResponse(BaseModel):
     authorization_url: HttpUrl
@@ -56,6 +58,56 @@ class EbayStatusResponse(BaseModel):
     account_id: Optional[str] = None
     expires_at: Optional[str] = None
     last_synced_at: Optional[str] = None
+    # False when the connection predates listing scopes: reconnect to list.
+    can_list: bool = False
+    environment: str = "sandbox"
+
+
+class EbayListingCreateRequest(BaseModel):
+    item_id: uuid.UUID
+    price: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    quantity: Optional[int] = Field(default=None, ge=1, le=10000)
+    title: Optional[str] = Field(default=None, max_length=80)
+    condition: Optional[str] = Field(default=None, max_length=50)
+    category_id: Optional[str] = Field(default=None, max_length=20, pattern=r"^\d+$")
+    description: Optional[str] = Field(default=None, max_length=4000)
+    postal_code: Optional[str] = Field(default=None, pattern=r"^\d{5}$")
+
+
+class EbayListingUpdateRequest(BaseModel):
+    price: Optional[Decimal] = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    quantity: Optional[int] = Field(default=None, ge=0, le=10000)
+
+
+class EbayListingResponse(BaseModel):
+    item_id: Optional[uuid.UUID] = None
+    listed: bool
+    status: Optional[str] = None
+    offer_id: Optional[str] = None
+    listing_id: Optional[str] = None
+    url: Optional[str] = None
+    price: Optional[str] = None
+    quantity: Optional[int] = None
+    sku: Optional[str] = None
+
+
+class OutboxJobResponse(BaseModel):
+    """One shared marketplace write job (StockX, eBay)."""
+
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    provider: str
+    action: str
+    inventory_item_id: Optional[uuid.UUID] = None
+    item_name: Optional[str] = None
+    status: str
+    attempts: int
+    max_attempts: int
+    next_attempt_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
 
 
 class EbaySyncResponse(BaseModel):

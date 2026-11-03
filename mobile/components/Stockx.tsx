@@ -1,6 +1,6 @@
 /**
  * StockX surfaces: settings card, item-detail card (match sheet, market data,
- * asks), Add-stock price hint, and sync-center outbox errors.
+ * asks) and Add-stock price hint. Outbox errors live in Sync Center (shared list).
  *
  * Every piece degrades quietly: when StockX is not configured or not
  * connected it says so instead of erroring. Labels never call an ask a sale.
@@ -344,46 +344,6 @@ function AskSheet({
         </View>
       </View>
     </Modal>
-  );
-}
-
-// ── Sync center ──────────────────────────────────────────────────────────────
-
-export function StockxOutboxErrors() {
-  const [jobs, setJobs] = useState<api.StockxOutboxJob[]>([]);
-  const [retrying, setRetrying] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    try { setJobs(await api.listStockxOutboxErrors()); } catch { setJobs([]); }
-  }, []);
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void load(); }, [load]);
-
-  const retry = async (job: api.StockxOutboxJob) => {
-    setRetrying(job.id);
-    try {
-      const next = await api.retryStockxOutbox(job.id);
-      if (next.status !== "done") Alert.alert("Still failing", next.last_error || "StockX did not accept the change.");
-      await load();
-    } catch (err) {
-      Alert.alert("Retry failed", errorText(err, "Try again."));
-    } finally {
-      setRetrying(null);
-    }
-  };
-
-  if (jobs.length === 0) return null;
-  return (
-    <Card style={{ gap: SPACING.sm }}>
-      <SectionLabel>StockX sync errors</SectionLabel>
-      {jobs.map((job) => (
-        <View key={job.id} style={styles.linkRow}>
-          <Text style={styles.body}>{job.action === "delete_listing" ? "Remove sold-out ask" : job.action}</Text>
-          <Text style={styles.muted}>{job.last_error} ({job.attempts} attempt{job.attempts === 1 ? "" : "s"})</Text>
-          <Button label="Retry" onPress={() => retry(job)} size="sm" variant="secondary" loading={retrying === job.id} />
-        </View>
-      ))}
-    </Card>
   );
 }
 

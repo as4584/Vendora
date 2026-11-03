@@ -117,6 +117,12 @@ def _lock_fresh(db: Session, item: InventoryItem) -> None:
     db.refresh(item, with_for_update=True)
 
 
+def enqueue_stock_change(db: Session, item: InventoryItem, *, source_type: Optional[str] = None) -> None:
+    from app.services.outbox import enqueue_stock_change as _enqueue  # local: avoid import cycle
+
+    _enqueue(db, item, source_type=source_type)
+
+
 def deduct_stock(
     db: Session,
     item: InventoryItem,
@@ -166,11 +172,9 @@ def deduct_stock(
     )
     db.add(entry)
     db.flush()  # make entry visible to same-session queries (needed with autoflush=False)
-    # A size that just sold out must come off external marketplaces. The job
-    # is written in THIS transaction, so it exists iff the sale commits.
-    from app.services.stockx import enqueue_sellout_delists  # local: avoid import cycle
-
-    enqueue_sellout_delists(db, item)
+    # Same transaction: queue every provider side effect (StockX sell-out
+    # delists, eBay quantity push). The jobs exist iff the sale commits.
+    enqueue_stock_change(db, item, source_type=source_type)
     return entry
 
 
@@ -218,4 +222,6 @@ def restore_stock(
     )
     db.add(entry)
     db.flush()  # make entry visible to same-session queries (needed with autoflush=False)
+    # Same transaction: queue the marketplace quantity push (never double-sell).
+    enqueue_stock_change(db, item, source_type=source_type)
     return entry

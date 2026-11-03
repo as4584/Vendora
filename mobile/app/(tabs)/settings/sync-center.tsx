@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import * as api from "../../../services/api";
-import { StockxOutboxErrors } from "../../../components/Stockx";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill, SectionLabel, type IconName } from "../../../components/ui";
+import { Button } from "../../../components/Button";
 import { COLORS, SPACING } from "../../../theme/tokens";
 
 type ProviderKey = "lightspeed" | "square" | "clover" | "ebay";
@@ -15,6 +15,18 @@ const PROVIDERS: { key: ProviderKey; name: string; icon: IconName; getStatus: ()
   { key: "clover", name: "Clover", icon: "apps", getStatus: api.getCloverStatus, sync: api.triggerCloverSync },
   { key: "ebay", name: "eBay", icon: "pricetag", getStatus: api.getEbayStatus, sync: api.triggerEbaySync },
 ];
+
+export function providerName(provider: string): string {
+  if (provider === "ebay") return "eBay";
+  if (provider === "stockx") return "StockX";
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+export function jobLabel(job: api.OutboxJob): string {
+  if (job.action === "delete_listing") return "Remove sold-out ask";
+  if (job.action === "sync_quantity") return "Update quantity";
+  return job.action.replace(/_/g, " ");
+}
 
 function timeAgo(iso?: string | null): string {
   if (!iso) return "never synced";
@@ -32,22 +44,26 @@ export default function SyncCenterScreen() {
   const [statuses, setStatuses] = useState<Record<string, ProviderStatus>>({});
   const [runs, setRuns] = useState<api.ProviderSyncRun[]>([]);
   const [issues, setIssues] = useState<api.ReconciliationIssue[]>([]);
+  const [outbox, setOutbox] = useState<api.OutboxJob[]>([]);
+  const [retrying, setRetrying] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(async () => {
-    const [statusResults, runsResult, issuesResult] = await Promise.all([
+    const [statusResults, runsResult, issuesResult, outboxResult] = await Promise.all([
       Promise.all(PROVIDERS.map((p) => p.getStatus().catch(() => ({ connected: false, last_synced_at: null })))),
       api.listSyncRuns({ limit: 30 }).catch(() => [] as api.ProviderSyncRun[]),
       api.listReconciliationIssues({ limit: 20 }).catch(() => [] as api.ReconciliationIssue[]),
+      api.listOutboxJobs().catch(() => [] as api.OutboxJob[]),
     ]);
     const map: Record<string, ProviderStatus> = {};
     PROVIDERS.forEach((p, i) => { map[p.key] = statusResults[i]; });
     setStatuses(map);
     setRuns(runsResult);
     setIssues(issuesResult);
+    setOutbox(outboxResult);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -87,6 +103,19 @@ export default function SyncCenterScreen() {
       if (failed > 0) Alert.alert("Partial sync", `${connected.length - failed} of ${connected.length} providers synced.`);
     } finally {
       setSyncing(null);
+    }
+  };
+
+  const retryJob = async (job: api.OutboxJob) => {
+    setRetrying(job.id);
+    try {
+      const result = await api.retryOutboxJob(job.id);
+      if (result.status !== "done") Alert.alert("Still failing", result.last_error || `${providerName(result.provider)} did not accept the change yet.`);
+      await load();
+    } catch (err: any) {
+      Alert.alert("Retry failed", err?.message || "Could not retry this update.");
+    } finally {
+      setRetrying(null);
     }
   };
 
@@ -161,7 +190,32 @@ export default function SyncCenterScreen() {
         <ActionButton label={showAll ? "Show less" : "View All History"} onPress={() => setShowAll((v) => !v)} tone="secondary" />
       ) : null}
 
-      <StockxOutboxErrors />
+      {outbox.length > 0 ? (
+        <>
+          <SectionLabel>Marketplace Updates Failing</SectionLabel>
+          <Card style={styles.stack}>
+            {outbox.map((job, i) => (
+              <View key={job.id} style={[styles.histRow, i < outbox.length - 1 && styles.intRowDivider]}>
+                <IconCircle name="cloud-offline-outline" tone="muted" size={34} color={COLORS.danger} />
+                <View style={styles.intText}>
+                  <Text style={styles.intName}>{`${providerName(job.provider)} · ${jobLabel(job)} · ${job.item_name || "Item"}`}</Text>
+                  <Text style={styles.intMeta} numberOfLines={2}>
+                    {`${job.last_error || "Update failed"} · ${job.status === "failed" ? "stopped retrying" : `retrying, attempt ${job.attempts} of ${job.max_attempts}`}`}
+                  </Text>
+                </View>
+                <Button
+                  label="Retry"
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => void retryJob(job)}
+                  loading={retrying === job.id}
+                  accessibilityLabel={`Retry ${providerName(job.provider)} update for ${job.item_name || "item"}`}
+                />
+              </View>
+            ))}
+          </Card>
+        </>
+      ) : null}
 
       {issues.length > 0 ? (
         <>

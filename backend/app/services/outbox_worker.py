@@ -2,7 +2,7 @@
 
 After a commit that wrote outbox rows (flagged via ``session.info``), a daemon
 thread processes them with its own session, so the request never waits on
-StockX. Anything that fails stays ``pending`` with backoff and is picked up
+the marketplace. Anything that fails stays ``pending`` with backoff and is picked up
 by the periodic sweep (started from the app lifespan) or a manual retry.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ SWEEP_SECONDS = 60
 
 def _run_once() -> None:
     from app.database import SessionLocal
-    from app.services.stockx import process_outbox
+    from app.services.outbox import process_outbox
 
     db = SessionLocal()
     try:

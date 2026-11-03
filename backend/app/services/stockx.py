@@ -805,15 +805,7 @@ async def process_job(db: Session, job: ProviderOutbox, now: Optional[datetime] 
 async def process_outbox(
     db: Session, user_id: Optional[uuid.UUID] = None, now: Optional[datetime] = None, limit: int = 50
 ) -> int:
-    now = now or datetime.now(timezone.utc)
-    query = db.query(ProviderOutbox).filter(
-        ProviderOutbox.provider == PROVIDER,
-        ProviderOutbox.status == "pending",
-        ProviderOutbox.next_attempt_at <= now,
-    )
-    if user_id is not None:
-        query = query.filter(ProviderOutbox.user_id == user_id)
-    jobs = query.order_by(ProviderOutbox.created_at).limit(limit).with_for_update(skip_locked=True).all()
-    for job in jobs:
-        await process_job(db, job, now)
-    return len(jobs)
+    """StockX-only view of the shared processor (app.services.outbox)."""
+    from app.services.outbox import process_outbox as shared
+
+    return await shared(db, user_id=user_id, now=now, limit=limit, provider=PROVIDER)

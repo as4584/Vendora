@@ -1483,13 +1483,16 @@ export async function triggerCloverSync(): Promise<{
   return request("/integrations/clover/sync", { method: "POST" });
 }
 
-// ─── eBay Integration (pull-only) ─────────────────────
+// ─── eBay Integration ─────────────────────────────────
 
 export interface EbayStatus {
   connected: boolean;
   account_id: string | null;
   expires_at: string | null;
   last_synced_at: string | null;
+  /** False when the connection predates listing permissions: reconnect to list. */
+  can_list?: boolean;
+  environment?: string;
 }
 
 export async function getEbayStatus(): Promise<EbayStatus> {
@@ -1568,17 +1571,6 @@ export interface StockxMarket {
   stale: boolean;
 }
 
-export interface StockxOutboxJob {
-  id: string;
-  provider: string;
-  action: string;
-  status: string;
-  attempts: number;
-  max_attempts: number;
-  last_error: string | null;
-  next_attempt_at: string | null;
-  created_at: string;
-}
 
 const SX = "/integrations/stockx";
 
@@ -1602,8 +1594,96 @@ export const placeStockxAsk = (itemId: string, variantId: string, amount: string
 export const updateStockxAsk = (listingId: string, amount: string) =>
   request<StockxListing>(`${SX}/listings/${listingId}`, { method: "PATCH", body: JSON.stringify({ amount }) });
 export const removeStockxAsk = (listingId: string) => request<StockxListing>(`${SX}/listings/${listingId}`, { method: "DELETE" });
-export const listStockxOutboxErrors = () => request<StockxOutboxJob[]>(`${SX}/outbox`);
-export const retryStockxOutbox = (jobId: string) => request<StockxOutboxJob>(`${SX}/outbox/${jobId}/retry`, { method: "POST" });
+
+export type EbayListingStatus = "draft" | "active" | "ended" | "sold" | "error";
+
+export interface EbayListing {
+  item_id: string | null;
+  listed: boolean;
+  status: EbayListingStatus | null;
+  offer_id: string | null;
+  listing_id: string | null;
+  url: string | null;
+  /** Decimal string, e.g. "250.00". */
+  price: string | null;
+  quantity: number | null;
+  sku: string | null;
+}
+
+export interface EbayListingInput {
+  item_id: string;
+  price: string;
+  quantity?: number;
+  title?: string;
+  condition?: string;
+  category_id?: string;
+  postal_code?: string;
+}
+
+export async function getEbayListing(itemId: string): Promise<EbayListing> {
+  return request<EbayListing>(`/integrations/ebay/listings/${encodeURIComponent(itemId)}`);
+}
+
+export async function createEbayListing(input: EbayListingInput): Promise<EbayListing> {
+  return request<EbayListing>("/integrations/ebay/listings", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateEbayListing(
+  itemId: string,
+  changes: { price?: string; quantity?: number },
+): Promise<EbayListing> {
+  return request<EbayListing>(`/integrations/ebay/listings/${encodeURIComponent(itemId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(changes),
+  });
+}
+
+export async function endEbayListing(itemId: string): Promise<EbayListing> {
+  return request<EbayListing>(`/integrations/ebay/listings/${encodeURIComponent(itemId)}`, { method: "DELETE" });
+}
+
+export interface EbayComps {
+  query: string;
+  /** "sold" only when the keyset has Marketplace Insights; otherwise asking prices. */
+  kind: "sold" | "active_asks";
+  label: string;
+  count: number;
+  summary: { low: string; median: string; high: string } | null;
+  items: { title: string | null; price: string; condition: string | null; url: string | null; image_url: string | null; sold_date: string | null }[];
+}
+
+export async function getItemEbayComps(itemId: string): Promise<EbayComps> {
+  return request<EbayComps>(`/inventory/${encodeURIComponent(itemId)}/ebay-comps`);
+}
+
+export async function searchEbayComps(q: string): Promise<EbayComps> {
+  return request<EbayComps>(`/integrations/ebay/comps?q=${encodeURIComponent(q)}`);
+}
+
+/** One shared marketplace write job (StockX ask removal, eBay quantity push). */
+export interface OutboxJob {
+  id: string;
+  provider: "stockx" | "ebay" | string;
+  action: string;
+  inventory_item_id: string | null;
+  item_name: string | null;
+  status: "pending" | "processing" | "done" | "failed";
+  attempts: number;
+  max_attempts: number;
+  next_attempt_at: string | null;
+  last_error: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+/** Jobs that are not done and have an error (all providers) unless onlyErrors is false. */
+export async function listOutboxJobs(onlyErrors = true): Promise<OutboxJob[]> {
+  return request<OutboxJob[]>(`/integrations/outbox${onlyErrors ? "" : "?only_errors=false"}`);
+}
+
+export async function retryOutboxJob(jobId: string): Promise<OutboxJob> {
+  return request<OutboxJob>(`/integrations/outbox/${encodeURIComponent(jobId)}/retry`, { method: "POST" });
+}
 
 // ─── Provider Health ──────────────────────────────────
 

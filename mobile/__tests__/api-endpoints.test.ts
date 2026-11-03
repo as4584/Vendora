@@ -51,6 +51,27 @@ describe('API endpoint contracts', () => {
     method?: string;
     body?: unknown;
   }> = [
+    { name: 'ebay listing status', call: () => api.getEbayListing('i 1'), path: '/integrations/ebay/listings/i%201' },
+    {
+      name: 'create ebay listing',
+      call: () => api.createEbayListing({ item_id: 'i1', price: '10.00' }),
+      path: '/integrations/ebay/listings',
+      method: 'POST',
+      body: { item_id: 'i1', price: '10.00' },
+    },
+    {
+      name: 'update ebay listing',
+      call: () => api.updateEbayListing('i1', { price: '9.00' }),
+      path: '/integrations/ebay/listings/i1',
+      method: 'PATCH',
+      body: { price: '9.00' },
+    },
+    { name: 'end ebay listing', call: () => api.endEbayListing('i1'), path: '/integrations/ebay/listings/i1', method: 'DELETE' },
+    { name: 'item ebay comps', call: () => api.getItemEbayComps('i1'), path: '/inventory/i1/ebay-comps' },
+    { name: 'search ebay comps', call: () => api.searchEbayComps('air max'), path: '/integrations/ebay/comps?q=air%20max' },
+    { name: 'outbox all', call: () => api.listOutboxJobs(), path: '/integrations/outbox' },
+    { name: 'outbox incl. done', call: () => api.listOutboxJobs(false), path: '/integrations/outbox?only_errors=false' },
+    { name: 'retry outbox', call: () => api.retryOutboxJob('j1'), path: '/integrations/outbox/j1/retry', method: 'POST' },
     {
       name: 'show summary (server default window)',
       call: () => api.getShowSummary(),
@@ -356,8 +377,6 @@ describe('API endpoint contracts', () => {
       body: { amount: '190.00' },
     },
     { name: 'stockx remove ask', call: () => api.removeStockxAsk('l1'), path: '/integrations/stockx/listings/l1', method: 'DELETE' },
-    { name: 'stockx outbox', call: () => api.listStockxOutboxErrors(), path: '/integrations/stockx/outbox' },
-    { name: 'stockx outbox retry', call: () => api.retryStockxOutbox('j1'), path: '/integrations/stockx/outbox/j1/retry', method: 'POST' },
   ];
 
   test.each(cases)('$name sends the expected request', async ({ call, path, method, body }) => {

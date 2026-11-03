@@ -30,6 +30,7 @@ import { isTempId } from "../../../services/offline";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 import { StockxPriceHint } from "../../../components/Stockx";
 import { Button, IconButton } from "../../../components/Button";
+import { EbayCompsCard } from "../../../components/EbayCompsCard";
 import { LiveBoxScanner, type LiveScanResult } from "../../../components/LiveBoxScanner";
 import {
     isLabelReaderAvailable,
@@ -644,6 +645,8 @@ export default function AddItemScreen() {
                     </View>
                 </View>
                 <StockxPriceHint name={name} size={size} />
+
+                <EbayCompsCard query={name} onUsePrice={setExpectedPrice} />
 
                 <Text style={styles.label}>Platform</Text>
                 <TextInput

@@ -41,18 +41,23 @@ _ORDER_PAGE_SIZE = 50
 _RATE_LIMIT_SLEEP = 0.2  # small pause between paged/offer calls
 
 # Scope identifiers are host-fixed to api.ebay.com for BOTH sandbox and production.
-_SCOPES = " ".join(
-    [
-        "https://api.ebay.com/oauth/api_scope",
-        "https://api.ebay.com/oauth/api_scope/sell.inventory.readonly",
-        "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly",
-        "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
-    ]
-)
+# sell.inventory + sell.account are needed to create/revise/end listings and to
+# read business policies; existing read-only connections must reconnect.
+LISTING_SCOPES = [
+    "https://api.ebay.com/oauth/api_scope",
+    "https://api.ebay.com/oauth/api_scope/sell.inventory",
+    "https://api.ebay.com/oauth/api_scope/sell.account",
+    "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
+    "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
+]
+_SCOPES = " ".join(LISTING_SCOPES)
 
 
 class EbayService(ProviderAdapter):
     provider: ClassVar[str] = "ebay"
+    # Tests inject an httpx.MockTransport here; None = real network.
+    transport: Optional[httpx.AsyncBaseTransport] = None
+    requested_scopes: ClassVar[list[str]] = LISTING_SCOPES
 
     def __init__(self) -> None:
         self.client_id = settings.EBAY_CLIENT_ID
@@ -145,7 +150,7 @@ class EbayService(ProviderAdapter):
 
     async def exchange_authorization_code(self, code: str) -> dict:
         self._assert_configured()
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=20, transport=self.transport) as client:
             resp = await client.post(
                 self.token_url,
                 headers={
@@ -169,7 +174,7 @@ class EbayService(ProviderAdapter):
 
     async def _refresh_access_token(self, db: Session, token: EbayToken) -> EbayToken:
         self._assert_configured()
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=20, transport=self.transport) as client:
             resp = await client.post(
                 self.token_url,
                 headers={
@@ -208,7 +213,7 @@ class EbayService(ProviderAdapter):
     async def fetch_username(self, access_token: str) -> Optional[str]:
         """Best-effort eBay username lookup (Identity API). Returns None on failure."""
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=15, transport=self.transport) as client:
                 resp = await client.get(
                     f"{self.identity_base}/commerce/identity/v1/user/",
                     headers={"Authorization": f"Bearer {access_token}"},
@@ -277,12 +282,12 @@ class EbayService(ProviderAdapter):
         self, access_token: str, url: str, params: Optional[dict] = None
     ) -> Optional[dict]:
         headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, transport=self.transport) as client:
             resp = await client.get(url, headers=headers, params=params or {})
         if resp.status_code == 429:
             logger.warning("eBay rate limit hit, sleeping 30s")
             await asyncio.sleep(30)
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=30, transport=self.transport) as client:
                 resp = await client.get(url, headers=headers, params=params or {})
         if resp.status_code >= 400:
             logger.error("eBay API error %s at %s: %s", resp.status_code, url, resp.text[:500])
@@ -406,6 +411,13 @@ class EbayService(ProviderAdapter):
                 logger.warning("eBay SKU %s linked to deleted item; skipping", sku)
                 return None, False
 
+        if item and link.offer_id:
+            # Listed from Resqlo: Resqlo owns name/price/stock and pushes them to
+            # eBay (eBay's quantity is only the listed cap), so never pull back.
+            link.last_synced_at = now
+            db.add(link)
+            return item, False
+
         if item:
             old_qty = item.quantity
             item.name = name
@@ -506,6 +518,84 @@ class EbayService(ProviderAdapter):
         db.add(txn)
         return txn, True
 
+    @staticmethod
+    def _parse_ts(value: Any) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    def _apply_order_stock(
+        self, db: Session, user_id: uuid.UUID, eb_order: dict, run: Optional[ProviderSyncRun] = None
+    ) -> int:
+        """Deduct Resqlo stock for each line of an eBay order, exactly once.
+
+        Idempotent via the ledger key ``ebay:order:{orderId}:{lineItemId}``, so
+        re-syncs and notification replays never double-deduct. Skips cancelled
+        orders and orders placed before the item was linked (the imported
+        quantity already reflects those). Returns the number of lines deducted.
+        """
+        from app.services.inventory import deduct_stock
+
+        order_id = str(eb_order.get("orderId", ""))
+        if not order_id:
+            return 0
+        cancel_state = ((eb_order.get("cancelStatus") or {}).get("cancelState") or "").upper()
+        if cancel_state == "CANCELED":
+            return 0
+        created_at = self._parse_ts(eb_order.get("creationDate"))
+        deducted = 0
+        for line in eb_order.get("lineItems") or []:
+            sku = str(line.get("sku") or "").strip()
+            line_id = str(line.get("lineItemId") or "").strip()
+            qty = int(line.get("quantity") or 1)
+            if not sku or not line_id or qty < 1:
+                continue
+            link = (
+                db.query(InventoryExternalLink)
+                .filter(
+                    InventoryExternalLink.user_id == user_id,
+                    InventoryExternalLink.provider == "ebay",
+                    InventoryExternalLink.external_id == sku,
+                )
+                .one_or_none()
+            )
+            if not link:
+                continue
+            if created_at and link.created_at and created_at < link.created_at:
+                continue
+            item = (
+                db.query(InventoryItem)
+                .filter(InventoryItem.id == link.inventory_item_id, InventoryItem.deleted_at.is_(None))
+                .one_or_none()
+            )
+            if item is None:
+                continue
+            key = f"ebay:order:{order_id}:{line_id}"
+            exists = db.query(InventoryStockLedger.id).filter(InventoryStockLedger.idempotency_key == key).first()
+            if exists:
+                continue
+            try:
+                deduct_stock(db, item, qty, event_type="sale", source_type="ebay", source_id=order_id, idempotency_key=key)
+            except HTTPException:
+                # Sold on eBay but Resqlo has no stock left: a double-sell. Flag it.
+                logger.warning("eBay order %s oversells item %s", order_id, item.id)
+                self.record_issue(
+                    db, user_id, issue_type="stock_drift", severity="error", run=run,
+                    inventory_item_id=item.id, external_id=sku,
+                    details={"reason": "oversold", "ebay_order_id": order_id, "quantity": qty},
+                )
+                continue
+            deducted += 1
+            if link.offer_id and link.listed_quantity is not None:
+                link.listed_quantity = max(link.listed_quantity - qty, 0)
+                if link.listed_quantity == 0:
+                    link.listing_status = "sold"
+                db.add(link)
+        return deducted
+
     # ── Sync ────────────────────────────────────────────────────────────────────
 
     async def _do_sync(
@@ -518,6 +608,23 @@ class EbayService(ProviderAdapter):
         access_token = decrypt_token(token.access_token)
 
         result = SyncResult(run_id=run.id)
+
+        # Orders first: deduct stock for new sales before item quantities are
+        # reconciled, so an eBay sale is never counted twice.
+        # --- Orders / transactions ---
+        eb_orders = await self._get_orders(access_token)
+        for eb_order in eb_orders:
+            _, created = self._upsert_transaction(db, user_id, eb_order)
+            self._apply_order_stock(db, user_id, eb_order, run)
+            if created:
+                result.transactions_imported += 1
+            else:
+                result.transactions_updated += 1
+        db.commit()
+        logger.info(
+            "eBay order sync: %d imported, %d updated for user %s",
+            result.transactions_imported, result.transactions_updated, user_id,
+        )
 
         # --- Inventory items ---
         eb_items = await self._get_inventory_items(access_token)
@@ -543,20 +650,6 @@ class EbayService(ProviderAdapter):
         logger.info(
             "eBay item sync: %d imported, %d updated, %d skipped for user %s",
             result.items_imported, result.items_updated, result.items_skipped, user_id,
-        )
-
-        # --- Orders / transactions ---
-        eb_orders = await self._get_orders(access_token)
-        for eb_order in eb_orders:
-            _, created = self._upsert_transaction(db, user_id, eb_order)
-            if created:
-                result.transactions_imported += 1
-            else:
-                result.transactions_updated += 1
-        db.commit()
-        logger.info(
-            "eBay order sync: %d imported, %d updated for user %s",
-            result.transactions_imported, result.transactions_updated, user_id,
         )
 
         return result

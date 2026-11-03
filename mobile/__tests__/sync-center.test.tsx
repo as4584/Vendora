@@ -27,6 +27,8 @@ jest.mock('../services/api', () => ({
   triggerSquareSync: jest.fn(),
   triggerCloverSync: jest.fn(),
   triggerEbaySync: jest.fn(),
+  listOutboxJobs: jest.fn(async () => []),
+  retryOutboxJob: jest.fn(),
 }));
 
 const DISCONNECTED = { connected: false, last_synced_at: null };
@@ -46,6 +48,33 @@ beforeEach(() => {
 });
 
 describe('SyncCenterScreen', () => {
+  it('shows failing marketplace updates and retries them', async () => {
+    const job = {
+      id: 'job-1', provider: 'ebay', action: 'sync_quantity', inventory_item_id: 'i1', item_name: 'Jordan 1',
+      status: 'failed', attempts: 6, max_attempts: 6, next_attempt_at: null, last_error: 'eBay unavailable',
+      completed_at: null, created_at: '2026-11-02T00:00:00Z',
+    };
+    (apiMock.listOutboxJobs as jest.Mock).mockResolvedValue([job, { ...job, id: 'job-2', status: 'pending', attempts: 2, item_name: 'Dunk', last_error: 'boom', provider: 'stockx', action: 'delete_listing' },
+      { ...job, id: 'job-3', status: 'pending', attempts: 1, item_name: null, last_error: null, provider: 'other_one', action: 'odd_thing' }]);
+    (apiMock.retryOutboxJob as jest.Mock).mockResolvedValueOnce({ ...job, status: 'dead' }).mockRejectedValueOnce(new Error('offline'));
+    const screen = render(<SyncCenterScreen />);
+    expect(await screen.findByText('Marketplace Updates Failing')).toBeTruthy();
+    expect(screen.getByText('eBay · Update quantity · Jordan 1')).toBeTruthy();
+    expect(screen.getByText('StockX · Remove sold-out ask · Dunk')).toBeTruthy();
+    expect(screen.getByText('Other_one · odd thing · Item')).toBeTruthy();
+    expect(screen.getByText(/stopped retrying/)).toBeTruthy();
+    expect(screen.getByText(/retrying, attempt 2 of 6/)).toBeTruthy();
+    await act(async () => { fireEvent.press(screen.getByLabelText('Retry eBay update for Jordan 1')); });
+    expect(apiMock.retryOutboxJob).toHaveBeenCalledWith('job-1');
+    expect(Alert.alert).toHaveBeenCalledWith('Still failing', 'eBay unavailable');
+    await act(async () => { fireEvent.press(screen.getByLabelText('Retry eBay update for Jordan 1')); });
+    expect(Alert.alert).toHaveBeenCalledWith('Retry failed', 'offline');
+    (apiMock.retryOutboxJob as jest.Mock).mockResolvedValueOnce({ ...job, provider: 'stockx', status: 'pending', last_error: null });
+    await act(async () => { fireEvent.press(screen.getByLabelText('Retry StockX update for Dunk')); });
+    expect(Alert.alert).toHaveBeenCalledWith('Still failing', 'StockX did not accept the change yet.');
+    (apiMock.listOutboxJobs as jest.Mock).mockResolvedValue([]);
+  });
+
   it('renders the integrations list, connection state, and sync history', async () => {
     const screen = render(<SyncCenterScreen />);
     await waitFor(() => {

@@ -663,6 +663,51 @@ async def get_market_price(
             "avg": round(float(name_avg), 2),
         })
 
+    # 3. eBay comps — active asks unless the keyset has sold data. Labelled by kind
+    # so the app never shows asking prices as sold prices.
+    from app.config import settings as _settings
+
+    if _settings.EBAY_CLIENT_ID and _settings.EBAY_CLIENT_SECRET:
+        try:
+            from app.services.ebay_listing import fetch_comps
+
+            comps = await fetch_comps(query)
+            if comps.get("summary"):
+                summ = comps["summary"]
+                result["sources"].append({
+                    "source": "ebay_sold" if comps["kind"] == "sold" else "ebay_active_asks",
+                    "label": comps["label"],
+                    "price": float(summ["median"]),
+                    "low": float(summ["low"]),
+                    "high": float(summ["high"]),
+                    "count": comps["count"],
+                })
+        except Exception:
+            pass  # graceful degradation
+
+    return result
+
+
+@router.get("/{item_id}/ebay-comps")
+async def get_ebay_comps(
+    item_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """eBay comps for an item. ``kind`` is "active_asks" (asking prices) unless
+    the keyset has Marketplace Insights, in which case it is "sold"."""
+    from app.services.ebay_listing import fetch_comps
+
+    item = _get_active_item(item_id, current_user.id, db)
+    brand = (item.custom_attributes or {}).get("brand") if isinstance(item.custom_attributes, dict) else None
+    parts = [str(brand)] if brand and str(brand).lower() not in item.name.lower() else []
+    parts.append(item.name)
+    if item.size:
+        parts.append(f"size {item.size}")
+    cond = (item.condition or "").lower()
+    condition = "used" if ("used" in cond or "pre" in cond) else ("new" if cond else None)
+    result = await fetch_comps(" ".join(parts), condition=condition)
+    result["item_id"] = str(item.id)
     return result
 
 
@@ -815,6 +860,9 @@ def _apply_quantity_edit(db: Session, item: InventoryItem, new_qty: int, expecte
         source_type="manual",
         source_id=str(item.id),
     ))
+    from app.services.inventory import enqueue_stock_change
+
+    enqueue_stock_change(db, item, source_type="manual")
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)

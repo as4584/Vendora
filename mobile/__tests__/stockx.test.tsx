@@ -6,7 +6,6 @@ import * as api from '../services/api';
 import {
   FEE_DISCLAIMER,
   StockxItemCard,
-  StockxOutboxErrors,
   StockxPriceHint,
   StockxSettingsCard,
   marketLine,
@@ -28,8 +27,6 @@ jest.mock('../services/api', () => ({
   placeStockxAsk: jest.fn(),
   updateStockxAsk: jest.fn(),
   removeStockxAsk: jest.fn(),
-  listStockxOutboxErrors: jest.fn(),
-  retryStockxOutbox: jest.fn(),
 }));
 
 const m = api as jest.Mocked<typeof api>;
@@ -257,37 +254,5 @@ describe('StockxItemCard', () => {
     render(<StockxItemCard itemId="i1" />);
     expect(await screen.findByText(/\(pending\)/)).toBeTruthy();
     expect(screen.getByText('Re-match on StockX')).toBeTruthy();
-  });
-});
-
-describe('StockxOutboxErrors', () => {
-  const JOB: api.StockxOutboxJob = { id: 'j1', provider: 'stockx', action: 'delete_listing', status: 'failed', attempts: 6, max_attempts: 6, last_error: 'boom', next_attempt_at: null, created_at: '' };
-
-  it('renders nothing without errors or when listing fails', async () => {
-    m.listStockxOutboxErrors.mockRejectedValueOnce(new Error('x'));
-    const view = render(<StockxOutboxErrors />);
-    await waitFor(() => expect(m.listStockxOutboxErrors).toHaveBeenCalled());
-    expect(view.toJSON()).toBeNull();
-  });
-
-  it('retries a failed job', async () => {
-    m.listStockxOutboxErrors.mockResolvedValueOnce([JOB, { ...JOB, id: 'j2', action: 'other', attempts: 1 }]).mockResolvedValue([]);
-    m.retryStockxOutbox.mockResolvedValueOnce({ ...JOB, status: 'pending', last_error: 'still down' });
-    render(<StockxOutboxErrors />);
-    expect(await screen.findByText('Remove sold-out ask')).toBeTruthy();
-    expect(screen.getByText('boom (1 attempt)')).toBeTruthy();
-    fireEvent.press(screen.getAllByText('Retry')[0]);
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Still failing', 'still down'));
-  });
-
-  it('reports retry errors and clears on success', async () => {
-    m.listStockxOutboxErrors.mockResolvedValue([JOB]);
-    m.retryStockxOutbox.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ ...JOB, status: 'done' });
-    render(<StockxOutboxErrors />);
-    fireEvent.press(await screen.findByText('Retry'));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Retry failed', 'offline'));
-    m.listStockxOutboxErrors.mockResolvedValue([]);
-    fireEvent.press(screen.getByText('Retry'));
-    await waitFor(() => expect(screen.queryByText('Retry')).toBeNull());
   });
 });
