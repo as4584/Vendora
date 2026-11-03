@@ -125,14 +125,14 @@ export default function InventoryImportScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <HeaderTitle
         title="Import Inventory"
-        subtitle="Upload a CSV, preview the matches, then commit the changes into your local seeded account."
+        subtitle="Upload a CSV, preview the matches, then add them to your inventory."
       />
 
       <Card style={{ gap: SPACING.md }}>
         <SectionLabel>Flow</SectionLabel>
         <Stepper steps={["Upload", "Preview", "Commit"]} active={preview ? 1 : 0} />
         <Text style={styles.helperText}>
-          Spreadsheet import now understands the exported raw photo URLs and the seeded account round-trip columns.
+          Re-importing a Vendora export updates the same items. Nothing is duplicated, and rows we can't read are flagged so you can fix them.
         </Text>
         <ActionButton label={loading ? "Preparing Preview..." : "Choose CSV File"} onPress={handlePickFile} disabled={loading} />
         {fileName ? <Text style={styles.fileName}>Selected: {fileName}</Text> : null}

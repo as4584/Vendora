@@ -25,6 +25,21 @@ INVENTORY_EXPORT_COLUMNS = [
     "created_at", "updated_at",
 ]
 
+# Cells a spreadsheet app would evaluate as a formula (CSV/formula injection).
+_FORMULA_PREFIXES = ("=", "+", "-", "@", chr(9), chr(13))
+
+
+def safe_cell(value):
+    """Neutralise user text that Excel/Sheets would run as a formula.
+
+    A leading apostrophe makes the cell literal text; the importer strips it
+    again so values round-trip unchanged. Non-strings pass through.
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 WAREHOUSE_PRODUCTS_PER_ROW = 2
 WAREHOUSE_PRODUCT_WIDTH = 4
 
@@ -119,28 +134,28 @@ def export_inventory_csv(db: Session, user_id) -> str:
         photo_back_url = _resolved_photo(item, "photo_back")
         writer.writerow([
             str(item.id),
-            item.name,
-            item.category or "",
-            item.sku or "",
-            item.upc or "",
-            item.size or "",
-            item.color or "",
-            item.condition or "",
+            safe_cell(item.name),
+            safe_cell(item.category or ""),
+            safe_cell(item.sku or ""),
+            safe_cell(item.upc or ""),
+            safe_cell(item.size or ""),
+            safe_cell(item.color or ""),
+            safe_cell(item.condition or ""),
             item.quantity,
             str(item.buy_price) if item.buy_price is not None else "",
             str(item.expected_sell_price) if item.expected_sell_price is not None else "",
             str(item.actual_sell_price) if item.actual_sell_price is not None else "",
             item.status,
-            item.platform or "",
-            item.vendor_name or "",
-            item.notes or "",
+            safe_cell(item.platform or ""),
+            safe_cell(item.vendor_name or ""),
+            safe_cell(item.notes or ""),
             photo_front_url,
             photo_back_url,
             _image_formula(photo_front_url),
             _image_formula(photo_back_url),
             _size_breakdown(item),
             item.source or "",
-            item.external_id or "",
+            safe_cell(item.external_id or ""),
             item.created_at.isoformat() if item.created_at else "",
             item.updated_at.isoformat() if item.updated_at else "",
         ])
@@ -182,7 +197,7 @@ def export_inventory_warehouse_csv(db: Session, user_id) -> str:
 
         for idx, item in enumerate(group):
             col = idx * WAREHOUSE_PRODUCT_WIDTH
-            title_row[col] = item.name
+            title_row[col] = safe_cell(item.name)
             header_row[col] = "Size"
             header_row[col + 1] = "QTY"
 
@@ -197,7 +212,7 @@ def export_inventory_warehouse_csv(db: Session, user_id) -> str:
                     continue
                 col = idx * WAREHOUSE_PRODUCT_WIDTH
                 size, quantity = variants[row_idx]
-                row[col] = size
+                row[col] = safe_cell(size)
                 row[col + 1] = quantity
             writer.writerow(row)
 
@@ -246,7 +261,7 @@ def export_transactions_csv(db: Session, user_id) -> str:
             "Yes" if txn.is_refund else "No",
             str(txn.invoice_id) if txn.invoice_id else "",
             str(txn.item_id) if txn.item_id else "",
-            txn.notes or "",
+            safe_cell(txn.notes or ""),
         ])
 
     return output.getvalue()

@@ -152,6 +152,7 @@ class ParsedImportRow:
     external_id: str
     raw: dict[str, Any]
     warnings: list[str]
+    item_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -173,41 +174,112 @@ def resolve_field(header: str) -> str | None:
     return None
 
 
-def decimal_string(value: Any) -> str | None:
+_CURRENCY_JUNK = re.compile(r"[^\d.,\-()]")
+_THOUSANDS_COMMA = re.compile(r"^\d{1,3}(,\d{3})+(\.\d+)?$")
+_THOUSANDS_DOT = re.compile(r"^\d{1,3}(\.\d{3}){2,}(,\d+)?$|^\d{1,3}\.\d{3},\d+$")
+
+
+def parse_money(value: Any) -> tuple[str | None, str | None]:
+    """Parse a price cell. Returns (amount "0.00" or None, warning or None).
+
+    Handles "$1,200.00", "1.234,56 EUR", "12,5", "USD 40". Negative amounts
+    ("-5", "(5.00)") and non-numbers ("free", "TBD") are rejected with a
+    warning rather than silently changed.
+    """
     raw = str(value or "").strip()
     if not raw:
-        return None
-    cleaned = re.sub(r"[^0-9.\-]", "", raw)
-    if not cleaned or cleaned in {"-", "."}:
-        return None
+        return None, None
+    compact = _CURRENCY_JUNK.sub("", raw)
+    if not re.search(r"\d", compact):
+        return None, f'Could not read price "{raw}"; left blank.'
+    if compact.startswith("-") or (compact.startswith("(") and compact.endswith(")")):
+        return None, f'Negative price "{raw}" ignored.'
+    number = compact.strip("()")
+    if "," in number and "." in number:
+        if number.rfind(",") > number.rfind("."):
+            number = number.replace(".", "").replace(",", ".")  # 1.234,56
+        else:
+            number = number.replace(",", "")  # 1,234.56
+    elif "," in number:
+        number = number.replace(",", "") if _THOUSANDS_COMMA.match(number) else number.replace(",", ".")
+    elif _THOUSANDS_DOT.match(number):
+        number = number.replace(".", "")  # 1.234.567
     try:
-        amount = Decimal(cleaned)
+        amount = Decimal(number)
     except InvalidOperation:
-        return None
-    if amount < 0:
-        return None
-    return f"{amount.quantize(Decimal('0.01'))}"
+        return None, f'Could not read price "{raw}"; left blank.'
+    return f"{amount.quantize(Decimal('0.01'))}", None
+
+
+def decimal_string(value: Any) -> str | None:
+    return parse_money(value)[0]
+
+
+def parse_quantity(value: Any) -> tuple[int, str | None]:
+    """Parse a quantity cell. Returns (quantity, warning or None)."""
+    raw = str(value or "").strip()
+    if not raw:
+        return 1, "Quantity missing; set to 1."
+    compact = raw.replace(",", "").replace(" ", "")
+    match = re.fullmatch(r"(-?\d+)(?:\.(\d+))?(?:[a-zA-Z]+)?", compact)
+    if not match:
+        found = re.search(r"\d+", raw)
+        if not found:
+            return 1, f'Could not read quantity "{raw}"; set to 1.'
+        return int(found.group(0)), f'Read quantity "{raw}" as {int(found.group(0))}.'
+    whole = int(match.group(1))
+    if whole < 0:
+        return 0, f'Negative quantity "{raw}" set to 0.'
+    if match.group(2) and int(match.group(2)) != 0:
+        return whole, f'Quantity "{raw}" is not a whole number; used {whole}.'
+    return whole, None
 
 
 def int_value(value: Any) -> int:
-    raw = str(value or "").strip()
+    return parse_quantity(value)[0]
+
+
+def parse_status(value: Any) -> tuple[str, str | None]:
+    raw = str(value or "").strip().lower()
     if not raw:
-        return 1
-    match = re.search(r"\d+", raw)
-    if not match:
-        return 1
-    return max(0, int(match.group(0)))
+        return "in_stock", None
+    if raw in VALID_STATUSES:
+        return raw, None
+    normalized = re.sub(r"[_\-]+", " ", raw)
+    known = STATUS_ALIASES.get(normalized) or STATUS_ALIASES.get(normalize_header(raw))
+    if known:
+        return known, None
+    return "in_stock", f'Unknown status "{str(value).strip()}"; set to in stock.'
 
 
 def status_value(value: Any) -> str:
-    raw = str(value or "").strip().lower()
-    if not raw:
-        return "in_stock"
-    normalized = re.sub(r"[_\-]+", " ", raw)
-    compact = normalize_header(raw)
-    if raw in VALID_STATUSES:
-        return raw
-    return STATUS_ALIASES.get(normalized) or STATUS_ALIASES.get(compact) or "in_stock"
+    return parse_status(value)[0]
+
+
+def unescape_cell(value: Any) -> Any:
+    """Undo the export's formula-injection guard ('=x -> =x)."""
+    if isinstance(value, str) and len(value) > 1 and value[0] == "'" and value[1] in "=+-@\t\r":
+        return value[1:]
+    return value
+
+
+_SIZE_BREAKDOWN_PART = re.compile(r"^\s*(.+?)\s*\((\d+)\)\s*$")
+
+
+def parse_size_breakdown(value: Any) -> list[dict[str, Any]]:
+    """Parse the export's "S (1); M (3)" back into variant rows."""
+    variants: list[dict[str, Any]] = []
+    for part in str(value or "").split(";"):
+        match = _SIZE_BREAKDOWN_PART.match(part)
+        if match:
+            variants.append({"size": match.group(1), "quantity": int(match.group(2))})
+    return variants
+
+
+# Columns Vendora writes on export that are bookkeeping, not item data.
+EXPORT_ONLY_HEADERS = {"id", "externalid", "createdat", "updatedat", "sizebreakdown", "backimageformula"}
+# The export's own `source` column ("spreadsheet"/"manual"/...) is not a vendor.
+VENDORA_SOURCE_VALUES = {"spreadsheet", "manual", "lightspeed", "square", "clover", "ebay", "shopify"}
 
 
 def looks_like_url(value: Any) -> bool:
@@ -849,7 +921,11 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
             raise last_error
         return []
 
-    text = content.decode("utf-8-sig", errors="replace")
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        # Excel on Windows saves "CSV" as Windows-1252, not UTF-8.
+        text = content.decode("cp1252", errors="replace")
     sample = text[:2048]
     try:
         dialect = csv.Sniffer().sniff(sample) if sample.strip() else csv.excel
@@ -869,8 +945,11 @@ def parse_inventory_rows(rows: list[dict[str, Any]]) -> list[ParsedImportRow]:
         if isinstance(raw_row_number, int):
             row_number = raw_row_number
         mapped: dict[str, Any] = {}
+        mapped_priority: dict[str, int] = {}
         custom_attributes: dict[str, Any] = {}
         warnings: list[str] = []
+        item_id: str | None = None
+        size_breakdown: list[dict[str, Any]] = []
 
         for header, value in raw.items():
             if header == "__row_number":
@@ -885,11 +964,27 @@ def parse_inventory_rows(rows: list[dict[str, Any]]) -> list[ParsedImportRow]:
                 if attribute_name:
                     custom_attributes[attribute_name] = value
                 continue
+            value = unescape_cell(value)
+            normalized = normalize_header(header)
+            if normalized in EXPORT_ONLY_HEADERS:
+                if normalized == "id":
+                    item_id = str(value).strip()
+                elif normalized == "sizebreakdown":
+                    size_breakdown = parse_size_breakdown(value)
+                continue
+            if normalized == "source" and str(value).strip().lower() in VENDORA_SOURCE_VALUES:
+                continue
             field = resolve_field(header)
             if not field:
-                custom_attributes[normalize_header(header) or str(header)] = value
+                custom_attributes[normalized or str(header)] = value
+                continue
+            # A column named exactly like the field ("vendor_name", "name")
+            # beats an alias ("source", "description"); otherwise first wins.
+            priority = 0 if normalized == normalize_header(field) else 1
+            if field in mapped and mapped_priority[field] <= priority:
                 continue
             mapped[field] = str(value).strip()
+            mapped_priority[field] = priority
 
         if not mapped.get("name"):
             brand = mapped.get("brand")
@@ -902,6 +997,16 @@ def parse_inventory_rows(rows: list[dict[str, Any]]) -> list[ParsedImportRow]:
             parsed_rows.append(ParsedImportRow(row_number, {}, "", raw, warnings))
             continue
 
+        if size_breakdown and not custom_attributes.get("variants") and len(size_breakdown) > 1:
+            custom_attributes["variants"] = size_breakdown
+
+        buy_price, w1 = parse_money(mapped.get("buy_price"))
+        expected_price, w2 = parse_money(mapped.get("expected_sell_price"))
+        actual_price, w3 = parse_money(mapped.get("actual_sell_price"))
+        quantity, w4 = parse_quantity(mapped.get("quantity"))
+        status_val, w5 = parse_status(mapped.get("status"))
+        warnings.extend(w for w in (w1, w2, w3, w4, w5) if w)
+
         payload: dict[str, Any] = {
             "name": mapped["name"][:255],
             "category": mapped.get("category"),
@@ -911,14 +1016,14 @@ def parse_inventory_rows(rows: list[dict[str, Any]]) -> list[ParsedImportRow]:
             "color": mapped.get("color"),
             "condition": mapped.get("condition"),
             "serial_number": mapped.get("serial_number"),
-            "buy_price": decimal_string(mapped.get("buy_price")),
-            "expected_sell_price": decimal_string(mapped.get("expected_sell_price")),
-            "actual_sell_price": decimal_string(mapped.get("actual_sell_price")),
+            "buy_price": buy_price,
+            "expected_sell_price": expected_price,
+            "actual_sell_price": actual_price,
             "platform": mapped.get("platform"),
-            "quantity": int_value(mapped.get("quantity")),
+            "quantity": quantity,
             "vendor_name": mapped.get("vendor_name"),
             "notes": mapped.get("notes"),
-            "status": status_value(mapped.get("status")),
+            "status": status_val,
         }
 
         if mapped.get("brand"):
@@ -953,6 +1058,6 @@ def parse_inventory_rows(rows: list[dict[str, Any]]) -> list[ParsedImportRow]:
             str(payload.get(field, "")) for field in ("sku", "upc", "name", "size", "color")
         )
         external_id = hashlib.sha256(fingerprint_base.encode("utf-8")).hexdigest()[:32]
-        parsed_rows.append(ParsedImportRow(row_number, payload, external_id, raw, warnings))
+        parsed_rows.append(ParsedImportRow(row_number, payload, external_id, raw, warnings, item_id))
 
     return parsed_rows

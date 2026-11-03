@@ -100,7 +100,9 @@ def export_inventory_xlsx(db: Session, user_id) -> bytes:
             item.updated_at.isoformat() if item.updated_at else "",
         ]
         for col_idx, val in enumerate(values, start=1):
-            ws.cell(row=r, column=col_idx, value=val)
+            cell = ws.cell(row=r, column=col_idx, value=val)
+            if isinstance(val, str) and val.startswith("="):
+                cell.data_type = "s"  # literal text, not a formula
 
         has_image = False
         for key, col in (("photo_front", front_col), ("photo_back", back_col)):
