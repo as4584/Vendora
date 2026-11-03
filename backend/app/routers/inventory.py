@@ -416,6 +416,7 @@ def list_items(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     source_filter: Optional[str] = Query(None, alias="source", description="Filter by source (e.g. lightspeed)"),
     available_only: bool = Query(False, description="Only items with quantity > 0 and status in (in_stock, listed)"),
+    upc: Optional[str] = Query(None, max_length=50, description="Exact barcode (UPC/EAN) match, for scan-to-sell"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -424,6 +425,14 @@ def list_items(
         InventoryItem.user_id == current_user.id,
         InventoryItem.deleted_at.is_(None),
     )
+
+    if upc:
+        code = upc.strip()
+        # Scanners report UPC-A (12) as EAN-13 with a leading 0 and vice versa.
+        variants = {code, f"0{code}"}
+        if code.startswith("0") and len(code) > 1:
+            variants.add(code[1:])
+        base_query = base_query.filter(InventoryItem.upc.in_(sorted(variants)))
 
     if q:
         term = f"%{q[:50]}%"  # cap at 50 chars for safety

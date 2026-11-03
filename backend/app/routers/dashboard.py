@@ -6,13 +6,19 @@ Provides aggregated business metrics per ROADMAP Sprint 2:
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.user import User
-from app.schemas.dashboard import DashboardResponse, AdvancedAnalyticsResponse
+from app.schemas.dashboard import (
+    AdvancedAnalyticsResponse,
+    DashboardResponse,
+    ShowStartRequest,
+    ShowSummaryResponse,
+)
+from app.services.show_summary import build_show_summary
 from app.models.inventory import InventoryItem
 from app.models.transaction import Transaction
 from app.services.profit import (
@@ -141,3 +147,60 @@ def get_advanced_analytics(
         daily=daily,
         categories=categories,
     )
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+@router.get("/show-summary", response_model=ShowSummaryResponse)
+def show_summary(
+    since: datetime | None = Query(None, description="Window start; default: show start, else start of today (UTC)"),
+    until: datetime | None = Query(None, description="Window end; default: now"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Close out a show: units, sales, discounts, tax, fees, cost, profit,
+    money by payment method (to count the cash box), top items, refunds."""
+    now = datetime.now(timezone.utc)
+    end = _aware(until) if until else now
+    if since:
+        start = _aware(since)
+    elif current_user.show_started_at:
+        start = _aware(current_user.show_started_at)
+    else:
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if start >= end:
+        raise HTTPException(status_code=422, detail="since must be before until")
+    data = build_show_summary(db, current_user.id, start, end)
+    return ShowSummaryResponse(show_started_at=current_user.show_started_at, **data)
+
+
+@router.put("/show-start", response_model=ShowSummaryResponse)
+def start_show(
+    payload: ShowStartRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark when the current show began (default: now); the summary counts from it."""
+    now = datetime.now(timezone.utc)
+    started = _aware(payload.started_at) if payload.started_at else now
+    if started > now:
+        raise HTTPException(status_code=422, detail="The show can't start in the future")
+    current_user.show_started_at = started
+    db.add(current_user)
+    db.commit()
+    end = max(now, started + timedelta(seconds=1))
+    data = build_show_summary(db, current_user.id, started, end)
+    return ShowSummaryResponse(show_started_at=started, **data)
+
+
+@router.delete("/show-start", status_code=204)
+def end_show(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Clear the show start; the summary falls back to today."""
+    current_user.show_started_at = None
+    db.add(current_user)
+    db.commit()

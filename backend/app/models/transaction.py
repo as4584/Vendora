@@ -17,7 +17,7 @@ class Transaction(Base, TimestampMixin):
     __tablename__ = "transactions"
     __table_args__ = (
         CheckConstraint(
-            "method IN ('stripe', 'cashapp', 'paypal', 'zelle', 'venmo', 'cash', 'card', 'other')",
+            "method IN ('stripe', 'cashapp', 'paypal', 'zelle', 'venmo', 'cash', 'card', 'other', 'split')",
             name="ck_transactions_method",
         ),
         CheckConstraint(
@@ -79,6 +79,33 @@ class Transaction(Base, TimestampMixin):
     # x quantity). Refunds carry the negative of the original's cost, because
     # the unit goes back into stock. NULL = cost unknown (item had no buy price).
     cost_amount = Column(Numeric(10, 2), nullable=True)
+    # Order-level discount allocated to this line. gross_amount is already
+    # AFTER this discount (it is the line's revenue).
+    discount_amount = Column(Numeric(10, 2), nullable=False, server_default="0.00", default=0)
+    # Sales tax collected on this line. NOT part of gross/net, never profit.
+    tax_amount = Column(Numeric(10, 2), nullable=False, server_default="0.00", default=0)
+    # Size variant sold (custom_attributes.variants[].size), if any.
+    variant_size = Column(String(50), nullable=True)
+
+
+class OrderPayment(Base, TimestampMixin):
+    """One payment part of a checkout (an order may be paid several ways)."""
+    __tablename__ = "order_payments"
+    __table_args__ = (
+        CheckConstraint(
+            "method IN ('stripe', 'cashapp', 'paypal', 'zelle', 'venmo', 'cash', 'card', 'other')",
+            name="ck_order_payments_method",
+        ),
+        CheckConstraint("amount > 0", name="ck_order_payments_amount_positive"),
+        Index("ix_order_payments_user_id", "user_id"),
+        Index("ix_order_payments_order_id", "order_id"),
+    )
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    order_id = Column(Uuid, nullable=False)
+    method = Column(String(20), nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
 
 
 @sa.event.listens_for(Transaction, "before_insert")
