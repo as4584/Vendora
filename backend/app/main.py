@@ -1,4 +1,5 @@
 """Resqlo API — FastAPI application entrypoint."""
+import asyncio
 import logging
 import os
 import re
@@ -16,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.routers import auth, inventory, transactions, dashboard, invoices, webhooks
 from app.routers import export, features, sellers, integrations
-from app.routers import subscriptions, support, reset_bridge, legal_pages, scan
+from app.routers import subscriptions, support, reset_bridge, legal_pages, scan, stockx
 from app.config import settings
 from app.rate_limit import limiter
 from app.http_hardening import HardeningMiddleware
@@ -54,7 +55,14 @@ async def lifespan(app: FastAPI):
         alembic_cfg = Config(str(alembic_path))
         alembic_command.upgrade(alembic_cfg, "head")
         logger.info("Alembic migrations applied.")
+    from app.services import outbox_worker
+
+    sweeper = None
+    if settings.ENVIRONMENT != "testing":
+        sweeper = asyncio.create_task(outbox_worker.sweep_forever())
     yield
+    if sweeper is not None:
+        sweeper.cancel()
 
 # Interactive API docs are a development aid; production does not publish them.
 _docs_enabled = settings.ENVIRONMENT != "production"
@@ -119,6 +127,7 @@ app.include_router(export.router, prefix="/api/v1")
 app.include_router(features.router, prefix="/api/v1")
 app.include_router(sellers.router, prefix="/api/v1")
 app.include_router(integrations.router, prefix="/api/v1")
+app.include_router(stockx.router, prefix="/api/v1")
 app.include_router(subscriptions.router, prefix="/api/v1")
 app.include_router(support.router, prefix="/api/v1")
 app.include_router(scan.router, prefix="/api/v1")

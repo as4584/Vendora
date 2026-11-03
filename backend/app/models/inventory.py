@@ -144,7 +144,7 @@ class InventoryExternalLink(Base, TimestampMixin):
             name="uq_external_link_user_provider",
         ),
         CheckConstraint(
-            "provider IN ('lightspeed','square','clover','ebay','spreadsheet')",
+            "provider IN ('lightspeed','square','clover','ebay','stockx','spreadsheet')",
             name="ck_ext_link_provider",
         ),
         Index("ix_external_links_item_id", "inventory_item_id"),
@@ -162,6 +162,10 @@ class InventoryExternalLink(Base, TimestampMixin):
     provider = Column(String(50), nullable=False)
     external_id = Column(String(255), nullable=False)
     external_sku = Column(String(255), nullable=True)
+    # Parent record on the provider (e.g. StockX productId when external_id is
+    # a variant) and the local size/variant label it maps to. Both optional.
+    external_parent_id = Column(String(255), nullable=True)
+    variant_label = Column(String(50), nullable=True)
     last_synced_at = Column(sa.DateTime(timezone=True), nullable=True)
 
 

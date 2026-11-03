@@ -166,6 +166,11 @@ def deduct_stock(
     )
     db.add(entry)
     db.flush()  # make entry visible to same-session queries (needed with autoflush=False)
+    # A size that just sold out must come off external marketplaces. The job
+    # is written in THIS transaction, so it exists iff the sale commits.
+    from app.services.stockx import enqueue_sellout_delists  # local: avoid import cycle
+
+    enqueue_sellout_delists(db, item)
     return entry
 
 
