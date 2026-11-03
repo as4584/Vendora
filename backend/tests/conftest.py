@@ -96,7 +96,9 @@ def db():
     """Provide a transactional database session that rolls back after each test."""
     connection = engine.connect()
     transaction = connection.begin()
-    session = TestSessionLocal(bind=connection)
+    # Savepoint mode: code under test may commit or roll back freely (as it
+    # does in production) without escaping or wiping the per-test transaction.
+    session = TestSessionLocal(bind=connection, join_transaction_mode="create_savepoint")
 
     yield session
 

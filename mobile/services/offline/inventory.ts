@@ -19,6 +19,8 @@ import type {
   ListItemsParams,
   CreateItemPayload,
   CreateTransactionPayload,
+  CreateSaleOrderPayload,
+  SaleOrder,
   Transaction,
   Dashboard,
 } from "../api";
@@ -37,7 +39,7 @@ import {
 type MirrorItem = InventoryItem & { _pending?: boolean };
 type Mirror = Record<string, MirrorItem>;
 
-type OutboxKind = "create_item" | "update_item" | "quick_sale";
+type OutboxKind = "create_item" | "update_item" | "quick_sale" | "sale_order";
 interface OutboxEntry {
   id: string;
   kind: OutboxKind;
@@ -262,6 +264,51 @@ export async function queueQuickSale(
   };
 }
 
+/**
+ * Log a multi-item checkout offline as ONE outbox entry, so it can never sync
+ * halfway: decrement each line in the mirror, queue POST /transactions/order.
+ */
+export async function queueSaleOrder(payload: CreateSaleOrderPayload): Promise<SaleOrder> {
+  const now = new Date().toISOString();
+  const m = await readMirror();
+  for (const line of payload.lines) {
+    const item = m[line.item_id];
+    if (!item) continue;
+    item.quantity = Math.max(0, item.quantity - line.quantity);
+    if (item.quantity === 0) item.status = "sold";
+    item.updated_at = now;
+  }
+  await writeMirror(m);
+  const entryId = tempId("ob");
+  await enqueue({
+    id: entryId,
+    kind: "sale_order",
+    path: "/transactions/order",
+    method: "POST",
+    body: { ...payload, client_request_id: entryId },
+    createdAt: now,
+    attempts: 0,
+  });
+  const gross = payload.lines.reduce((sum, l) => sum + Number(l.unit_price) * l.quantity, 0);
+  const fee = Number(payload.fee_amount ?? "0");
+  return {
+    order_id: tempId("order"),
+    gross_amount: gross.toFixed(2),
+    fee_amount: fee.toFixed(2),
+    net_amount: (gross - fee).toFixed(2),
+    transactions: [],
+    pending: true,
+  };
+}
+
+/** Item ids an outbox entry refers to (sale orders carry several). */
+function referencedItemIds(entry: OutboxEntry): string[] {
+  const body = entry.body;
+  if (!body || typeof body !== "object") return [];
+  if (Array.isArray(body.lines)) return body.lines.map((l: any) => l?.item_id).filter(Boolean);
+  return body.item_id ? [body.item_id] : [];
+}
+
 // ─── Sync runner ─────────────────────────────────────
 let flushing = false;
 
@@ -273,6 +320,12 @@ function applyRemap(entry: OutboxEntry, remap: Record<string, string>): OutboxEn
     if (path.includes(temp)) path = path.replace(temp, real);
     if (body && typeof body === "object" && body.item_id === temp) {
       body = { ...body, item_id: real };
+    }
+    if (body && typeof body === "object" && Array.isArray(body.lines)) {
+      body = {
+        ...body,
+        lines: body.lines.map((l: any) => (l?.item_id === temp ? { ...l, item_id: real } : l)),
+      };
     }
   }
   return { ...entry, path, body };
@@ -312,7 +365,7 @@ export async function flushOutbox(): Promise<void> {
         } else if (entry.kind === "update_item" && res?.id) {
           await reconcileServerItem(res);
         }
-        // quick_sale: server recomputes stock; nothing to reconcile in mirror.
+        // quick_sale / sale_order: server recomputes stock; nothing to reconcile.
         q = q.slice(1);
         await writeJSON(KEYS.outbox, q);
         notifySync();
@@ -345,7 +398,7 @@ export async function flushOutbox(): Promise<void> {
 function dependentsOf(entry: OutboxEntry, rest: OutboxEntry[]): OutboxEntry[] {
   if (entry.kind !== "create_item" || !entry.tempId) return [];
   const temp = entry.tempId;
-  return rest.filter((e) => e.path.includes(temp) || e.body?.item_id === temp);
+  return rest.filter((e) => e.path.includes(temp) || referencedItemIds(e).includes(temp));
 }
 
 export interface FailedSync {
@@ -377,6 +430,14 @@ async function revertOptimistic(entries: OutboxEntry[]): Promise<void> {
       const item = m[e.body.item_id];
       item.quantity += e.body.quantity ?? 1;
       if (item.status === "sold" && item.quantity > 0) item.status = "in_stock";
+    }
+    if (e.kind === "sale_order" && Array.isArray(e.body?.lines)) {
+      for (const line of e.body.lines) {
+        const item = m[line?.item_id];
+        if (!item) continue;
+        item.quantity += line.quantity ?? 1;
+        if (item.status === "sold" && item.quantity > 0) item.status = "in_stock";
+      }
     }
     // update_item: the next server read replaces the mirror copy.
   }

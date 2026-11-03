@@ -8,6 +8,7 @@ Endpoints:
 """
 import logging
 import math
+import uuid
 from decimal import Decimal
 
 from uuid import UUID
@@ -21,6 +22,8 @@ from app.models.user import User
 from app.models.transaction import Transaction
 from app.models.inventory import InventoryItem
 from app.schemas.transaction import (
+    SaleOrderCreate,
+    SaleOrderResponse,
     TransactionCreate,
     TransactionResponse,
     TransactionListResponse,
@@ -145,6 +148,144 @@ def create_transaction(
     db.commit()
     db.refresh(txn)
     return txn
+
+
+def _order_response(txns: list[Transaction]) -> SaleOrderResponse:
+    return SaleOrderResponse(
+        order_id=txns[0].order_id,
+        gross_amount=sum((t.gross_amount for t in txns), Decimal("0.00")),
+        fee_amount=sum((t.fee_amount for t in txns), Decimal("0.00")),
+        net_amount=sum((t.net_amount for t in txns), Decimal("0.00")),
+        transactions=[TransactionResponse.model_validate(t) for t in txns],
+    )
+
+
+def _allocate_fee(fee: Decimal, grosses: list[Decimal]) -> list[Decimal]:
+    """Split an order-level fee across lines in proportion to line gross.
+
+    Rounds to cents; the last line takes the remainder so the parts always
+    sum exactly to the fee.
+    """
+    total = sum(grosses, Decimal("0.00"))
+    if fee == 0 or total == 0:
+        return [Decimal("0.00")] * len(grosses)
+    parts = [(fee * g / total).quantize(Decimal("0.01")) for g in grosses[:-1]]
+    parts.append(fee - sum(parts, Decimal("0.00")))
+    return parts
+
+
+@router.post("/order", response_model=SaleOrderResponse, status_code=status.HTTP_201_CREATED)
+def create_sale_order(
+    payload: SaleOrderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record a multi-item checkout atomically.
+
+    Every line is validated (ownership, stock, counting repeated items
+    together) before anything is written; then all lines are written and
+    committed together, so a dropped connection can never leave half a sale.
+    Lines share an order_id. Replays with the same client_request_id return
+    the original order.
+    """
+    if payload.client_request_id:
+        first = _find_client_request(db, current_user.id, f"{payload.client_request_id}:0")
+        if first and first.order_id:
+            existing = (
+                db.query(Transaction)
+                .filter(Transaction.user_id == current_user.id, Transaction.order_id == first.order_id)
+                .order_by(Transaction.external_reference_id)
+                .all()
+            )
+            return _order_response(existing)
+
+    items: dict = {}
+    requested: dict = {}
+    for line in payload.lines:
+        if line.item_id not in items:
+            item = db.query(InventoryItem).filter(
+                InventoryItem.id == line.item_id,
+                InventoryItem.user_id == current_user.id,
+                InventoryItem.deleted_at.is_(None),
+            ).with_for_update().first()
+            if not item:
+                raise HTTPException(status_code=404, detail=f"Item {line.item_id} not found")
+            items[line.item_id] = item
+        requested[line.item_id] = requested.get(line.item_id, 0) + line.quantity
+    for item_id, qty in requested.items():
+        available = get_available_quantity(items[item_id])
+        if available < qty:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "insufficient_stock",
+                    "message": f"Only {available} unit(s) of {items[item_id].name} available.",
+                    "item_id": str(item_id),
+                    "available": available,
+                    "requested": qty,
+                },
+            )
+
+    order_id = uuid.uuid4()
+    grosses = [(line.unit_price * line.quantity).quantize(Decimal("0.01")) for line in payload.lines]
+    fees = _allocate_fee(payload.fee_amount, grosses)
+    txns: list[Transaction] = []
+    try:
+        for index, (line, gross, fee) in enumerate(zip(payload.lines, grosses, fees, strict=True)):
+            txn = Transaction(
+                user_id=current_user.id,
+                item_id=line.item_id,
+                order_id=order_id,
+                method=payload.method,
+                status="completed",
+                gross_amount=gross,
+                fee_amount=fee,
+                net_amount=calculate_net_amount(gross, fee),
+                quantity=line.quantity,
+                source=CLIENT_REQUEST_SOURCE if payload.client_request_id else None,
+                external_reference_id=(
+                    f"{payload.client_request_id}:{index}" if payload.client_request_id else None
+                ),
+                notes=payload.notes,
+                is_refund=False,
+            )
+            db.add(txn)
+            db.flush()
+            item = items[line.item_id]
+            item.actual_sell_price = line.unit_price
+            db.add(item)
+            # No status-only fallback here: if stock can't be deducted the
+            # whole order is rolled back rather than half-recorded.
+            deduct_stock(
+                db,
+                item,
+                quantity=line.quantity,
+                event_type="sale",
+                source_type="transaction",
+                source_id=str(txn.id),
+                idempotency_key=f"txn:{txn.id}:sale",
+            )
+            txns.append(txn)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # A concurrent replay of the same order won the race.
+        if payload.client_request_id:
+            first = _find_client_request(db, current_user.id, f"{payload.client_request_id}:0")
+            if first and first.order_id:
+                return _order_response(
+                    db.query(Transaction)
+                    .filter(Transaction.user_id == current_user.id, Transaction.order_id == first.order_id)
+                    .order_by(Transaction.external_reference_id)
+                    .all()
+                )
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    for txn in txns:
+        db.refresh(txn)
+    return _order_response(txns)
 
 
 @router.get("", response_model=TransactionListResponse)

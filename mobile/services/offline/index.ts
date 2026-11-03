@@ -13,6 +13,7 @@ export {
   queueCreateItem,
   queueUpdateItem,
   queueQuickSale,
+  queueSaleOrder,
   flushOutbox,
   subscribeSync,
   getSyncState,
