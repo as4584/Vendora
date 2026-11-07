@@ -72,6 +72,9 @@ async def stripe_webhook(
             )
         except stripe.error.SignatureVerificationError:
             raise HTTPException(status_code=400, detail="Invalid signature")
+        except ValueError:
+            # Missing/garbled signature header or a body that is not JSON.
+            raise HTTPException(status_code=400, detail="Invalid webhook payload")
     else:
         # In test/dev mode without Stripe, parse the JSON directly
         import json

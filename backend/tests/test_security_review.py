@@ -68,6 +68,23 @@ def test_stripe_webhook_unsigned_refused_outside_dev(client, db, monkeypatch, en
     assert db.query(WebhookEvent).filter_by(event_id="evt_forged").count() == 0
 
 
+@pytest.mark.parametrize("headers,body", [
+    ({}, b""),                                          # no signature, empty body
+    ({"stripe-signature": "garbage"}, b"{}"),           # malformed signature header
+    ({"stripe-signature": "t=1,v1=deadbeef"}, b"not json"),
+])
+def test_stripe_webhook_malformed_is_400_not_500(client, db, monkeypatch, headers, body):
+    """Found live after deploy: a junk POST raised ValueError inside Stripe's
+    verifier and surfaced as a 500. Real Stripe deliveries are unaffected."""
+    pytest.importorskip("stripe")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_test_secret")
+    monkeypatch.setattr("app.routers.webhooks.STRIPE_AVAILABLE", True)
+    resp = client.post("/api/v1/webhooks/stripe", content=body, headers=headers)
+    assert resp.status_code == 400
+    assert db.query(WebhookEvent).count() == 0
+
+
 @pytest.mark.parametrize("env", ["production", "staging"])
 def test_square_webhook_unsigned_refused_outside_dev(client, monkeypatch, env):
     monkeypatch.setattr(settings, "ENVIRONMENT", env)
