@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 
 from app.main import app
+from app.models.customer import Customer
 from app.models.inventory import InventoryImportJob, InventoryItem
 from app.models.invoice import Invoice
 from app.models.provider import ProviderSyncRun, ReconciliationIssue
@@ -53,6 +54,7 @@ def _param_kind(path: str, name: str) -> str:
         "issue_id": "issue",
         "listing_id": "stockx_listing",
         "barcode": "barcode",
+        "customer_id": "customer",
     }[name]
 
 
@@ -77,13 +79,15 @@ def victim_objects(db, test_user):
                             inventory_item_id=item.id)
     listing = StockxListing(user_id=uid, inventory_item_id=item.id, product_id="p", variant_id="v",
                             amount=Decimal("120.00"), status="active", listing_id="L-1")
+    customer = Customer(user_id=uid, name="Victim buyer", email="victim@example.com")
     memory = ScanMemory(user_id=uid, barcode="0012345678905", fields={"name": "Victim product"})
-    db.add_all([issue, outbox, listing, memory])
+    db.add_all([issue, outbox, listing, memory, customer])
     db.flush()
     return {
         "item": item.id, "order": order_id, "txn": txn.id, "invoice": invoice.id,
         "import_job": job.id, "run": run.id, "issue": issue.id, "outbox": outbox.id,
         "stockx_listing": listing.id, "barcode": "0012345678905",
+        "customer": customer.id,
     }
 
 
@@ -122,6 +126,7 @@ def test_victim_objects_unchanged_after_attacks(client, db, victim_objects, seco
     inv = db.get(Invoice, victim_objects["invoice"])
     assert inv.customer_name == "Victim customer"
     assert db.get(ReconciliationIssue, victim_objects["issue"]).status == "open"
+    assert db.get(Customer, victim_objects["customer"]).name == "Victim buyer"
 
 
 def test_owner_can_read_own_item(client, victim_objects, auth_headers):
