@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # RevenueCat (iOS in-app purchases). The webhook sends this exact value in
     # the Authorization header; set the same string in the RevenueCat dashboard.
     REVENUECAT_WEBHOOK_AUTH: str = ""
+    # RevenueCat secret (sk_...) API key. Optional: when set, deleting a Resqlo
+    # account also deletes the RevenueCat customer record (privacy erasure).
+    REVENUECAT_SECRET_KEY: str = ""
     # Directory holding the Expo web export (mobile `expo export --platform web`).
     # When it exists, the backend serves the web app at "/" (SPA fallback).
     WEB_DIST_DIR: str = ""
