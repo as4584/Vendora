@@ -20,11 +20,12 @@ function pkg(id: string, productId: string, period: string | null, price = "$19.
   };
 }
 
-function load(os: "ios" | "web" | "android", key = "appl_test") {
+function load(os: "ios" | "web" | "android", key = "appl_test", executionEnvironment = "standalone") {
   let mod: typeof import("../services/purchases");
   jest.resetModules();
   process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY = key;
   jest.doMock("react-native", () => ({ Platform: { OS: os } }));
+  jest.doMock("expo-constants", () => ({ __esModule: true, default: { executionEnvironment } }));
   jest.isolateModules(() => {
     mod = require("../services/purchases");
   });
@@ -48,6 +49,13 @@ describe("isAppleStorefront", () => {
 });
 
 describe("iapEnabled", () => {
+  it("does not load native purchases or offer Stripe in Expo Go", async () => {
+    const p = load("ios", "appl_test", "storeClient");
+    expect(p.iapEnabled()).toBe(false);
+    expect(p.isAppleStorefront()).toBe(true);
+    await expect(p.restore("u1")).rejects.toThrow('not Expo Go');
+    expect(mockSdk.restorePurchases).not.toHaveBeenCalled();
+  });
   it("is on only for iOS with a key", () => {
     expect(load("ios").iapEnabled()).toBe(true);
     expect(load("web").iapEnabled()).toBe(false);

@@ -287,6 +287,7 @@ describe('QuickSaleScreen (checkout)', () => {
     await waitFor(() => expect(mockOnScan).toBeDefined());
     await act(async () => mockOnScan!({ data: '12345678905' })); // EAN/UPC leading zero
     expect(screen.getByText(/Cart · 1 item/)).toBeTruthy();
+    expect(screen.getByText('In your cart · Jordan 1 Retro High')).toBeTruthy();
 
     (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [], total: 0, page: 1, per_page: 5, pages: 0 });
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
@@ -305,6 +306,7 @@ describe('QuickSaleScreen (checkout)', () => {
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
     await act(async () => mockOnScan!({ data: '777' }));
     expect(screen.getByLabelText('Remove Far Item')).toBeTruthy();
+    expect(screen.getByText('In your cart · Far Item')).toBeTruthy();
 
     (apiMock.listItems as jest.Mock).mockRejectedValueOnce(new Error('down'));
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));

@@ -19,6 +19,7 @@ import { Card, Icon, Pill, SectionLabel } from "../../../components/ui";
 import { Button, IconButton, triggerHaptic } from "../../../components/Button";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 import { ReceiptSheet } from "../../../components/ReceiptSheet";
+import { CartNotice } from "../../../components/CartNotice";
 import { BRAND, COLORS, FONT_SCALE, RADII, SPACING, TYPE } from "../../../theme/tokens";
 import { formatCurrency, resolveQty } from "../../../utils/inventory";
 import {
@@ -73,6 +74,7 @@ export default function QuickSaleScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannedItem, setScannedItem] = useState<{ id: string; name: string; sequence: number } | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanLock = useRef(false);
   const prefilled = useRef(false);
@@ -232,6 +234,7 @@ export default function QuickSaleScreen() {
     if (hit) {
       triggerHaptic("success");
       addToCart(hit);
+      setScannedItem(previous => ({ id: hit!.id, name: hit!.name, sequence: (previous?.sequence || 0) + 1 }));
     } else {
       triggerHaptic("warning");
       Alert.alert(
@@ -408,6 +411,7 @@ export default function QuickSaleScreen() {
 
         {cartLines.length > 0 ? (
           <Card style={{ gap: SPACING.sm }}>
+            {scannedItem && cart[scannedItem.id] ? <CartNotice key={scannedItem.sequence} name={scannedItem.name} /> : null}
             <SectionLabel>Cart · {cartLines.length} item{cartLines.length === 1 ? "" : "s"}</SectionLabel>
             {cartLines.map((line) => {
               const sizes = sizeOptions(line.item);

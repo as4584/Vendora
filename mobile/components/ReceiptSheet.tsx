@@ -74,6 +74,7 @@ export function ReceiptSheet({
                 ) : null}
               </View>
 
+              <View style={styles.ticketEdge} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               <View style={styles.block}>
                 {receipt.lines.map((line, index) => (
                   <View key={`${line.name}-${index}`} style={styles.row}>
@@ -164,6 +165,7 @@ const styles = StyleSheet.create({
   },
   content: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: SPACING.xl },
   hero: { alignItems: "center", gap: SPACING.xs },
+  ticketEdge: { borderTopWidth: 1, borderColor: COLORS.border, borderStyle: "dashed", marginVertical: SPACING.xs },
   stamp: { borderWidth: 2, borderColor: COLORS.success, borderRadius: 4, paddingHorizontal: 16, paddingVertical: 4, marginBottom: SPACING.sm },
   stampText: { ...TYPE.headline, color: COLORS.success, letterSpacing: 3 },
   badge: {

@@ -6,6 +6,7 @@ import { ReactNode } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as api from "../services/api";
 import { Card, Icon, Pill } from "./ui";
+import { StockLabel } from "./StockLabel";
 import { BRAND, COLORS, FONT_SCALE, SPACING } from "../theme/tokens";
 import { formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../utils/inventory";
 
@@ -68,7 +69,6 @@ export default function InventoryCard({
   const conditionLabel = condition && grade
     ? (Object.prototype.hasOwnProperty.call(CONDITION_LABELS, grade) ? CONDITION_LABELS[grade] : condition)
     : null;
-  const lowStock = qty > 0 && qty <= 3;
   const sourceLabel = item.source ? SOURCE_LABELS[item.source] || item.source : "Manual";
   const frontPhoto = resolvedPhoto(item, "front");
   const backPhoto = resolvedPhoto(item, "back");
@@ -119,9 +119,7 @@ export default function InventoryCard({
               <View style={[styles.statusDot, { backgroundColor: DOT_COLORS[STATUS_TONES[item.status] || "neutral"] }]} />
               <Text style={styles.statusText}>{STATUS_LABELS[item.status] || item.status}</Text>
               <Text style={styles.statusSep}>·</Text>
-              <Text style={[styles.statusText, qty === 0 ? { color: COLORS.danger } : lowStock ? { color: COLORS.warning } : null]}>
-                {lowStock ? `Low stock ${qty}` : `Stock ${qty}`}
-              </Text>
+              <StockLabel quantity={qty} />
               {item._pending ? <Pill label="Sync pending" tone="warning" /> : null}
             </View>
 

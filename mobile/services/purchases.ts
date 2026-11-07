@@ -8,6 +8,7 @@
  * which we pass as the RevenueCat app user id.
  */
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 import type { PurchasesPackage } from "react-native-purchases";
 
 const IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || "";
@@ -35,11 +36,14 @@ export function isAppleStorefront(): boolean {
 }
 
 export function iapEnabled(): boolean {
-  return Platform.OS === "ios" && IOS_KEY.length > 0;
+  return Platform.OS === "ios" && Constants.executionEnvironment !== "storeClient" && IOS_KEY.length > 0;
 }
 
 // Loaded lazily so web/Android bundles never touch the native module.
 async function sdk(): Promise<typeof import("react-native-purchases").default> {
+  if (Constants.executionEnvironment === "storeClient") {
+    throw new Error("Purchases are available in the installed Resqlo app, not Expo Go.");
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require("react-native-purchases").default;
 }
