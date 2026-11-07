@@ -188,8 +188,12 @@ export const PRO_COMPARE: [string, string, string][] = [
   ["Inventory items", "25", "Unlimited"],
   ["CSV / spreadsheet exports", "—", "Included"],
   ["Advanced analytics & trends", "—", "Included"],
+<<<<<<< HEAD
   ["Price suggestions & eBay comps", "—", "Included"],
   ["Stripe card payments", "—", "Included"],
+=======
+  ["Accept card payments", "—", "Included"],
+>>>>>>> polish/pro-value-paywall-20261107
 ];
 
 const styles = StyleSheet.create({
