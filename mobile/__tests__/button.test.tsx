@@ -71,8 +71,23 @@ describe('Button', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('a haptics failure never breaks the tap', () => {
+  it('a synchronous haptics failure is contained', async () => {
     (Haptics.impactAsync as jest.Mock).mockImplementationOnce(() => { throw new Error('no engine'); });
-    expect(() => triggerHaptic('light')).not.toThrow();
+    await expect(triggerHaptic('light')).resolves.toBeUndefined();
+  });
+
+  it.each(['light', 'medium', 'success', 'warning'] as const)('contains rejected %s haptics', async kind => {
+    const method = kind === 'light' || kind === 'medium' ? Haptics.impactAsync : Haptics.notificationAsync;
+    (method as jest.Mock).mockRejectedValueOnce(new Error('engine unavailable'));
+    await expect(triggerHaptic(kind)).resolves.toBeUndefined();
+  });
+
+  it('still runs the action immediately when haptics reject', async () => {
+    (Haptics.impactAsync as jest.Mock).mockRejectedValueOnce(new Error('engine unavailable'));
+    const onPress = jest.fn();
+    const screen = render(<Button label="Save anyway" onPress={onPress} />);
+    fireEvent.press(screen.getByLabelText('Save anyway'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
   });
 });
