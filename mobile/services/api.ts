@@ -1174,6 +1174,8 @@ export interface SubscriptionStatus {
   current_period_end: string | null;
   managed_billing: boolean;
   provider?: "stripe" | "apple" | null;
+  /** Set while an early free user still has Pro price tools for free. */
+  pricing_grace_until?: string | null;
 }
 
 export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {

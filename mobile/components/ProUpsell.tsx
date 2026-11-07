@@ -24,3 +24,8 @@ const styles = StyleSheet.create({
   box: { gap: SPACING.sm, padding: SPACING.md, borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.bg },
   text: { color: COLORS.textSoft, fontSize: 14, lineHeight: 20 },
 });
+
+export function graceMessage(until: string): string {
+  const day = new Date(until).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return `Price suggestions and eBay comps are free for you until ${day}. Keep them with Pro.`;
+}

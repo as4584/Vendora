@@ -59,3 +59,13 @@ def test_grace_defaults_to_one_week_after_cutoff():
         assert not in_pricing_grace(user, now=datetime(2026, 12, 8, 0, 1, tzinfo=timezone.utc))
     finally:
         settings.PRICING_GRACE_CUTOFF, settings.PRICING_GRACE_UNTIL = old
+
+
+def test_status_reports_grace_end_for_free_users(client, auth_headers, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "PRICING_GRACE_CUTOFF", "2999-01-01")
+    monkeypatch.setattr(settings, "PRICING_GRACE_UNTIL", "")
+    body = client.get("/api/v1/subscriptions/me", headers=auth_headers).json()
+    assert body["pricing_grace_until"].startswith("2999-01-08")
+    monkeypatch.setattr(settings, "PRICING_GRACE_CUTOFF", "")
+    assert client.get("/api/v1/subscriptions/me", headers=auth_headers).json()["pricing_grace_until"] is None

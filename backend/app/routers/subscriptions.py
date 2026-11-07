@@ -36,7 +36,17 @@ def get_subscription_status(
         "current_period_end": subscription.current_period_end if subscription else None,
         "managed_billing": bool(subscription and subscription.stripe_customer_id),
         "provider": subscription.provider if subscription else None,
+        "pricing_grace_until": _grace_until(current_user),
     }
+
+
+def _grace_until(user):
+    from datetime import datetime, timezone
+    from app.services.feature_flags import pricing_grace_end
+    if user.subscription_tier == "pro":
+        return None
+    end = pricing_grace_end(user)
+    return end if end and datetime.now(timezone.utc) < end else None
 
 
 @router.post("/checkout")

@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
 import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
-import { ProUpsell } from "../../../components/ProUpsell";
+import { ProUpsell, graceMessage } from "../../../components/ProUpsell";
 import { useAuth } from "../../../context/auth";
 import { COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
 import { SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
@@ -46,6 +46,15 @@ export default function InventoryListScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const freeLimit = user && user.subscription_tier !== "pro" ? FREE_ITEM_LIMIT : null;
+  const [graceUntil, setGraceUntil] = useState<string | null>(null);
+  useFocusEffect(useCallback(() => {
+    if (!freeLimit) { setGraceUntil(null); return; }
+    let live = true;
+    Promise.resolve(api.getSubscriptionStatus?.())
+      .then((st) => { if (live) setGraceUntil(st?.pricing_grace_until ?? null); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [freeLimit]));
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<api.InventoryItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -273,6 +282,7 @@ export default function InventoryListScreen() {
         ListHeaderComponent={
           <View style={{ gap: SPACING.md, marginBottom: SPACING.md }}>
             <HeaderTitle title="Inventory" subtitle={freeLimit ? `${total} of ${freeLimit} free items used` : `${total} ${total === 1 ? "item" : "items"}`} />
+            {graceUntil ? <ProUpsell testID="grace-upsell" message={graceMessage(graceUntil)} /> : null}
             {freeLimit && total >= freeLimit - 5 ? (
               <ProUpsell
                 testID="item-limit-upsell"

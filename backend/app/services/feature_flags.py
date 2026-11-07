@@ -96,16 +96,23 @@ def _aware_iso(value: str):
 
 
 def in_pricing_grace(user, now=None) -> bool:
-    """Early free users keep market pricing until PRICING_GRACE_UNTIL."""
-    from datetime import datetime, timedelta, timezone
+    """Early free users keep market pricing until the grace end."""
+    from datetime import datetime, timezone
+    end = pricing_grace_end(user)
+    return end is not None and (now or datetime.now(timezone.utc)) < end
+
+
+def pricing_grace_end(user):
+    """When this user's free market-pricing grace ends, or None if not eligible."""
+    from datetime import timedelta, timezone
     from app.config import settings
-    if not settings.PRICING_GRACE_CUTOFF or not user.created_at:
-        return False
+    if not settings.PRICING_GRACE_CUTOFF or not getattr(user, "created_at", None):
+        return None
     try:
         cutoff = _aware_iso(settings.PRICING_GRACE_CUTOFF)
         until = (_aware_iso(settings.PRICING_GRACE_UNTIL) if settings.PRICING_GRACE_UNTIL
                  else cutoff + timedelta(days=settings.PRICING_GRACE_DAYS))
     except ValueError:
-        return False
+        return None
     created = user.created_at if user.created_at.tzinfo else user.created_at.replace(tzinfo=timezone.utc)
-    return created < cutoff and (now or datetime.now(timezone.utc)) < until
+    return until if created < cutoff else None

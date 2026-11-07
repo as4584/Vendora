@@ -4,6 +4,7 @@ import * as WebBrowser from "expo-web-browser";
 
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { useAuth } from "../../../context/auth";
+import { graceMessage } from "../../../components/ProUpsell";
 import * as api from "../../../services/api";
 import * as iap from "../../../services/purchases";
 import { COLORS, SPACING } from "../../../theme/tokens";
@@ -120,6 +121,12 @@ export default function SubscriptionScreen() {
         {status?.current_period_end ? <Text style={styles.muted}>Current period ends {new Date(status.current_period_end).toLocaleDateString()}</Text> : null}
         {status?.managed_billing || (useApple && status?.provider === "apple") ? <ActionButton label={working === "portal" ? "Opening..." : status?.provider === "apple" && useApple ? "Manage Subscription" : "Manage Billing"} onPress={manageBilling} disabled={!!working} tone="secondary" /> : null}
       </Card>
+      {status?.pricing_grace_until && status?.tier !== "pro" ? (
+        <Card style={styles.card}>
+          <View testID="grace-notice" />
+          <Text style={styles.copy}>{graceMessage(status.pricing_grace_until)}</Text>
+        </Card>
+      ) : null}
       {status?.tier !== "pro" ? (
         <Card style={styles.card}>
           <View testID="pro-compare" />

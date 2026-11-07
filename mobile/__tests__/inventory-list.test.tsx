@@ -39,6 +39,7 @@ jest.mock('expo-router', () => ({
   },
 }));
 jest.mock('../services/api', () => ({
+  getSubscriptionStatus: jest.fn(async () => ({ pricing_grace_until: null })),
   listItems: jest.fn(),
   exportInventoryWarehouseCSV: jest.fn(),
   bulkDeleteItems: jest.fn(),
@@ -424,6 +425,14 @@ describe('free item counter', () => {
     const screen = render(<InventoryListScreen />);
     await screen.findByText('22 of 25 free items used');
     expect(screen.getByTestId('item-limit-upsell')).toHaveTextContent(/3 free items left/);
+  });
+
+  it('shows the free-week notice during grace', async () => {
+    mockTier = 'free';
+    (apiMock.getSubscriptionStatus as jest.Mock).mockResolvedValueOnce({ pricing_grace_until: '2026-12-08T00:00:00Z' });
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [], total: 3 });
+    const screen = render(<InventoryListScreen />);
+    expect(await screen.findByTestId('grace-upsell')).toHaveTextContent(/free for you until/);
   });
 
   it('hides the counter for Pro', async () => {
