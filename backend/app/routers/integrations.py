@@ -304,7 +304,18 @@ def ebay_get_listing(
     current_user: User = Depends(get_current_user),
 ):
     """Listing status for an item (listed=false when it has no eBay listing)."""
-    link = ebay_listing.get_ebay_link(db, current_user.id, item_id)
+    owned = (
+        db.query(InventoryItem.id)
+        .filter(
+            InventoryItem.id == item_id,
+            InventoryItem.user_id == current_user.id,
+            InventoryItem.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if owned is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found.")
+    link =ebay_listing.get_ebay_link(db, current_user.id, item_id)
     return _listing_response(item_id, ebay_listing.link_payload(link))
 
 
@@ -367,7 +378,14 @@ def ebay_listing_image(
         data, media = ebay_listing.decode_data_url(value)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    return Response(content=data, media_type=media, headers={"Cache-Control": "public, max-age=3600"})
+    return Response(
+        content=data,
+        media_type=media,
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
 
 
 # ─── eBay insights: fees + payouts, traffic, offers, notifications ───────────
@@ -954,7 +972,7 @@ async def square_webhook(request: Request, db: Session = Depends(get_db)):
 
     # ── HMAC-SHA256 signature verification ────────────────────────────────
     signature_key = settings.SQUARE_WEBHOOK_SIGNATURE_KEY
-    if settings.ENVIRONMENT == "production" and not signature_key:
+    if settings.ENVIRONMENT not in ("development", "testing") and not signature_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Square webhook verification is not configured.",
