@@ -262,6 +262,23 @@ export default function SettingsScreen() {
     ],
   );
 
+  const handleDisconnectPos = (provider: "square" | "clover") => {
+    const label = provider === "square" ? "Square" : "Clover";
+    Alert.alert(
+      `Disconnect ${label}?`,
+      "Your Resqlo inventory stays. Item links are kept so reconnecting matches them again.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Disconnect", style: "destructive", onPress: async () => {
+          try {
+            await (provider === "square" ? api.disconnectSquare() : api.disconnectClover());
+            await fetchAll();
+          } catch (err: any) { Alert.alert("Disconnect failed", err?.message || `Could not disconnect ${label}.`); }
+        } },
+      ],
+    );
+  };
+
   const openProviderConnection = (provider: "square" | "clover") => {
     setConnectionProvider(provider);
     setAccessToken("");
@@ -412,6 +429,7 @@ export default function SettingsScreen() {
         syncing={sqSyncing}
         onConnect={handleConnectSquare}
         onSync={handleSyncSquare}
+        onDisconnect={() => handleDisconnectPos("square")}
       />
       <ProviderCard
         name="Clover"
@@ -422,6 +440,7 @@ export default function SettingsScreen() {
         syncing={cvSyncing}
         onConnect={handleConnectClover}
         onSync={handleSyncClover}
+        onDisconnect={() => handleDisconnectPos("clover")}
       />
       <ProviderCard
         name="eBay"

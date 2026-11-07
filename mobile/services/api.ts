@@ -790,6 +790,8 @@ export interface CreateSaleOrderPayload {
   notes?: string;
   /** Offline outbox id; the server records a replayed order only once. */
   client_request_id?: string;
+  /** The buyer, picked at checkout. */
+  customer_id?: string;
 }
 
 export interface SaleOrder {
@@ -880,10 +882,6 @@ export async function listTransactions(
   return request<PaginatedTransactions>(`/transactions?${qs.toString()}`);
 }
 
-export async function getTransaction(id: string): Promise<Transaction> {
-  return request<Transaction>(`/transactions/${id}`);
-}
-
 export async function refundTransaction(
   id: string,
   reason?: string
@@ -955,6 +953,8 @@ export interface InvoiceData {
   invoice_number?: string;
   customer_name: string;
   customer_email: string | null;
+  customer_phone?: string | null;
+  customer_id?: string | null;
   status: string;
   subtotal: string;
   tax: string;
@@ -1012,6 +1012,9 @@ export interface PaginatedInvoices {
 export interface CreateInvoicePayload {
   customer_name: string;
   customer_email?: string;
+  customer_phone?: string;
+  /** Pick an existing customer; otherwise the server matches or creates one. */
+  customer_id?: string;
   items: {
     inventory_item_id?: string;
     size_label?: string;
@@ -1025,22 +1028,6 @@ export interface CreateInvoicePayload {
   notes?: string;
   /** Idempotency key; set automatically so a retried create never duplicates. */
   client_request_id?: string;
-}
-
-export interface UpdateInvoicePayload {
-  customer_name: string;
-  customer_email?: string;
-  items: {
-    inventory_item_id?: string;
-    size_label?: string;
-    description: string;
-    quantity: number;
-    unit_price: string;
-  }[];
-  tax?: string;
-  shipping?: string;
-  discount?: string;
-  notes?: string;
 }
 
 function requestKey(prefix: string): string {
@@ -1133,16 +1120,6 @@ export async function getInvoice(id: string): Promise<InvoiceData> {
   return request<InvoiceData>(`/invoices/${id}`);
 }
 
-export async function updateInvoice(
-  id: string,
-  payload: UpdateInvoicePayload
-): Promise<InvoiceData> {
-  return request<InvoiceData>(`/invoices/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
-
 export async function updateInvoiceStatus(
   id: string,
   status: string
@@ -1170,14 +1147,6 @@ export interface TierInfo {
 export interface TiersResponse {
   tiers: { free: TierInfo; pro: TierInfo };
   partner_addon: { price: number; requires: string; features: string[] };
-}
-
-export async function getFeatureFlags(): Promise<FeatureFlags> {
-  return request<FeatureFlags>("/features");
-}
-
-export async function getTiers(): Promise<TiersResponse> {
-  return request<TiersResponse>("/features/tiers");
 }
 
 export interface SubscriptionStatus {
@@ -1211,10 +1180,6 @@ export async function submitSupportRequest(subject: string, message: string): Pr
 }
 
 // ─── Export ──────────────────────────────────────────
-
-export async function exportInventoryCSV(): Promise<string> {
-  return request<string>("/export/inventory");
-}
 
 export async function exportInventoryWarehouseCSV(): Promise<string> {
   return request<string>("/export/inventory?template=warehouse");
@@ -1866,4 +1831,110 @@ export async function updateReconciliationIssue(
 
 export async function healthCheck(): Promise<{ status: string; version: string }> {
   return request("/health");
+}
+
+// ─── Customers ───────────────────────────────────────
+
+export interface Customer {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  tax_exempt: boolean;
+  notes: string | null;
+  order_count: number;
+  /** Decimal string: invoice payments + checkout totals, minus refunds. */
+  total_spent: string;
+  last_purchase_at: string | null;
+  created_at: string;
+}
+
+export interface CustomerInvoiceSummary {
+  id: string;
+  invoice_number: string;
+  status: string;
+  total: string;
+  amount_paid: string;
+  created_at: string;
+}
+
+export interface CustomerOrderSummary {
+  order_id: string | null;
+  transaction_id: string;
+  total: string;
+  item_count: number;
+  refunded: boolean;
+  created_at: string;
+}
+
+export interface CustomerDetail extends Customer {
+  invoices: CustomerInvoiceSummary[];
+  orders: CustomerOrderSummary[];
+}
+
+export interface CustomerInput {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  tax_exempt?: boolean;
+  notes?: string;
+}
+
+/** Customer list; falls back to the last list seen on this device when offline. */
+export async function listCustomers(q?: string): Promise<Customer[]> {
+  const term = q?.trim();
+  const path = term ? `/customers?q=${encodeURIComponent(term)}` : "/customers";
+  try {
+    const page = await request<{ items: Customer[]; total: number }>(path);
+    if (!term) await cacheCustomers(page.items);
+    return page.items;
+  } catch (e) {
+    if (isNetworkError(e) || !isOnline()) {
+      const cached = await readCachedCustomers();
+      if (cached) {
+        const needle = (term || "").toLowerCase();
+        return needle
+          ? cached.filter((c) => [c.name, c.email || "", c.phone || ""].some((v) => v.toLowerCase().includes(needle)))
+          : cached;
+      }
+    }
+    throw e;
+  }
+}
+
+export async function getCustomer(id: string): Promise<CustomerDetail> {
+  return request<CustomerDetail>(`/customers/${encodeURIComponent(id)}`);
+}
+
+export async function createCustomer(body: CustomerInput & { name: string }): Promise<Customer> {
+  return request<Customer>("/customers", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateCustomer(id: string, body: CustomerInput): Promise<Customer> {
+  return request<Customer>(`/customers/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+const CUSTOMERS_CACHE_KEY = "offline:customers";
+
+async function cacheCustomers(items: Customer[]): Promise<void> {
+  try { await AsyncStorage.setItem(CUSTOMERS_CACHE_KEY, JSON.stringify(items)); } catch { /* best effort */ }
+}
+
+async function readCachedCustomers(): Promise<Customer[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CUSTOMERS_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Customer[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function disconnectSquare(): Promise<{ disconnected: boolean; links_retained: number }> {
+  return request("/integrations/square", { method: "DELETE" });
+}
+
+export async function disconnectClover(): Promise<{ disconnected: boolean; links_retained: number }> {
+  return request("/integrations/clover", { method: "DELETE" });
 }

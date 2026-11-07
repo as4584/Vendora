@@ -32,6 +32,8 @@ jest.mock('../services/api', () => ({
   listEbayPayouts: jest.fn(async () => []),
   listEbayFees: jest.fn(async () => []),
   syncEbayFinances: jest.fn(),
+  retrySyncRun: jest.fn(),
+  updateReconciliationIssue: jest.fn(),
 }));
 
 const DISCONNECTED = { connected: false, last_synced_at: null };
@@ -190,5 +192,39 @@ describe('SyncCenterScreen', () => {
     // 5 runs > 4 → View All History appears; toggling shows "Show less".
     fireEvent.press(screen.getByText('View All History'));
     expect(screen.getByText('Show less')).toBeTruthy();
+  });
+
+  it('retries a failed sync run and reports remaining errors or failure', async () => {
+    (apiMock.listSyncRuns as jest.Mock).mockResolvedValue([
+      { id: 'run-f', provider: 'square', status: 'failed', started_at: '2026-04-25T12:00:00Z', items_imported: 0, items_updated: 0, errors_count: 3 },
+    ]);
+    (apiMock.retrySyncRun as jest.Mock)
+      .mockResolvedValueOnce({ errors_count: 2 })
+      .mockResolvedValueOnce({ errors_count: 0 })
+      .mockRejectedValueOnce(new Error('down'));
+    const screen = render(<SyncCenterScreen />);
+    const retry = await screen.findByLabelText('Retry Square sync');
+    await act(async () => { fireEvent.press(retry); });
+    expect(apiMock.retrySyncRun).toHaveBeenCalledWith('run-f');
+    expect(Alert.alert).toHaveBeenCalledWith('Retried with errors', '2 items still failed.');
+    await act(async () => { fireEvent.press(screen.getByLabelText('Retry Square sync')); });
+    await act(async () => { fireEvent.press(screen.getByLabelText('Retry Square sync')); });
+    expect(Alert.alert).toHaveBeenCalledWith('Retry failed', 'down');
+  });
+
+  it('resolves and dismisses open reconciliation issues', async () => {
+    (apiMock.listReconciliationIssues as jest.Mock).mockResolvedValue([
+      { id: 'iss-1', provider: 'clover', issue_type: 'stock_drift', status: 'open', external_id: 'X1', detected_at: '2026-04-25T12:00:00Z' },
+      { id: 'iss-2', provider: 'square', issue_type: 'missing', status: 'resolved', external_id: null, detected_at: '2026-04-25T12:00:00Z' },
+    ]);
+    (apiMock.updateReconciliationIssue as jest.Mock).mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('nope'));
+    const screen = render(<SyncCenterScreen />);
+    await screen.findByText('Reconciliation Issues');
+    await act(async () => { fireEvent.press(screen.getByLabelText('Mark Clover issue resolved')); });
+    expect(apiMock.updateReconciliationIssue).toHaveBeenCalledWith('iss-1', { status: 'resolved' });
+    await act(async () => { fireEvent.press(screen.getByLabelText('Dismiss Clover issue')); });
+    expect(apiMock.updateReconciliationIssue).toHaveBeenCalledWith('iss-1', { status: 'dismissed' });
+    expect(Alert.alert).toHaveBeenCalledWith('Update failed', 'nope');
+    expect(screen.getByText('RESOLVED')).toBeTruthy();
   });
 });

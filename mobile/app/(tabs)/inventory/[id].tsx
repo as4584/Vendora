@@ -17,6 +17,7 @@ import { StockxItemCard } from "../../../components/Stockx";
 import { Ionicons } from "@expo/vector-icons";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { EbayListingCard } from "../../../components/EbayListingCard";
+import { Button } from "../../../components/Button";
 import { EbayCompsCard } from "../../../components/EbayCompsCard";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
@@ -45,6 +46,7 @@ export default function ItemDetailScreen() {
   const [suggestion, setSuggestion] = useState<api.PricingSuggestion | null>(null);
   const [pricingLoading, setPricingLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [refunding, setRefunding] = useState<string | null>(null);
 
   const loadItem = useCallback(async () => {
     setLoading(true);
@@ -114,6 +116,29 @@ export default function ItemDetailScreen() {
       uploadPhoto(side, dataUrl);
     }
   };
+
+  const confirmRefund = (transaction: api.Transaction) => Alert.alert(
+    "Refund this sale?",
+    `${formatCurrency(transaction.gross_amount)} comes off your sales and ${transaction.quantity} unit${transaction.quantity === 1 ? "" : "s"} go back in stock.`,
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Refund",
+        style: "destructive",
+        onPress: async () => {
+          setRefunding(transaction.id);
+          try {
+            await api.refundTransaction(transaction.id);
+            await loadItem();
+          } catch (err: any) {
+            Alert.alert("Refund failed", err?.detail?.message || err?.message || "Could not refund this sale.");
+          } finally {
+            setRefunding(null);
+          }
+        },
+      },
+    ],
+  );
 
   const handleTransition = async (status: string) => {
     try {
@@ -336,11 +361,26 @@ export default function ItemDetailScreen() {
           <Text style={styles.emptyText}>No completed sales are linked to this item yet.</Text>
         ) : (
           transactions.slice(0, 5).map((transaction) => (
-            <View key={transaction.id} style={styles.timelineRow}>
-              <Text style={styles.timelineTitle}>{(transaction.method || "sale").toUpperCase()}</Text>
-              <Text style={styles.timelineMeta}>
-                {formatCurrency(transaction.gross_amount)} • Qty {transaction.quantity} • {formatCompactDate(transaction.created_at)}
-              </Text>
+            <View key={transaction.id} style={[styles.timelineRow, styles.saleRow]}>
+              <View style={styles.saleText}>
+                <Text style={styles.timelineTitle}>
+                  {transaction.is_refund ? "REFUND" : (transaction.method || "sale").toUpperCase()}
+                  {transaction.status === "refunded" ? " · REFUNDED" : ""}
+                </Text>
+                <Text style={styles.timelineMeta}>
+                  {transaction.is_refund ? "-" : ""}{formatCurrency(transaction.gross_amount)} • Qty {transaction.quantity} • {formatCompactDate(transaction.created_at)}
+                </Text>
+              </View>
+              {!transaction.is_refund && transaction.status === "completed" && !transaction.invoice_id ? (
+                <Button
+                  label="Refund"
+                  size="sm"
+                  variant="ghost"
+                  accessibilityLabel={`Refund ${formatCurrency(transaction.gross_amount)} sale`}
+                  loading={refunding === transaction.id}
+                  onPress={() => confirmRefund(transaction)}
+                />
+              ) : null}
             </View>
           ))
         )}
@@ -418,6 +458,8 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  saleRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  saleText: { flex: 1, minWidth: 0 },
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: SPACING.lg, paddingBottom: 48, gap: SPACING.md },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg, padding: SPACING.lg, gap: SPACING.sm },

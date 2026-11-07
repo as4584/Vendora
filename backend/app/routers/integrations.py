@@ -780,6 +780,34 @@ async def square_sync(
 
 # ─── Clover ───────────────────────────────────────────────────────────────────
 
+def _disconnect_credential(db: Session, user_id, provider: str, credential) -> LightspeedDisconnectResponse:
+    """Forget the stored token; keep item links so a reconnect re-matches safely."""
+    if credential:
+        db.delete(credential)
+        db.commit()
+    links = db.query(InventoryExternalLink).filter(
+        InventoryExternalLink.user_id == user_id,
+        InventoryExternalLink.provider == provider,
+    ).count()
+    return LightspeedDisconnectResponse(disconnected=True, links_retained=links)
+
+
+@router.delete("/square", response_model=LightspeedDisconnectResponse)
+def square_disconnect(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _disconnect_credential(db, current_user.id, "square", square_service._get_credential(db, current_user.id))
+
+
+@router.delete("/clover", response_model=LightspeedDisconnectResponse)
+def clover_disconnect(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _disconnect_credential(db, current_user.id, "clover", clover_service._get_credential(db, current_user.id))
+
+
 @router.get("/clover/status", response_model=CloverStatusResponse)
 def clover_status(
     db: Session = Depends(get_db),

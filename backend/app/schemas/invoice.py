@@ -30,6 +30,9 @@ class InvoiceItemResponse(BaseModel):
 class InvoiceCreate(BaseModel):
     customer_name: str = Field(max_length=255)
     customer_email: Optional[str] = Field(None, max_length=255)
+    customer_phone: Optional[str] = Field(None, max_length=50)
+    # Pick an existing customer; otherwise one is matched/created from the fields above.
+    customer_id: Optional[UUID] = None
     items: list[InvoiceItemCreate] = Field(min_length=1)
     tax: Decimal = Field(default=Decimal("0.00"), ge=0)
     shipping: Decimal = Field(default=Decimal("0.00"), ge=0)
@@ -42,6 +45,11 @@ class InvoiceCreate(BaseModel):
 class InvoiceUpdate(BaseModel):
     customer_name: str = Field(max_length=255)
     customer_email: Optional[str] = Field(None, max_length=255)
+    customer_phone: Optional[str] = Field(None, max_length=50)
+    customer_id: Optional[UUID] = None
+    customer_phone: Optional[str] = Field(None, max_length=50)
+    # Pick an existing customer; otherwise one is matched/created from the fields above.
+    customer_id: Optional[UUID] = None
     items: list[InvoiceItemCreate] = Field(min_length=1)
     tax: Decimal = Field(default=Decimal("0.00"), ge=0)
     shipping: Decimal = Field(default=Decimal("0.00"), ge=0)
@@ -58,6 +66,8 @@ class InvoiceResponse(BaseModel):
     invoice_number: str
     customer_name: str
     customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_id: Optional[UUID] = None
     status: str
     subtotal: Decimal
     tax: Decimal

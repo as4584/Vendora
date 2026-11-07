@@ -21,6 +21,7 @@ from app.main import app
 from app.database import get_db
 from app.models.base import Base
 from app.models.user import User
+from app.models.customer import Customer  # noqa: F401
 from app.models.transaction import Transaction  # noqa: F401
 from app.models.invoice import Invoice, InvoiceItem  # noqa: F401
 from app.models.subscription import Subscription, WebhookEvent  # noqa: F401
