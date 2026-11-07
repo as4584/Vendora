@@ -21,6 +21,7 @@ from app.schemas.user import (
     UserProfileUpdate,
     UserResponse,
 )
+from app.services.account_deletion import revoke_third_party_access
 from app.services.auth import (
     create_password_reset_token,
     hash_password,
@@ -241,6 +242,7 @@ def delete_account(
     if not verify_password(payload.password, current_user.password_hash):
         raise HTTPException(status_code=401, detail="Password is incorrect.")
     cancel_user_subscriptions(db, current_user)
+    revoke_third_party_access(db, current_user)
     db.delete(current_user)
     db.commit()
     return MessageResponse(message="Account permanently deleted.")

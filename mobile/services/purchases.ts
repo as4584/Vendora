@@ -25,6 +25,15 @@ export const VENDORA_OFFERING = "vendora_default";
 
 let configuredFor: string | null = null;
 
+/**
+ * True on the iOS app. App Store Guideline 3.1.1: here every upgrade must go
+ * through Apple, so the Stripe checkout, Stripe billing portal and web prices
+ * are never shown, even if the RevenueCat key is missing from the build.
+ */
+export function isAppleStorefront(): boolean {
+  return Platform.OS === "ios";
+}
+
 export function iapEnabled(): boolean {
   return Platform.OS === "ios" && IOS_KEY.length > 0;
 }
