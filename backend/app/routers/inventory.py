@@ -409,9 +409,18 @@ def create_item(
         notes=payload.notes,
     )
     db.add(item)
+    db.flush()
+    _sheet_push(db, item)
     db.commit()
     db.refresh(item)
     return item
+
+
+def _sheet_push(db: Session, item: InventoryItem) -> None:
+    """Keep a linked Google Sheet row in step with an app-side edit."""
+    from app.services.google_sheets import enqueue_sheet_push
+
+    enqueue_sheet_push(db, item)
 
 
 @router.get("", response_model=PaginatedItems)
@@ -832,6 +841,7 @@ def update_item(
         _apply_quantity_edit(db, item, new_qty, expected_qty)
 
     db.add(item)
+    _sheet_push(db, item)
     db.commit()
     db.refresh(item)
     return item

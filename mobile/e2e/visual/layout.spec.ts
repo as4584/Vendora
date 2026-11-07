@@ -51,6 +51,7 @@ const SCREENS: {
   { name: 'import-review-edit', path: '/inventory/import', ready: 'Choose CSV File', upload: true, steps: ['Fix'] },
   { name: 'more', path: '/more' },
   { name: 'settings', path: '/settings' },
+  { name: 'settings-google-sheets', path: '/settings', ready: 'Sheet is the source of truth', fullPage: true },
   { name: 'subscription', path: '/settings/subscription' },
   { name: 'support', path: '/settings/support' },
   { name: 'sync-center', path: '/settings/sync-center' },
@@ -66,8 +67,28 @@ const SCREENS: {
   },
 ];
 
+const GOOGLE_SHEETS_STATUS = {
+  configured: true,
+  connected: true,
+  email: 'seller@example.com',
+  sheet: {
+    spreadsheet_id: '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789',
+    title: 'Resqlo Inventory with a fairly long spreadsheet title for wrapping',
+    url: 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit',
+    tab: 'Inventory',
+    source_of_truth: true,
+    archive_missing: false,
+    last_synced_at: new Date().toISOString(),
+    last_error: null,
+    mapped_columns: ['id', 'name', 'quantity'],
+  },
+  pending_pushes: 2,
+  failed_pushes: 1,
+};
+
 const ROUTES: [RegExp, unknown][] = [
   [/\/inventory\/imports\/preview$/, fixtures.import_preview],
+  [/\/integrations\/google\/status/, GOOGLE_SHEETS_STATUS],
   [/\/auth\/me$/, fixtures.me],
   [/\/dashboard\/advanced/, fixtures.advanced],
   [/\/dashboard\/show-summary/, fixtures.show_summary],

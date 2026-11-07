@@ -15,6 +15,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
+import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
 import { COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
 import { SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import InventoryCard, { STATUS_TONES } from "../../../components/InventoryCard";
@@ -321,6 +322,7 @@ export default function InventoryListScreen() {
               <View style={styles.emptyCta}>
                 <ActionButton label="Add an item" onPress={() => router.push("/inventory/add" as any)} />
               </View>
+              {!searchQuery && !statusFilter && !sourceFilter ? <GoogleSheetsPrompt onPress={() => router.push("/settings" as any)} /> : null}
             </View>
           </Card>
         }

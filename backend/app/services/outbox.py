@@ -97,8 +97,11 @@ def enqueue_stock_change(db: Session, item: InventoryItem, *, source_type: Optio
     """The one enqueue path for stock mutations: fan out per provider link."""
     from app.services.stockx import enqueue_sellout_delists
 
+    from app.services.google_sheets import enqueue_sheet_push
+
     enqueue_sellout_delists(db, item)
     enqueue_ebay_quantity(db, item, source_type=source_type)
+    enqueue_sheet_push(db, item, source_type=source_type)
 
 
 # ─── Processing ────────────────────────────────────────────────────────────────
@@ -112,7 +115,10 @@ def _error_text(exc: Exception) -> str:
 
 def _is_retryable(exc: Exception) -> bool:
     from app.services.ebay_listing import EbayApiError
+    from app.services.google_sheets import GoogleApiError
 
+    if isinstance(exc, GoogleApiError):
+        return exc.retryable or exc.status_code in (403, 404)
     if isinstance(exc, EbayApiError):
         return exc.retryable or exc.ebay_status in (401, 403, 409)
     if isinstance(exc, HTTPException):
@@ -121,17 +127,29 @@ def _is_retryable(exc: Exception) -> bool:
     return True
 
 
-async def _process_ebay_job(db: Session, job: ProviderOutbox, now: datetime) -> None:
+async def _run_ebay(db: Session, job: ProviderOutbox):
     from app.services.ebay_listing import sync_listing_quantity
 
+    if job.action != EBAY_SYNC_QUANTITY or job.inventory_item_id is None:
+        raise ValueError(f"unknown job {job.provider}/{job.action}")
+    return await sync_listing_quantity(db, job.inventory_item_id)
+
+
+async def _run_google_sheets(db: Session, job: ProviderOutbox):
+    from app.services.google_sheets import PUSH_ROW, google_sheets_service
+
+    if job.action != PUSH_ROW or job.inventory_item_id is None:
+        raise ValueError(f"unknown job {job.provider}/{job.action}")
+    return await google_sheets_service.push_row(db, job)
+
+
+async def _process_ebay_job(db: Session, job: ProviderOutbox, now: datetime, runner=_run_ebay) -> None:
     job_id = job.id
     job.status = "processing"
     job.attempts = (job.attempts or 0) + 1
     db.commit()
     try:
-        if job.action != EBAY_SYNC_QUANTITY or job.inventory_item_id is None:
-            raise ValueError(f"unknown job {job.provider}/{job.action}")
-        outcome = await sync_listing_quantity(db, job.inventory_item_id)
+        outcome = await runner(db, job)
     except Exception as exc:  # noqa: BLE001 - every failure is recorded on the job
         db.rollback()
         job = db.get(ProviderOutbox, job_id)
@@ -161,6 +179,8 @@ async def process_job(db: Session, job: ProviderOutbox, now: Optional[datetime] 
     now = now or datetime.now(timezone.utc)
     if job.provider == EBAY:
         await _process_ebay_job(db, job, now)
+    elif job.provider == "google_sheets":
+        await _process_ebay_job(db, job, now, runner=_run_google_sheets)
     else:
         from app.services.stockx import process_job as stockx_process_job
 

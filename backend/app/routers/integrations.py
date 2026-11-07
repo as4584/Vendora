@@ -622,7 +622,7 @@ def _outbox_response(job: ProviderOutbox, names: dict) -> OutboxJobResponse:
 @router.get("/outbox", response_model=list[OutboxJobResponse])
 def list_outbox(
     only_errors: bool = Query(True, description="Only jobs that are not done and have an error"),
-    provider: Optional[str] = Query(None, pattern="^(stockx|ebay)$"),
+    provider: Optional[str] = Query(None, pattern="^(stockx|ebay|google_sheets)$"),
     limit: int = Query(100, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1150,6 +1150,19 @@ async def retry_sync_run(
     if not original:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync run not found.")
 
+    if original.provider == "google_sheets":
+        from app.services.google_sheets import google_sheets_service
+
+        run = await google_sheets_service.pull(db, current_user.id, trigger="retry")
+        return SyncRetryResponse(
+            message="Google Sheets sync retried.",
+            new_run_id=run.id,
+            status=run.status,
+            items_imported=run.items_imported,
+            items_updated=run.items_updated,
+            errors_count=run.errors_count,
+        )
+
     provider_map = {
         "lightspeed": lightspeed_service,
         "square": square_service,
@@ -1185,7 +1198,7 @@ def provider_health(
     Includes last run timestamp, last run status, count of failed runs in the
     past 24 hours, and count of currently open reconciliation issues.
     """
-    providers = ["lightspeed", "square", "clover", "ebay"]
+    providers = ["lightspeed", "square", "clover", "ebay", "google_sheets"]
     entries = []
 
     for prov in providers:
