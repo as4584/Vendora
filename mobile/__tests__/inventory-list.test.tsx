@@ -26,6 +26,10 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('../__mocks__/async-storage'),
 );
+let mockTier = 'pro';
+jest.mock('../context/auth', () => ({
+  useAuth: () => ({ user: { subscription_tier: mockTier } }),
+}));
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
   useFocusEffect: (cb: () => void) => {
@@ -408,5 +412,24 @@ describe('InventoryListScreen', () => {
     const list = screen.UNSAFE_getByType(require('react-native').FlatList);
     await act(async () => list.props.onEndReached());
     await waitFor(() => expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })));
+  });
+});
+
+describe('free item counter', () => {
+  afterEach(() => { mockTier = 'pro'; });
+
+  it('shows items used and an upsell near the free limit', async () => {
+    mockTier = 'free';
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [], total: 22 });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('22 of 25 free items used');
+    expect(screen.getByTestId('item-limit-upsell')).toHaveTextContent(/3 free items left/);
+  });
+
+  it('hides the counter for Pro', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [], total: 22 });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('22 items');
+    expect(screen.queryByTestId('item-limit-upsell')).toBeNull();
   });
 });

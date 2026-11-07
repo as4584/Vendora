@@ -146,7 +146,8 @@ export default function SubscriptionScreen() {
                 <Text style={styles.copy}>{partner
                   ? "Everything in Pro, plus a public storefront, verified badge, and priority support."
                   : "Unlimited inventory, invoices, barcode tools, exports, Stripe payments, and advanced analytics."}</Text>
-                {active ? <Pill label="Active" tone="success" /> : <ActionButton label={working === plan.id ? "Waiting for Apple..." : `Subscribe ${plan.price}/${plan.period}`} onPress={() => buyApple(plan)} disabled={!!working} />}
+                {plan.trial && !active ? <Text style={styles.muted}>{`${plan.trial}, then ${plan.price}/${plan.period}. Cancel before it ends and you won't be charged.`}</Text> : null}
+                {active ? <Pill label="Active" tone="success" /> : <ActionButton label={working === plan.id ? "Waiting for Apple..." : plan.trial ? `Start ${plan.trial}` : `Subscribe ${plan.price}/${plan.period}`} onPress={() => buyApple(plan)} disabled={!!working} />}
               </Card>
             );
           })}
@@ -180,6 +181,7 @@ export const PRO_COMPARE: [string, string, string][] = [
   ["Inventory items", "25", "Unlimited"],
   ["CSV / spreadsheet exports", "—", "Included"],
   ["Advanced analytics & trends", "—", "Included"],
+  ["Price suggestions & eBay comps", "—", "Included"],
   ["Stripe card payments", "—", "Included"],
 ];
 

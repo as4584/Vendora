@@ -17,6 +17,8 @@ export type StorePlan = {
   productId: string;
   title: string;
   price: string;
+  /** e.g. "7-day free trial" when the product has a free intro offer. */
+  trial?: string;
   period: string;
   pkg: PurchasesPackage;
 };
@@ -61,6 +63,7 @@ export async function loadPlans(userId: string): Promise<StorePlan[]> {
     productId: pkg.product.identifier,
     title: pkg.product.title,
     price: pkg.product.priceString,
+    trial: trialLabel(pkg.product.introPrice),
     period: PERIOD_LABEL[pkg.product.subscriptionPeriod ?? ""] ?? "period",
     pkg,
   }));
@@ -99,4 +102,15 @@ export async function resetPurchases(): Promise<void> {
     // Already anonymous; nothing to clear.
   }
   configuredFor = null;
+}
+
+const TRIAL_UNIT: Record<string, string> = { DAY: "day", WEEK: "week", MONTH: "month", YEAR: "year" };
+
+/** Free intro offers only; paid intro prices are not called a trial. */
+export function trialLabel(intro: any): string | undefined {
+  if (!intro || Number(intro.price) !== 0) return undefined;
+  const unit = TRIAL_UNIT[String(intro.periodUnit ?? "").toUpperCase()];
+  const n = Number(intro.periodNumberOfUnits);
+  if (!unit || !n) return undefined;
+  return `${n}-${unit} free trial`;
 }

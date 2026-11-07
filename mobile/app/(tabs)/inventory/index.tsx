@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
 import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
+import { ProUpsell } from "../../../components/ProUpsell";
+import { useAuth } from "../../../context/auth";
 import { COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
 import { SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import InventoryCard, { STATUS_TONES } from "../../../components/InventoryCard";
@@ -37,8 +39,13 @@ export function fuzzyMatch(query: string, text: string): boolean {
   return qi === q.length;
 }
 
+/** Mirrors backend TIER_LIMITS['free'] in app/dependencies/tier_limiter.py. */
+export const FREE_ITEM_LIMIT = 25;
+
 export default function InventoryListScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const freeLimit = user && user.subscription_tier !== "pro" ? FREE_ITEM_LIMIT : null;
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<api.InventoryItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -265,7 +272,15 @@ export default function InventoryListScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
         ListHeaderComponent={
           <View style={{ gap: SPACING.md, marginBottom: SPACING.md }}>
-            <HeaderTitle title="Inventory" subtitle={`${total} ${total === 1 ? "item" : "items"}`} />
+            <HeaderTitle title="Inventory" subtitle={freeLimit ? `${total} of ${freeLimit} free items used` : `${total} ${total === 1 ? "item" : "items"}`} />
+            {freeLimit && total >= freeLimit - 5 ? (
+              <ProUpsell
+                testID="item-limit-upsell"
+                message={total >= freeLimit
+                  ? "You've used all your free items. Pro gives you unlimited inventory."
+                  : `${freeLimit - total} free ${freeLimit - total === 1 ? "item" : "items"} left. Pro gives you unlimited inventory.`}
+              />
+            ) : null}
 
             <View style={styles.actionRow}>
               {selectMode ? (

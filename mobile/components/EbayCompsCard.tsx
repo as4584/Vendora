@@ -8,6 +8,7 @@ import { StyleSheet, Text, View } from "react-native";
 import * as api from "../services/api";
 import { Button } from "./Button";
 import { Card, Pill, SectionLabel } from "./ui";
+import { ProUpsell, isProRequired } from "./ProUpsell";
 import { COLORS, SPACING, TYPE } from "../theme/tokens";
 
 type Props = { itemId?: string; query?: string; onUsePrice?: (price: string) => void };
@@ -20,6 +21,7 @@ export function EbayCompsCard({ itemId, query, onUsePrice }: Props) {
   const [comps, setComps] = useState<api.EbayComps | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -29,6 +31,7 @@ export function EbayCompsCard({ itemId, query, onUsePrice }: Props) {
       else if (query && query.trim().length >= 2) setComps(await api.searchEbayComps(query.trim()));
       else setError("Enter an item name first.");
     } catch (err: any) {
+      if (isProRequired(err)) { setLocked(true); return; }
       setError(err?.detail?.message || err?.message || "eBay prices are unavailable right now.");
     } finally {
       setLoading(false);
@@ -61,6 +64,7 @@ export function EbayCompsCard({ itemId, query, onUsePrice }: Props) {
           )}
         </View>
       ) : null}
+      {locked ? <ProUpsell testID="ebay-comps-upsell" message="See what this item sells for on eBay before you set a price. eBay comps are part of Pro." /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.action}>
         <Button

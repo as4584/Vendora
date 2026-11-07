@@ -23,6 +23,7 @@ FEATURES = {
     "invoices": {"tiers": ["pro"], "description": "Create and send customer invoices"},
     "stripe_payments": {"tiers": ["pro"], "description": "Accept Stripe payments"},
     "analytics_advanced": {"tiers": ["pro"], "description": "Advanced analytics and reporting"},
+    "market_pricing": {"tiers": ["pro"], "description": "eBay comps and smart price suggestions"},
     "unlimited_items": {"tiers": ["pro"], "description": "Unlimited inventory items"},
 
     # Partner-only features
@@ -72,3 +73,17 @@ def get_tier_info(tier: str) -> dict:
         },
     }
     return tiers.get(tier, tiers["free"])
+
+
+def require_market_pricing(current_user):
+    """Raise 403 pro_required unless the user can see market pricing."""
+    from fastapi import HTTPException, status
+    if not is_feature_enabled("market_pricing", current_user.subscription_tier):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "pro_required",
+                "message": "Price suggestions and eBay comps are part of Pro ($20/mo).",
+                "feature": "market_pricing",
+            },
+        )
