@@ -635,15 +635,6 @@ export default function QuickSaleScreen() {
             You keep {formatCents(totals.gross - fee)} after fees{totals.tax > 0 ? `; ${formatCents(totals.tax)} is tax` : ""}.
           </Text>
           <Button
-            label={submitting ? "Logging Sale..." : `Log Sale · ${formatCents(totals.total)}`}
-            onPress={handleSubmit}
-            disabled={submitting}
-            loading={submitting}
-            size="lg"
-            fullWidth
-            haptic="none"
-          />
-          <Button
             label="End-of-show summary"
             variant="ghost"
             leadingIcon="stats-chart-outline"
@@ -652,6 +643,22 @@ export default function QuickSaleScreen() {
           />
         </Card>
       </ScrollView>
+
+      <View testID="sale-checkout-bar" style={styles.checkoutBar}>
+        <View style={styles.checkoutTotalRow}>
+          <Text style={styles.checkoutLabel}>Sale total</Text>
+          <Text testID="sale-sticky-total" style={styles.checkoutTotal}>{formatCents(totals.total)}</Text>
+        </View>
+        <Button
+          label={submitting ? "Logging Sale..." : `Log Sale · ${formatCents(totals.total)}`}
+          onPress={handleSubmit}
+          disabled={submitting}
+          loading={submitting}
+          size="lg"
+          fullWidth
+          haptic="none"
+        />
+      </View>
 
       <Modal visible={scannerOpen} animationType="slide" onRequestClose={() => setScannerOpen(false)}>
         <View style={styles.scanner}>
@@ -724,6 +731,10 @@ function TotalRow({ label, value, tone }: { label: string; value: string; tone?:
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  checkoutBar: { backgroundColor: COLORS.card, borderTopWidth: 1, borderColor: COLORS.border, padding: SPACING.sm, gap: SPACING.xs, width: "100%", maxWidth: 720, alignSelf: "center" },
+  checkoutTotalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: SPACING.sm },
+  checkoutLabel: { color: COLORS.textMuted, fontSize: 14 },
+  checkoutTotal: { color: COLORS.text, fontSize: 22, fontWeight: "600", fontVariant: ["tabular-nums"] },
   content: { padding: SPACING.md, paddingBottom: 48, gap: SPACING.md, width: "100%", maxWidth: 720, alignSelf: "center" },
   flex: { flex: 1 },
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: SPACING.sm },
@@ -772,7 +783,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.bgElevated,
   },
-  chipCompact: { minHeight: 36, paddingHorizontal: 12 },
+  chipCompact: { minHeight: 44, paddingHorizontal: 12 },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipDisabled: { opacity: 0.4 },
   chipText: { ...TYPE.footnote, color: COLORS.textMuted, fontWeight: "600" },

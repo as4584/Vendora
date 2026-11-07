@@ -249,7 +249,7 @@ describe('DashboardScreen', () => {
   });
 
   it('handles a nameless user, a null-prior delta, and null quantities', async () => {
-    mockUser = {}; // no business_name → greets "there"
+    mockUser = {};
     setupMocks();
     (apiMock.getAdvancedAnalytics as jest.Mock).mockResolvedValue({
       ...MOCK_ANALYTICS,
@@ -265,7 +265,8 @@ describe('DashboardScreen', () => {
     });
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
-    expect(screen.getByText(/Good (morning|afternoon|evening), there/)).toBeTruthy();
+    expect(screen.getByText('Overview')).toBeTruthy();
+    expect(screen.queryByText(/Good (morning|afternoon|evening)/)).toBeNull();
   });
 
   it('opens inventory when the Low Stock card is tapped', async () => {
@@ -276,16 +277,14 @@ describe('DashboardScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/inventory');
   });
 
-  it.each([
-    [14, 'Good afternoon, Alex'],
-    [20, 'Good evening, Alex'],
-  ])('greets by time of day (%i:00)', async (hour, expected) => {
-    const spy = jest.spyOn(Date.prototype, 'getHours').mockReturnValue(hour);
+  it.each([true, false])('labels the actual overview period (analytics available: %s)', async (available) => {
     setupMocks();
+    if (!available) (apiMock.getAdvancedAnalytics as jest.Mock).mockRejectedValue(new Error('Pro required'));
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
-    expect(screen.getByText(expected)).toBeTruthy();
-    spy.mockRestore();
+    expect(screen.getByText('Profit today · UTC')).toBeTruthy();
+    expect(screen.getByText(available ? 'Last 30 days · UTC' : 'This month · UTC')).toBeTruthy();
+    expect(screen.queryByText(available ? 'This month · UTC' : 'Last 30 days · UTC')).toBeNull();
   });
 
   it('shows a downward week-over-week delta when revenue falls', async () => {

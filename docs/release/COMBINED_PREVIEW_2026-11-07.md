@@ -6,7 +6,29 @@ Additional polish: scan-to-cart acknowledgement, a short stock-count fade that a
 
 Final hierarchy pass: More now groups destinations into Sales & customers, Business tools, and Account & help, with Show Summary as a featured action. Every destination has an explicit button role and label. Recovery screens use the shared graphite surface/border and text tokens. Updated localhost preview was inspected in the in-app browser. Post-change checks: 622 mobile tests (53 suites), typecheck, lint, web build, and 16 responsive browser layout checks passed (More/login/register/forgot-password at three iPhone widths and iPad). Native-device validation remains outstanding.
 
-## Combined checks
+## Warm-light UI follow-up (unreleased)
+
+- Removed the time-of-day greeting; the dashboard opens with Overview and a date.
+- Labeled today's profit in UTC. The overview now says Last 30 days when advanced analytics is available, but This month when using calendar-month dashboard totals. Removed the nonfunctional period dropdown affordance and the 30-day sparkline from today's profit card. Identical totals can still be correct when all sales occurred today; no figures are fabricated to make periods look different.
+- Replaced the graphite palette with warm off-white surfaces, dark ink, and a contrast-tested violet accent. Native appearance, navigation, status bar, splash configuration, auth forms, legacy editors, badges, camera hint plate, offline notices, and selected controls were checked for the theme transition. Native splash/icon configuration requires a new native build; Metro alone cannot change an already installed binary's launch screen.
+- Added square ProductImage rendering with an accessible missing/broken-image fallback in the inventory list, item page, thumbnails, and quick sheet. No product photography was invented or sourced.
+- Pinned the live sale total and Log Sale button below the cart's ScrollView without changing order submission, payment calculations, or idempotency. Existing receipt confirmation remains the success state.
+- Put stock, asking price, condition, and sizes ahead of expandable cost/margin, metadata, invoices, and activity. Increased compact controls, quantity steppers, photo selectors, and the recovery link to 44pt targets; lighter labels leave emphasis on prices and quantities. Market pricing and Lightspeed actions use the shared busy state.
+- Added regression checks for period fallback, failed-image recovery, expandable content, light launch configuration, contrast, offline notice states, compact targets, and checkout staying visible while scrolling. No new dependencies, schema changes, state transitions, production testing, merge, or deployment.
+
+### Follow-up verification
+
+- `npm ls --depth=0`: passed; installed dependency tree valid, no dependency changes.
+- `npm run typecheck`, `npm run lint`: passed on final source.
+- `npm run test:ci -- --silent`: 56 suites / 645 tests passed. Line coverage 96.75%, functions 95.04%, branches 87.38%; existing thresholds unchanged. This is not 100% coverage.
+- `npm run build:web`: passed; the refreshed export is served by the existing sample-data localhost preview.
+- `npx playwright test --reporter=line`: 149 passed / 133 skipped, twice. Skips remain duplicate layout cases in the second project plus four opt-in reset-browser cases; no physical iPhone execution is implied.
+- After the final offline/selected-control contrast adjustments, rebuilt and ran `npx playwright test e2e/visual/layout.spec.ts --project='iPhone 12' --grep='show-summary|import-review' --reporter=line`: 15 passed. An additional `--grep='dashboard'` run passed seven normal/large-text checks. These are follow-up subsets, not a third full-suite pass.
+- Latest localhost Expo iOS JavaScript bundle: SDK 57, HTTP 200, 9,359,738 bytes. Compilation is not a native-device test or a release.
+- Manually inspected the built warm-light dashboard, inventory fallback, expandable metadata, and live sample-cart total staying visible at both scroll positions in the in-app browser. Did not submit a real sale or call external providers.
+- Development failures were resolved before these final checks: mechanical color conversion JSX errors, an old source-label assertion that needed to open the new disclosure, caption contrast below 4.5:1, and a new test's Jest mock-hoisting error. No thresholds or assertions were weakened to hide a product failure.
+
+## Combined checks (earlier baseline)
 
 - Mobile `test:ci`: 53 suites / 621 tests passed; existing coverage gates unchanged. Additional assertions on scan acknowledgements subsequently passed in the 41-test checkout/motion/purchases subset.
 - Mobile typecheck and lint passed. Web export passed. Expo Doctor: 21/21.

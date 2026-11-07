@@ -9,7 +9,7 @@ import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNetwork } from "../context/network";
-import { COLORS } from "../theme/tokens";
+import { BRAND, COLORS } from "../theme/tokens";
 
 export function OfflineBanner() {
   const { online, pending, failed, dismissFailed } = useNetwork();
@@ -63,12 +63,12 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: "#0A0E1A",
-    opacity: 0.55,
+    backgroundColor: BRAND.onPrimary,
   },
-  dismiss: { textDecorationLine: "underline" },
+  dismiss: { textDecorationLine: "underline", paddingVertical: 12 },
   text: {
-    color: "#0A0E1A",
+    color: BRAND.onPrimary,
+    flexShrink: 1,
     fontSize: 12.5,
     fontWeight: "600",
     letterSpacing: 0.2,

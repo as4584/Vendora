@@ -12,7 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Polyline, Polygon, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
-import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../theme/tokens";
+import { BRAND, COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../theme/tokens";
 
 export type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -64,7 +64,7 @@ export function Sparkline({
   data,
   width = 300,
   height = 70,
-  stroke = "#FFFFFF",
+  stroke = COLORS.primary,
   fillOpacity = 0.18,
 }: {
   data: number[];
@@ -177,11 +177,11 @@ export function Pill({
 }) {
   const palette = {
     neutral: { bg: COLORS.cardAlt, border: "transparent", text: COLORS.textMuted },
-    primary: { bg: "rgba(124,92,255,0.16)", border: "transparent", text: "#C4B6FF" },
-    success: { bg: "rgba(76,195,138,0.13)", border: "transparent", text: "#8FDDB6" },
-    warning: { bg: "rgba(229,176,74,0.13)", border: "transparent", text: "#EFCB85" },
-    danger: { bg: "rgba(229,88,77,0.14)", border: "transparent", text: "#F2A49D" },
-    info: { bg: "rgba(110,168,245,0.13)", border: "transparent", text: "#A9CBF8" },
+    primary: { bg: COLORS.primarySoft, border: "transparent", text: COLORS.primary },
+    success: { bg: "#E5F2E9", border: "transparent", text: COLORS.success },
+    warning: { bg: "#F9EED4", border: "transparent", text: COLORS.warning },
+    danger: { bg: "#FBE9E6", border: "transparent", text: COLORS.danger },
+    info: { bg: "#E7EFF9", border: "transparent", text: COLORS.info },
   }[tone];
 
   return (
@@ -297,7 +297,7 @@ export function Stepper({
                 current && styles.stepCircleCurrent,
               ]}
             >
-              <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.stepCircleText}>{index + 1}</Text>
+              <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={[styles.stepCircleText, done && { color: BRAND.onPrimary }]}>{index + 1}</Text>
             </View>
             <Text style={[styles.stepLabel, current && { color: COLORS.text }]}>{step}</Text>
             {index < steps.length - 1 ? <View style={styles.stepLine} /> : null}
@@ -375,8 +375,8 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     color: COLORS.textMuted,
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "400",
   },
   statValue: {
     color: COLORS.text,

@@ -11,15 +11,14 @@ import { View, ActivityIndicator, Platform, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { COLORS } from "../theme/tokens";
-// Navigation theme: dark everywhere, so wide screens (iPad) and screen
-// transitions never show the default light background behind content.
+// Match the warm-light surfaces during navigation and on wide screens.
 // (react-navigation is vendored inside expo-router in SDK 57.)
-import { DarkTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
+import { DefaultTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
 
 const NAV_THEME = {
-    ...DarkTheme,
+    ...DefaultTheme,
     colors: {
-        ...DarkTheme.colors,
+        ...DefaultTheme.colors,
         primary: COLORS.primary,
         background: COLORS.bg,
         card: COLORS.bgElevated,
@@ -58,8 +57,7 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-    // Web: paint the page itself dark, so the area beside the capped-width
-    // content on wide screens matches the app instead of showing white.
+    // Match the page gutters to the app on wide screens.
     useEffect(() => {
         if (Platform.OS === "web" && typeof document !== "undefined") {
             document.documentElement.style.backgroundColor = COLORS.bg;
@@ -71,7 +69,7 @@ export default function RootLayout() {
             <AuthProvider>
                 <NetworkProvider>
                     <ThemeProvider value={NAV_THEME}>
-                        <StatusBar style="light" />
+                        <StatusBar style="dark" />
                         <OfflineBanner />
                         <RootLayoutNav />
                     </ThemeProvider>
@@ -86,6 +84,6 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        backgroundColor: "#0E0E11",
+        backgroundColor: COLORS.bg,
     },
 });

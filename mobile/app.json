@@ -5,7 +5,7 @@
     "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "scheme": "vendora",
     "ios": {
       "supportsTablet": true,
@@ -127,7 +127,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A0A1A"
+        "backgroundColor": "#F7F4EE"
       },
       "package": "com.vendora.app",
       "permissions": [
@@ -168,7 +168,7 @@
         {
           "image": "./assets/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#0A0A1A"
+          "backgroundColor": "#F7F4EE"
         }
       ],
       "expo-sharing",

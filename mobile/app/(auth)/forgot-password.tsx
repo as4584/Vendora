@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     title: { color: COLORS.text, fontSize: 30, fontWeight: "600", marginBottom: 12 },
     subtitle: { color: COLORS.textMuted, fontSize: 16, lineHeight: 23, marginBottom: 28 },
     label: {
-        color: "#A6A6B0",
+        color: COLORS.textMuted,
         fontSize: 13,
         fontWeight: "600",
         marginBottom: 8,
@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
-        color: "#FFFFFF",
+        color: COLORS.text,
         fontSize: 16,
         borderWidth: 1,
         borderColor: COLORS.borderStrong,
@@ -136,8 +136,8 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         padding: 20,
     },
-    successTitle: { color: "#FFFFFF", fontSize: 19, fontWeight: "600", marginBottom: 8 },
-    successText: { color: "#A6A6B0", fontSize: 15, lineHeight: 22, marginBottom: 10 },
+    successTitle: { color: COLORS.text, fontSize: 19, fontWeight: "600", marginBottom: 8 },
+    successText: { color: COLORS.textMuted, fontSize: 15, lineHeight: 22, marginBottom: 10 },
     secondaryButton: {
         borderColor: COLORS.primary,
         borderWidth: 1,

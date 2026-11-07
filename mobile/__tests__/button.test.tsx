@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Button, IconButton, triggerHaptic } from '../components/Button';
 
@@ -56,9 +57,9 @@ describe('Button', () => {
     expect(screen.getByLabelText('Busy').props.accessibilityState).toMatchObject({ disabled: true, busy: true });
   });
 
-  it('small buttons extend their touch area to 44pt', () => {
+  it('small buttons have a real 44pt layout target without overlapping hit areas', () => {
     const screen = render(<Button label="Tiny" size="sm" onPress={jest.fn()} />);
-    expect(screen.getByLabelText('Tiny').props.hitSlop).toMatchObject({ top: 4, bottom: 4 });
+    expect(StyleSheet.flatten(screen.getByLabelText('Tiny').props.style).minHeight).toBe(44);
   });
 
   it('IconButton needs a label and fires', () => {

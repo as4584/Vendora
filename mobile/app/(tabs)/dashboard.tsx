@@ -10,26 +10,17 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../services/api";
-import { useAuth } from "../../context/auth";
 import {
   ActionButton,
   Card,
   GradientCard,
-  Icon,
   Sparkline,
   StatCard,
 } from "../../components/ui";
 import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../../theme/tokens";
 
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
-}
-
 function todayLabel(): string {
-  return new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  return new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
 }
 
 function money(v: string | number | null | undefined): string {
@@ -48,7 +39,6 @@ function pctDelta(current: number, prior: number): { text: string; tone: "up" | 
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
   const [view, setView] = useState({
     data: null as api.Dashboard | null,
     analytics: null as api.AdvancedAnalytics | null,
@@ -104,15 +94,13 @@ export default function DashboardScreen() {
 
   const { data, analytics, inventory } = view;
   const lowStock = inventory.filter((item) => (item.quantity ?? 0) > 0 && (item.quantity ?? 0) <= 3).length;
-  const name = (user?.business_name || "there").split(" ")[0];
 
   // Build a real daily net-profit series for the hero sparkline.
   const daily = analytics?.daily ?? [];
   const netSeries = daily.map((d) => Number(d.net));
   const revSeries = daily.map((d) => Number(d.revenue));
-  const heroSpark = netSeries.length > 1 ? netSeries : [0, 0];
-  // A trend needs at least two days of activity; one spike on a flat line reads as a glitch.
-  const showHeroSpark = netSeries.filter((v) => v !== 0).length >= 2;
+  // The dashboard fallback is a calendar month, never a rolling 30-day total.
+  const overviewPeriod = analytics ? "Last 30 days · UTC" : "This month · UTC";
 
   // Today-vs-yesterday delta for the hero card.
   let heroDelta: { text: string; tone: "up" | "down" | "muted" } | null = null;
@@ -142,21 +130,16 @@ export default function DashboardScreen() {
       {/* Header: the context (business + date), not a greeting */}
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
-          <Text accessibilityRole="header" style={styles.greeting}>{`${greeting()}, ${name}`}</Text>
+          <Text accessibilityRole="header" style={styles.greeting}>Overview</Text>
           <Text style={styles.greetingSub}>{todayLabel()}</Text>
         </View>
       </View>
 
       {/* Hero: today's profit, the one figure that matters */}
       <GradientCard colors={GRADIENTS.hero}>
-        <Text style={styles.heroLabel}>Profit today</Text>
+        <Text style={styles.heroLabel}>Profit today · UTC</Text>
         <Text maxFontSizeMultiplier={FONT_SCALE.display} style={styles.heroValue}>{money(data.net_profit_today)}</Text>
         {heroDelta ? <Text style={[styles.heroDelta, { color: heroDelta.tone === "up" ? COLORS.success : COLORS.danger }]}>{heroDelta.text}</Text> : null}
-        {showHeroSpark ? (
-          <View style={styles.heroSparkWrap}>
-            <Sparkline data={heroSpark} height={64} stroke={COLORS.primaryBright} fillOpacity={0.14} />
-          </View>
-        ) : null}
       </GradientCard>
 
       {/* 2x2 stat grid */}
@@ -174,8 +157,7 @@ export default function DashboardScreen() {
         <View style={styles.overviewHead}>
           <Text style={styles.overviewTitle}>Business overview</Text>
           <View style={styles.periodPill}>
-            <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.periodPillText}>Last 30 days</Text>
-            <Icon name="chevron-down" size={13} color={COLORS.textMuted} />
+            <Text style={styles.periodPillText}>{overviewPeriod}</Text>
           </View>
         </View>
         <View style={styles.overviewStats}>
@@ -232,7 +214,7 @@ const styles = StyleSheet.create({
   heroSparkWrap: { marginTop: 10, marginHorizontal: -SPACING.lg, marginBottom: -SPACING.lg },
   grid: { flexDirection: "row", gap: SPACING.sm },
   overviewCard: { gap: SPACING.md, marginTop: SPACING.xs },
-  overviewHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  overviewHead: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, alignItems: "center", justifyContent: "space-between" },
   overviewTitle: { color: COLORS.text, fontSize: 17, fontWeight: "600" },
   periodPill: {
     flexDirection: "row",
@@ -246,7 +228,7 @@ const styles = StyleSheet.create({
   periodPillText: { color: COLORS.textMuted, fontSize: 13, fontWeight: "500" },
   overviewStats: { flexDirection: "row", alignItems: "center" },
   overviewStat: { flex: 1, gap: 4 },
-  overviewStatLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: "600" },
+  overviewStatLabel: { color: COLORS.textMuted, fontSize: 14, fontWeight: "400" },
   overviewStatValue: { color: COLORS.text, fontSize: 24, fontWeight: "600", fontVariant: ["tabular-nums"] },
   overviewStatDelta: { fontSize: 12, fontWeight: "600" },
   overviewDivider: { width: 1, height: 40, backgroundColor: COLORS.border, marginHorizontal: SPACING.md },

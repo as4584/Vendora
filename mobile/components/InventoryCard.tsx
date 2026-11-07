@@ -3,7 +3,8 @@
  * review screen, so an imported row looks exactly like the item it becomes.
  */
 import { ReactNode } from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ProductImage } from "./ProductImage";
 import * as api from "../services/api";
 import { Card, Icon, Pill } from "./ui";
 import { StockLabel } from "./StockLabel";
@@ -94,13 +95,7 @@ export default function InventoryCard({
               {selected ? <Icon name="checkmark" size={16} color={BRAND.onPrimary} /> : null}
             </View>
           ) : null}
-          <View style={styles.thumbBox}>
-            {frontPhoto || backPhoto ? (
-              <Image source={{ uri: frontPhoto || backPhoto || undefined }} style={styles.thumbImg} resizeMode="cover" />
-            ) : (
-              <View accessibilityLabel="No photo" style={[styles.thumbImg, styles.photoFallback]}><Icon name="image-outline" size={22} color={COLORS.textSoft} /></View>
-            )}
-          </View>
+          <ProductImage uri={frontPhoto || backPhoto} label={item.name} style={styles.thumbBox} />
 
           <View style={styles.itemBody}>
             {badge ? <View style={styles.badgeRow}>{badge}</View> : null}
@@ -151,7 +146,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", alignSelf: "center",
   },
   checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  thumbBox: { width: 72, height: 72, borderRadius: 8, overflow: "hidden", backgroundColor: COLORS.cardAlt },
+  thumbBox: { width: 72, aspectRatio: 1, borderRadius: 8 },
   thumbImg: { width: "100%", height: "100%" },
   photoFallback: { alignItems: "center", justifyContent: "center" },
   itemBody: { flex: 1, minWidth: 0, gap: 6 },

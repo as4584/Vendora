@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fixtures from './visual/fixtures.json';
 
-async function openCheckout(page: Page, inventory: () => unknown | null) {
+async function openCheckout(page: Page, inventory: () => unknown | null, destination = '/inventory/sale') {
   await page.addInitScript(() => localStorage.setItem('vendora_access_token', 'local-test-token'));
   await page.route('**/api/v1/**', route => {
     const path = new URL(route.request().url()).pathname;
@@ -12,11 +12,32 @@ async function openCheckout(page: Page, inventory: () => unknown | null) {
   });
   await page.goto('/');
   await expect(page.getByText('More', { exact: true })).toBeVisible();
-  await page.evaluate(() => {
-    window.history.pushState({}, '', '/inventory/sale');
+  await page.evaluate(path => {
+    window.history.pushState({}, '', path);
     window.dispatchEvent(new PopStateEvent('popstate'));
-  });
+  }, destination);
 }
+
+test('sale total and checkout stay on screen at both ends of the cart', async ({ page }) => {
+  await openCheckout(page, () => fixtures.inventory, `/inventory/sale?add=${fixtures.item_id}`);
+  await expect(page.getByText('Cart · 1 item')).toBeVisible();
+  const checkout = page.getByRole('button', { name: /Log Sale/ });
+  const bar = page.getByTestId('sale-checkout-bar');
+  const assertPinned = async () => {
+    await expect(checkout).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('sale-sticky-total')).toBeInViewport({ ratio: 1 });
+    const rect = await bar.boundingBox();
+    expect(rect!.y + rect!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  };
+  await assertPinned();
+  const original = await bar.boundingBox();
+  await page.getByText('Cart · 1 item').scrollIntoViewIfNeeded();
+  await assertPinned();
+  await page.getByRole('textbox', { name: 'Sale notes' }).scrollIntoViewIfNeeded();
+  await assertPinned();
+  expect((await bar.boundingBox())!.y).toBeCloseTo(original!.y, 0);
+  await page.screenshot({ path: test.info().outputPath('sticky-checkout.png') });
+});
 
 test('failed inventory load recovers through retry rather than showing empty stock', async ({ page }) => {
   let failed = true;

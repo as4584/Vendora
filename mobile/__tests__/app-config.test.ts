@@ -10,6 +10,12 @@ const pluginOptions = (name: string) => {
   return Array.isArray(entry) ? entry[1] : {};
 };
 
+it('keeps native appearance and launch surfaces warm and light', () => {
+  expect(expo.userInterfaceStyle).toBe('light');
+  expect(pluginOptions('expo-splash-screen').backgroundColor).toBe('#F7F4EE');
+  expect(expo.android.adaptiveIcon.backgroundColor).toBe('#F7F4EE');
+});
+
 describe("iOS privacy manifest", () => {
   const manifest = expo.ios.privacyManifests;
 

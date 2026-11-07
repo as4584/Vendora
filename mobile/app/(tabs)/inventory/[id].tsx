@@ -7,14 +7,14 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
-  Image,
   Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as api from "../../../services/api";
 import { StockxItemCard } from "../../../components/Stockx";
-import { Ionicons } from "@expo/vector-icons";
+import { ProductImage } from "../../../components/ProductImage";
+import { Disclosure } from "../../../components/Disclosure";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { EbayListingCard } from "../../../components/EbayListingCard";
 import { Button } from "../../../components/Button";
@@ -233,20 +233,13 @@ export default function ItemDetailScreen() {
         <View style={styles.photoHeader}>
           <SectionLabel>Photos</SectionLabel>
           <View style={styles.photoSwitchRow}>
-            <TouchableOpacity accessibilityLabel="Show front photo" accessibilityRole="button" onPress={() => setActivePhoto("front")}><Pill label="Front" tone={activePhoto === "front" ? "primary" : "neutral"} /></TouchableOpacity>
-            <TouchableOpacity accessibilityLabel="Show back photo" accessibilityRole="button" onPress={() => setActivePhoto("back")}><Pill label="Back" tone={activePhoto === "back" ? "primary" : "neutral"} /></TouchableOpacity>
+            <TouchableOpacity style={styles.photoSwitch} accessibilityLabel="Show front photo" accessibilityRole="button" onPress={() => setActivePhoto("front")}><Pill label="Front" tone={activePhoto === "front" ? "primary" : "neutral"} /></TouchableOpacity>
+            <TouchableOpacity style={styles.photoSwitch} accessibilityLabel="Show back photo" accessibilityRole="button" onPress={() => setActivePhoto("back")}><Pill label="Back" tone={activePhoto === "back" ? "primary" : "neutral"} /></TouchableOpacity>
           </View>
         </View>
 
         <TouchableOpacity accessibilityLabel={`Update ${activePhoto} photo`} accessibilityRole="button" activeOpacity={0.88} onPress={() => pickPhotoForSide(activePhoto)}>
-          {currentPhoto ? (
-            <Image source={{ uri: currentPhoto }} style={styles.heroPhoto} resizeMode="cover" />
-          ) : (
-            <View style={[styles.heroPhoto, styles.photoFallback]}>
-              <Ionicons name="camera-outline" size={28} color={COLORS.textSoft} />
-              <Text style={styles.photoFallbackText}>{`Add ${activePhoto} photo`}</Text>
-            </View>
-          )}
+          <ProductImage uri={currentPhoto} label={`${item.name}, ${activePhoto}`} fallbackLabel={`Add ${activePhoto} photo`} style={styles.heroPhoto} />
           {photoUploading ? (
             <View style={styles.photoOverlay}><ActivityIndicator color={COLORS.text} /></View>
           ) : null}
@@ -255,17 +248,57 @@ export default function ItemDetailScreen() {
         <View style={styles.photoThumbRow}>
           {[{ key: "front", uri: frontPhoto }, { key: "back", uri: backPhoto }].map((photo) => (
             <TouchableOpacity accessibilityLabel={`Show ${photo.key} thumbnail`} accessibilityRole="button" key={photo.key} onPress={() => setActivePhoto(photo.key as "front" | "back")}>
-              {photo.uri ? (
-                <Image source={{ uri: photo.uri }} style={[styles.thumbPhoto, activePhoto === photo.key && styles.thumbPhotoActive]} resizeMode="cover" />
-              ) : (
-                <View style={[styles.thumbPhoto, styles.photoFallback, activePhoto === photo.key && styles.thumbPhotoActive]}>
-                  <Text style={styles.photoFallbackText}>{photo.key === "front" ? "Front" : "Back"}</Text>
-                </View>
-              )}
+              <ProductImage uri={photo.uri} label={`${item.name}, ${photo.key} thumbnail`}
+                style={[styles.thumbPhoto, activePhoto === photo.key && styles.thumbPhotoActive]} />
             </TouchableOpacity>
           ))}
         </View>
       </Card>
+
+
+      <Card>
+        <SectionLabel>Stock summary</SectionLabel>
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryBlock}>
+            <Text style={styles.summaryLabel}>Status</Text>
+            <Text style={styles.summaryValue}>{STATUS_LABELS[item.status] || (item.status || "").toUpperCase()}</Text>
+          </View>
+          <View style={styles.summaryBlock}>
+            <Text style={styles.summaryLabel}>Available</Text>
+            <Text style={styles.summaryValue}>{qty}</Text>
+          </View>
+          <View style={styles.summaryBlock}>
+            <Text style={styles.summaryLabel}>Ask</Text>
+            <Text style={styles.summaryValue}>{formatCurrency(item.expected_sell_price)}</Text>
+          </View>
+          <View style={styles.summaryBlock}>
+            <Text style={styles.summaryLabel}>Condition</Text>
+            <Text style={styles.summaryValue}>{item.condition || "Unknown"}</Text>
+          </View>
+        </View>
+
+        {qty === 0 ? (
+          <View style={styles.pillRow}>
+            <Pill label="Out of stock" tone="danger" />
+          </View>
+        ) : null}
+
+        <Text style={styles.detailLine}>Sizes: {sizeBreakdown(item)}</Text>
+      </Card>
+
+      {variants.length > 0 ? (
+        <Card>
+          <SectionLabel>Sizes</SectionLabel>
+          <View style={styles.variantGrid}>
+            {variants.map((variant: any) => (
+              <View key={`${variant.size}-${variant.quantity}`} style={styles.variantCard}>
+                <Text style={styles.variantSize}>{variant.size}</Text>
+                <Text style={styles.variantQty}>{variant.quantity}</Text>
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
 
       {(() => {
         const cost = Number(item.buy_price ?? 0);
@@ -273,7 +306,7 @@ export default function ItemDetailScreen() {
         const profit = list - cost;
         const roi = cost > 0 ? Math.round((profit / cost) * 100) : null;
         return (
-          <Card>
+          <Disclosure title="Cost & margin">
             <View style={styles.metricStrip}>
               <View style={styles.metricCell}>
                 <Text style={styles.metricCellValue}>{formatCurrency(item.buy_price)}</Text>
@@ -297,63 +330,18 @@ export default function ItemDetailScreen() {
                 <Text style={styles.metricCellLabel}>ROI</Text>
               </View>
             </View>
-          </Card>
+          </Disclosure>
         );
       })()}
 
-      <Card>
-        <SectionLabel>Stock summary</SectionLabel>
-        <View style={styles.summaryGrid}>
-          <View style={styles.summaryBlock}>
-            <Text style={styles.summaryLabel}>Status</Text>
-            <Text style={styles.summaryValue}>{STATUS_LABELS[item.status] || (item.status || "").toUpperCase()}</Text>
-          </View>
-          <View style={styles.summaryBlock}>
-            <Text style={styles.summaryLabel}>Available</Text>
-            <Text style={styles.summaryValue}>{qty}</Text>
-          </View>
-          <View style={styles.summaryBlock}>
-            <Text style={styles.summaryLabel}>Ask</Text>
-            <Text style={styles.summaryValue}>{formatCurrency(item.expected_sell_price)}</Text>
-          </View>
-          <View style={styles.summaryBlock}>
-            <Text style={styles.summaryLabel}>Source</Text>
-            <Text style={styles.summaryValue}>{sourceLabel}</Text>
-          </View>
-        </View>
-
-        {qty === 0 ? (
-          <View style={styles.pillRow}>
-            <Pill label="Out of stock" tone="danger" />
-          </View>
-        ) : null}
-
-        <Text style={styles.detailLine}>Sizes: {sizeBreakdown(item)}</Text>
-        <Text style={styles.detailLine}>Buy {formatCurrency(item.buy_price)} • Last updated {formatCompactDate(item.updated_at)}</Text>
-      </Card>
-
-      {variants.length > 0 ? (
-        <Card>
-          <SectionLabel>Sizes</SectionLabel>
-          <View style={styles.variantGrid}>
-            {variants.map((variant: any) => (
-              <View key={`${variant.size}-${variant.quantity}`} style={styles.variantCard}>
-                <Text style={styles.variantSize}>{variant.size}</Text>
-                <Text style={styles.variantQty}>{variant.quantity}</Text>
-              </View>
-            ))}
-          </View>
-        </Card>
-      ) : null}
-
-      <Card>
-        <SectionLabel>Details</SectionLabel>
+      <Disclosure title="Item details">
         <DetailRow label="Vendor" value={item.vendor_name || "Unassigned"} />
-        <DetailRow label="Condition" value={item.condition || "Unknown"} />
+        <DetailRow label="Source" value={sourceLabel} />
         <DetailRow label="Color" value={item.color || "Not set"} />
         <DetailRow label="UPC" value={item.upc || "Not set"} />
         <DetailRow label="Notes" value={item.notes || "No notes"} />
-      </Card>
+        <DetailRow label="Last updated" value={formatCompactDate(item.updated_at)} />
+      </Disclosure>
 
       <Card>
         <SectionLabel>Sales History</SectionLabel>
@@ -391,7 +379,7 @@ export default function ItemDetailScreen() {
         <Text style={styles.emptyText}>Compare external listings and your own sold history before changing the asking price.</Text>
         {suggestion ? <View style={styles.marketSummary}><Text style={styles.marketPrice}>{suggestion.suggested_price == null ? "More sales data needed" : formatCurrency(suggestion.suggested_price)}</Text><Pill label={`${suggestion.confidence.toUpperCase()} CONFIDENCE`} tone={suggestion.confidence === "high" ? "success" : "info"} /><Text style={styles.timelineMeta}>{suggestion.reason}</Text></View> : null}
         {market?.sources.map((source) => <View key={`${source.source}-${source.label}`} style={styles.detailRow}><Text style={styles.detailLabel}>{source.label}</Text><Text style={styles.detailValue}>{source.price == null ? "No match" : formatCurrency(source.price)}</Text></View>)}
-        <View style={[styles.actionRow, { marginTop: SPACING.sm }]}><ActionButton label={pricingLoading ? "Checking..." : "Check Market Price"} onPress={loadMarketPricing} disabled={pricingLoading} tone="secondary" compact /><ActionButton label={publishing ? "Publishing..." : "Publish to Lightspeed"} onPress={publishToLightspeed} disabled={publishing} tone="secondary" compact /></View>
+        <View style={[styles.actionRow, { marginTop: SPACING.sm }]}><ActionButton label={pricingLoading ? "Checking..." : "Check Market Price"} onPress={loadMarketPricing} loading={pricingLoading} tone="secondary" compact /><ActionButton label={publishing ? "Publishing..." : "Publish to Lightspeed"} onPress={publishToLightspeed} loading={publishing} tone="secondary" compact /></View>
       </Card>
       <StockxItemCard itemId={item.id} />
 
@@ -399,8 +387,7 @@ export default function ItemDetailScreen() {
 
       <EbayListingCard item={item} available={qty} onChanged={() => void loadItem()} />
 
-      <Card>
-        <SectionLabel>Linked Invoices</SectionLabel>
+      <Disclosure title="Linked invoices">
         {invoices.length === 0 ? (
           <Text style={styles.emptyText}>No invoice line items are linked to this inventory item yet.</Text>
         ) : (
@@ -413,10 +400,9 @@ export default function ItemDetailScreen() {
             </View>
           ))
         )}
-      </Card>
+      </Disclosure>
 
-      <Card>
-        <SectionLabel>Activity Log</SectionLabel>
+      <Disclosure title="Activity log">
         {activity.length === 0 ? (
           <Text style={styles.emptyText}>No stock activity recorded yet.</Text>
         ) : (
@@ -431,7 +417,7 @@ export default function ItemDetailScreen() {
             </View>
           ))
         )}
-      </Card>
+      </Disclosure>
 
       <Card>
         <SectionLabel>Actions</SectionLabel>
@@ -467,7 +453,8 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.textMuted, fontSize: 13, textAlign: "center", marginBottom: SPACING.sm },
   photoHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: SPACING.sm },
   photoSwitchRow: { flexDirection: "row", gap: SPACING.xs },
-  heroPhoto: { width: "100%", height: 260, borderRadius: 18, backgroundColor: COLORS.cardAlt, overflow: "hidden" },
+  photoSwitch: { minHeight: 44, minWidth: 44, justifyContent: "center", alignItems: "center" },
+  heroPhoto: { width: "100%", aspectRatio: 1, borderRadius: 12 },
   photoOverlay: {
     top: 0,
     right: 0,
@@ -499,7 +486,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     padding: SPACING.md,
   },
-  summaryLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: "600" },
+  summaryLabel: { color: COLORS.textMuted, fontSize: 14, fontWeight: "400" },
   summaryValue: { color: COLORS.text, fontSize: 18, fontWeight: "600", marginTop: 6 },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, marginBottom: SPACING.sm },
   detailLine: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
@@ -526,8 +513,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  detailLabel: { color: COLORS.textSoft, fontSize: 12, fontWeight: "600" },
-  detailValue: { color: COLORS.text, fontSize: 13, fontWeight: "600", flex: 1, textAlign: "right" },
+  detailLabel: { color: COLORS.textSoft, fontSize: 14, fontWeight: "400", flexShrink: 1 },
+  detailValue: { color: COLORS.text, fontSize: 15, fontWeight: "400", flex: 1, textAlign: "right" },
   emptyText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
   timelineRow: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   timelineTitle: { color: COLORS.text, fontSize: 14, fontWeight: "600" },

@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   segmentItem: { flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center", borderRadius: RADII.sm },
   segmentActive: { backgroundColor: COLORS.primary },
   segmentText: { ...TYPE.footnote, color: COLORS.textMuted, fontWeight: "700" },
-  segmentTextActive: { color: COLORS.text },
+  segmentTextActive: { color: "#FFFFFF" },
   showCard: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
   showTitle: { ...TYPE.callout, color: COLORS.text },
   helper: { ...TYPE.footnote, color: COLORS.textMuted },

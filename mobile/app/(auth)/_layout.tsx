@@ -1,3 +1,4 @@
+import { COLORS } from "../../theme/tokens";
 /**
  * Auth group layout — no tabs, simple stack for login/register.
  */
@@ -8,7 +9,7 @@ export default function AuthLayout() {
         <Stack
             screenOptions={{
                 headerShown: false,
-                contentStyle: { backgroundColor: "#0E0E11" },
+                contentStyle: { backgroundColor: COLORS.bg },
                 animation: "slide_from_right",
             }}
         />

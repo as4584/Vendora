@@ -140,7 +140,12 @@ const styles = StyleSheet.create({
     }),
   },
   hint: {
-    color: COLORS.text,
+    // Camera imagery is unpredictable: use an independent high-contrast plate.
+    color: "#FFFFFF",
+    backgroundColor: "rgba(0,0,0,0.75)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
     fontSize: 14,
     fontWeight: "600",
     marginTop: 22,
@@ -153,7 +158,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingVertical: 12,
     borderRadius: 999,
-    backgroundColor: "rgba(20,26,43,0.9)",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
