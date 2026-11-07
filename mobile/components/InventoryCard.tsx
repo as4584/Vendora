@@ -3,9 +3,11 @@
  * review screen, so an imported row looks exactly like the item it becomes.
  */
 import { ReactNode } from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ProductImage } from "./ProductImage";
 import * as api from "../services/api";
 import { Card, Icon, Pill } from "./ui";
+import { StockLabel } from "./StockLabel";
 import { BRAND, COLORS, FONT_SCALE, SPACING } from "../theme/tokens";
 import { formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../utils/inventory";
 
@@ -25,6 +27,13 @@ const DOT_COLORS: Record<string, string> = {
   warning: COLORS.warning,
   primary: COLORS.primaryBright,
   neutral: COLORS.textSoft,
+};
+
+// "New" alone is not evidence of an unworn, boxed sneaker.
+const CONDITION_LABELS: Record<string, string> = {
+  ds: "DS · Deadstock", deadstock: "DS · Deadstock",
+  vnds: "VNDS · Very near deadstock", "very near deadstock": "VNDS · Very near deadstock",
+  new: "New", used: "Pre-owned", refurbished: "Refurbished",
 };
 
 export interface InventoryCardProps {
@@ -56,7 +65,11 @@ export default function InventoryCard({
   testID,
 }: InventoryCardProps) {
   const qty = resolveQty(item);
-  const lowStock = qty > 0 && qty <= 3;
+  const condition = item.condition?.trim();
+  const grade = condition?.toLowerCase();
+  const conditionLabel = condition && grade
+    ? (Object.prototype.hasOwnProperty.call(CONDITION_LABELS, grade) ? CONDITION_LABELS[grade] : condition)
+    : null;
   const sourceLabel = item.source ? SOURCE_LABELS[item.source] || item.source : "Manual";
   const frontPhoto = resolvedPhoto(item, "front");
   const backPhoto = resolvedPhoto(item, "back");
@@ -82,13 +95,7 @@ export default function InventoryCard({
               {selected ? <Icon name="checkmark" size={16} color={BRAND.onPrimary} /> : null}
             </View>
           ) : null}
-          <View style={styles.thumbBox}>
-            {frontPhoto || backPhoto ? (
-              <Image source={{ uri: frontPhoto || backPhoto || undefined }} style={styles.thumbImg} resizeMode="cover" />
-            ) : (
-              <View accessibilityLabel="No photo" style={[styles.thumbImg, styles.photoFallback]}><Icon name="image-outline" size={22} color={COLORS.textSoft} /></View>
-            )}
-          </View>
+          <ProductImage uri={frontPhoto || backPhoto} label={item.name} style={styles.thumbBox} />
 
           <View style={styles.itemBody}>
             {badge ? <View style={styles.badgeRow}>{badge}</View> : null}
@@ -107,11 +114,15 @@ export default function InventoryCard({
               <View style={[styles.statusDot, { backgroundColor: DOT_COLORS[STATUS_TONES[item.status] || "neutral"] }]} />
               <Text style={styles.statusText}>{STATUS_LABELS[item.status] || item.status}</Text>
               <Text style={styles.statusSep}>·</Text>
-              <Text style={[styles.statusText, qty === 0 ? { color: COLORS.danger } : lowStock ? { color: COLORS.warning } : null]}>
-                {lowStock ? `Low stock ${qty}` : `Stock ${qty}`}
-              </Text>
+              <StockLabel quantity={qty} />
               {item._pending ? <Pill label="Sync pending" tone="warning" /> : null}
             </View>
+
+            {conditionLabel ? (
+              <View style={styles.conditionTag} accessibilityLabel={`Condition: ${conditionLabel}`}>
+                <Text style={styles.conditionText}>{conditionLabel}</Text>
+              </View>
+            ) : null}
 
             <Text style={styles.sizeLine}>{sizeBreakdown(item)}</Text>
             <Text style={styles.secondaryLine}>
@@ -135,7 +146,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", alignSelf: "center",
   },
   checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  thumbBox: { width: 72, height: 72, borderRadius: 8, overflow: "hidden", backgroundColor: COLORS.cardAlt },
+  thumbBox: { width: 72, aspectRatio: 1, borderRadius: 8 },
   thumbImg: { width: "100%", height: "100%" },
   photoFallback: { alignItems: "center", justifyContent: "center" },
   itemBody: { flex: 1, minWidth: 0, gap: 6 },
@@ -150,5 +161,7 @@ const styles = StyleSheet.create({
   statusSep: { color: COLORS.textSoft, fontSize: 13 },
   sizeLine: { color: COLORS.text, fontSize: 13, fontWeight: "500", fontVariant: ["tabular-nums"] },
   secondaryLine: { color: COLORS.textMuted, fontSize: 12 },
+  conditionTag: { alignSelf: "flex-start", maxWidth: "100%", borderWidth: 1, borderColor: COLORS.border, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 3, backgroundColor: COLORS.cardAlt },
+  conditionText: { color: COLORS.textMuted, fontSize: 12, lineHeight: 17, fontWeight: "600" },
   footer: { marginTop: SPACING.sm, gap: SPACING.sm },
 });

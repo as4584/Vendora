@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Animated, Easing, StyleSheet, Text, View, Platform } from "react-native";
+import { AccessibilityInfo, Animated, Easing, StyleSheet, Text, View, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "../theme/tokens";
 import { Button } from "./Button";
@@ -38,8 +38,30 @@ export function ScannerOverlay({
         }),
       ]),
     );
-    loop.start();
-    return () => loop.stop();
+    // Stay still until the preference is known. Subscribe first so a late
+    // initial query cannot overwrite a newer accessibility setting.
+    let disposed = false;
+    let changed = false;
+    const applyPreference = (reduceMotion: boolean) => {
+      if (disposed) return;
+      loop.stop();
+      travel.setValue(0);
+      if (!reduceMotion) loop.start();
+    };
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", enabled => {
+      changed = true;
+      applyPreference(enabled);
+    });
+    void AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
+      if (!changed) applyPreference(enabled);
+    }).catch(() => {
+      // Keep the static reticle if the platform cannot report the preference.
+    });
+    return () => {
+      disposed = true;
+      subscription.remove();
+      loop.stop();
+    };
   }, [travel]);
 
   const translateY = travel.interpolate({
@@ -118,7 +140,12 @@ const styles = StyleSheet.create({
     }),
   },
   hint: {
-    color: COLORS.text,
+    // Camera imagery is unpredictable: use an independent high-contrast plate.
+    color: "#FFFFFF",
+    backgroundColor: "rgba(0,0,0,0.75)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
     fontSize: 14,
     fontWeight: "600",
     marginTop: 22,
@@ -131,7 +158,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingVertical: 12,
     borderRadius: 999,
-    backgroundColor: "rgba(20,26,43,0.9)",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
   },

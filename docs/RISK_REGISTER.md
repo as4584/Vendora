@@ -395,6 +395,12 @@ Updated when new integrations added
 
 Referenced during architecture changes\r\n\r\n📋 Sprint 4 Review (Updated)\r\n\r\n✅ 1.1 Stripe Webhook Failure — MITIGATED: Signature verification + idempotent handler + event dedup table + 5 integration tests\r\n✅ 1.2 Duplicate Webhook Events — MITIGATED: webhook_events table with unique event_id index\r\n✅ 1.3 Subscription Billing — MITIGATED: Webhook handlers for create/delete + tier enforcement\r\n✅ 1.4 Refund Logic — MITIGATED: Negative transaction entries + item revert + 4 tests\r\n✅ 2.1 Barcode Misreads — MITIGATED: Manual entry fallback always available\r\n✅ 4.1 Sensitive Data — MITIGATED: Only Stripe IDs stored, no card data\r\n✅ 5.1 Slow Queries — MITIGATED: Composite partial indexes, pagination, count queries\r\n✅ 6.1 Overbuilding — MITIGATED: 4-sprint discipline, feature flags\r\n✅ 8.1 Incorrect Profit — MITIGATED: 100% coverage, 4 Golden Frames, Decimal math\r\n✅ 8.2 UI Complexity — MITIGATED: Tab navigation, empty states, progressive disclosure
 
+## Warm-light checkout preview risk review — 2026-11-07
+
+UI-only changes on the combined preview branch. The pinned checkout calls the existing order handler; money calculations, validation, payment providers, authorization, schema, and state transitions are unchanged. Dashboard fallback labels distinguish UTC calendar-month totals from rolling analytics; matching amounts can be legitimate.
+
+Primary regression risks: obscured checkout on short screens, expanded text wrapping, low-contrast selected/offline states, and hidden secondary item information. Mitigation: viewport-pinned checkout E2E assertions, responsive and large-text layout gates, color-contrast and offline-notice unit tests, disclosure state tests, plus localhost visual inspection. Physical iPhone keyboard, VoiceOver, haptics, and native launch appearance still require owner QA. This is not a production-readiness sign-off.
+
 🧠 Final Principle
 
 Vendora’s long-term advantage is:

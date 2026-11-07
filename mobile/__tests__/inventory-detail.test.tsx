@@ -199,7 +199,7 @@ describe('ItemDetailScreen', () => {
     expect(screen.getAllByText('In Stock').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders source badge for a lightspeed item', async () => {
+  it('keeps the Lightspeed source in expandable item details', async () => {
     (apiMock.getItem as jest.Mock).mockResolvedValue(
       makeItem({ source: 'lightspeed', external_id: 'LS-123' }),
     );
@@ -210,6 +210,8 @@ describe('ItemDetailScreen', () => {
       expect(screen.getByTestId('item-detail-content')).toBeTruthy();
     });
 
+    expect(screen.queryByText('Lightspeed')).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Item details' }));
     expect(screen.getAllByText('Lightspeed').length).toBeGreaterThanOrEqual(1);
   });
 
@@ -329,6 +331,9 @@ describe('ItemDetailScreen', () => {
     const screen = render(<ItemDetailScreen />);
     await screen.findByTestId('item-detail-content');
     expect(screen.getByText('CASH')).toBeTruthy();
+    expect(screen.queryByText('Taylor')).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Linked invoices' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Activity log' }));
     expect(screen.getByText('Taylor')).toBeTruthy();
     expect(screen.getByText(/stock added/)).toBeTruthy();
   });
@@ -340,6 +345,7 @@ describe('ItemDetailScreen', () => {
     (apiMock.listInvoices as jest.Mock).mockRejectedValue(new Error('invoices down'));
     const screen = render(<ItemDetailScreen />);
     await screen.findByTestId('item-detail-content');
+    fireEvent.press(screen.getByRole('button', { name: 'Activity log' }));
     expect(screen.getByText('No stock activity recorded yet.')).toBeTruthy();
   });
 

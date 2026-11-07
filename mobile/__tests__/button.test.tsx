@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Button, IconButton, triggerHaptic } from '../components/Button';
 
@@ -56,9 +57,9 @@ describe('Button', () => {
     expect(screen.getByLabelText('Busy').props.accessibilityState).toMatchObject({ disabled: true, busy: true });
   });
 
-  it('small buttons extend their touch area to 44pt', () => {
+  it('small buttons have a real 44pt layout target without overlapping hit areas', () => {
     const screen = render(<Button label="Tiny" size="sm" onPress={jest.fn()} />);
-    expect(screen.getByLabelText('Tiny').props.hitSlop).toMatchObject({ top: 4, bottom: 4 });
+    expect(StyleSheet.flatten(screen.getByLabelText('Tiny').props.style).minHeight).toBe(44);
   });
 
   it('IconButton needs a label and fires', () => {
@@ -71,8 +72,23 @@ describe('Button', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('a haptics failure never breaks the tap', () => {
+  it('a synchronous haptics failure is contained', async () => {
     (Haptics.impactAsync as jest.Mock).mockImplementationOnce(() => { throw new Error('no engine'); });
-    expect(() => triggerHaptic('light')).not.toThrow();
+    await expect(triggerHaptic('light')).resolves.toBeUndefined();
+  });
+
+  it.each(['light', 'medium', 'success', 'warning'] as const)('contains rejected %s haptics', async kind => {
+    const method = kind === 'light' || kind === 'medium' ? Haptics.impactAsync : Haptics.notificationAsync;
+    (method as jest.Mock).mockRejectedValueOnce(new Error('engine unavailable'));
+    await expect(triggerHaptic(kind)).resolves.toBeUndefined();
+  });
+
+  it('still runs the action immediately when haptics reject', async () => {
+    (Haptics.impactAsync as jest.Mock).mockRejectedValueOnce(new Error('engine unavailable'));
+    const onPress = jest.fn();
+    const screen = render(<Button label="Save anyway" onPress={onPress} />);
+    fireEvent.press(screen.getByLabelText('Save anyway'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
   });
 });

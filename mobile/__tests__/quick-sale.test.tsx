@@ -287,6 +287,7 @@ describe('QuickSaleScreen (checkout)', () => {
     await waitFor(() => expect(mockOnScan).toBeDefined());
     await act(async () => mockOnScan!({ data: '12345678905' })); // EAN/UPC leading zero
     expect(screen.getByText(/Cart · 1 item/)).toBeTruthy();
+    expect(screen.getByText('In your cart · Jordan 1 Retro High')).toBeTruthy();
 
     (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [], total: 0, page: 1, per_page: 5, pages: 0 });
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
@@ -305,6 +306,7 @@ describe('QuickSaleScreen (checkout)', () => {
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
     await act(async () => mockOnScan!({ data: '777' }));
     expect(screen.getByLabelText('Remove Far Item')).toBeTruthy();
+    expect(screen.getByText('In your cart · Far Item')).toBeTruthy();
 
     (apiMock.listItems as jest.Mock).mockRejectedValueOnce(new Error('down'));
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
@@ -355,9 +357,11 @@ describe('QuickSaleScreen (checkout)', () => {
   it('reports inventory load failures and filters by search', async () => {
     (apiMock.listItems as jest.Mock).mockRejectedValueOnce(new Error('offline'));
     const failed = render(<QuickSaleScreen />);
-    await waitFor(() =>
-      expect(Alert.alert).toHaveBeenCalledWith('Quick sale unavailable', 'Could not load sellable inventory.'),
-    );
+    await failed.findByText("Couldn't load your stock. Try again.");
+    expect(failed.queryByText("Table's empty — add stock to start a sale.")).toBeNull();
+    fireEvent.press(failed.getByText('Try loading stock again'));
+    await failed.findByText('Jordan 1 Retro High');
+    expect(failed.queryByText("Couldn't load your stock. Try again.")).toBeNull();
     failed.unmount();
 
     const screen = await ready();
@@ -366,6 +370,29 @@ describe('QuickSaleScreen (checkout)', () => {
     expect(screen.getByText('Sony WH-1000XM5')).toBeTruthy();
     fireEvent.changeText(screen.getByLabelText('Search sale inventory'), 'zzz');
     expect(screen.getByText('No sellable items match that search.')).toBeTruthy();
+    fireEvent.press(screen.getByText('Clear search'));
+    expect(screen.getByText('Jordan 1 Retro High')).toBeTruthy();
+    expect(screen.getByLabelText('Search sale inventory').props.value).toBe('');
+  });
+
+  it('offers Add stock when inventory is genuinely empty', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [], total: 0 });
+    const screen = render(<QuickSaleScreen />);
+    await screen.findByText("Table's empty — add stock to start a sale.");
+    expect(screen.queryByText('No sellable items match that search.')).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Add stock' }));
+    expect(mockPush).toHaveBeenCalledWith('/inventory/add');
+  });
+
+  it('shows a named loading state without empty-state actions while pending', async () => {
+    let resolve!: (value: unknown) => void;
+    (apiMock.listItems as jest.Mock).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    const screen = render(<QuickSaleScreen />);
+    expect(screen.getByLabelText('Loading sellable inventory')).toBeTruthy();
+    expect(screen.queryByText("Table's empty — add stock to start a sale.")).toBeNull();
+    await act(async () => resolve({ items: [ITEM] }));
+    expect(screen.queryByLabelText('Loading sellable inventory')).toBeNull();
+    expect(screen.getByText('Jordan 1 Retro High')).toBeTruthy();
   });
 
   it('reports transaction failures', async () => {

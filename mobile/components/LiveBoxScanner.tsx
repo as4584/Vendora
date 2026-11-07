@@ -72,6 +72,9 @@ export function LiveBoxScanner({
   if (!NativeScanner) return null;
 
   const found = CHECKLIST.filter((c) => stable[c.field]).length;
+  const required = CHECKLIST.filter(c => c.field !== "color" && (c.field !== "style_code" || styleSeen));
+  const requiredFound = required.filter(c => stable[c.field]).length;
+  const complete = isScanComplete(stable, styleSeen);
 
   return (
     <View style={styles.container} testID="live-box-scanner">
@@ -90,6 +93,18 @@ export function LiveBoxScanner({
         </Text>
       </View>
       <View style={[styles.sheet, { paddingBottom: insets.bottom + SPACING.md }]}>
+        <Text accessibilityRole="header" style={styles.progressTitle}>
+          {complete ? "Label ready" : "Reading your box"}
+        </Text>
+        <Text style={styles.progressCopy}>{requiredFound} of {required.length} required details found</Text>
+        <View
+          accessibilityRole="progressbar"
+          accessibilityLabel="Box label progress"
+          accessibilityValue={{ min: 0, max: required.length, now: requiredFound }}
+          style={styles.progressTrack}
+        >
+          <View style={[styles.progressFill, { width: `${requiredFound / required.length * 100}%` }]} />
+        </View>
         <View style={styles.list} accessibilityLabel={`Found ${found} of ${CHECKLIST.length}`}>
           {CHECKLIST.map(({ field, label }) => {
             const value = stable[field];
@@ -109,6 +124,7 @@ export function LiveBoxScanner({
             );
           })}
         </View>
+        <Text style={styles.progressCopy}>Hold steady, or tap Done to review what was found.</Text>
         <Button label="Done" size="lg" fullWidth onPress={() => finish(voter.stable())} haptic="success" />
       </View>
     </View>
@@ -152,6 +168,10 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   list: { gap: SPACING.xs },
+  progressTitle: { ...TYPE.headline, color: COLORS.text },
+  progressCopy: { ...TYPE.footnote, color: COLORS.textMuted },
+  progressTrack: { height: 5, borderRadius: 3, overflow: "hidden", backgroundColor: COLORS.border },
+  progressFill: { height: "100%", backgroundColor: COLORS.success },
   row: { flexDirection: "row", alignItems: "center", gap: SPACING.sm, minHeight: 28 },
   rowLabel: { ...TYPE.footnote, color: COLORS.textMuted, width: 84 },
   rowValue: { ...TYPE.callout, color: COLORS.text, flex: 1, minWidth: 0, textAlign: "right" },

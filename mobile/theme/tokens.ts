@@ -3,39 +3,38 @@
  *
  * Direction (unslop pass): a pocket register for a show-floor table.
  * Character: quick, exact, a little street. World: sneaker boxes, price tags,
- * receipts under booth lights. Surfaces are a near-neutral graphite ramp so
+ * receipts under booth lights. Surfaces are warm paper and off-white so
  * product photos and money carry the color; the brand purple is the single
  * accent, used for the primary action, selection and nothing else.
  */
 export const COLORS = {
-  // Graphite ramp, very slightly cool so it sits next to the purple accent.
-  bg: "#0E0E11",
-  bgElevated: "#141418",
-  card: "#18181D",
-  cardAlt: "#212127",
-  border: "rgba(237,237,242,0.09)",
-  borderStrong: "rgba(237,237,242,0.16)",
+  bg: "#F7F4EE",
+  bgElevated: "#FCFAF6",
+  card: "#FFFEFB",
+  cardAlt: "#EFEAE2",
+  border: "#DFD9D0",
+  borderStrong: "#C8C0B5",
   // Three text roles. textSoft stays >= 4.5:1 on card for captions/meta.
-  text: "#EDEDF2",
-  textMuted: "#A6A6B0",
-  textSoft: "#8C8C96",
-  // Brand accent (real brand color, kept). Text on it is white at 4.6:1.
-  primary: "#7C5CFF",
-  primaryBright: "#A08BFF",
-  primarySoft: "#24203A",
+  text: "#26231F",
+  textMuted: "#625D57",
+  textSoft: "#6D665E",
+  // Deeper brand violet preserves readable white action labels on light UI.
+  primary: "#6746D9",
+  primaryBright: "#6746D9",
+  primarySoft: "#EEE8FC",
   // Semantic, toned down to sit inside the ramp.
-  success: "#4CC38A",
-  warning: "#E5B04A",
-  danger: "#E5584D",
-  info: "#6EA8F5",
+  success: "#23734D",
+  warning: "#865B0D",
+  danger: "#B83B32",
+  info: "#2C65A4",
   overlay: "rgba(0,0,0,0.55)",
 };
 
 // Gradients are no longer used on surfaces. Kept as neutral tone shifts for
 // any caller that still imports them.
 export const GRADIENTS = {
-  primary: ["#7C5CFF", "#7C5CFF"] as const,
-  hero: ["#1C1C22", "#18181D"] as const,
+  primary: ["#6746D9", "#6746D9"] as const,
+  hero: ["#FFFEFB", "#FCFAF6"] as const,
 };
 
 // 4pt grid.
@@ -60,10 +59,10 @@ export const RADII = {
 // Pressed/on-color companions for the brand purple. Use COLORS.primary
 // everywhere; the old off-brand #6C5CE7 must not be reintroduced.
 export const BRAND = {
-  primaryPressed: "#6A49F0",
+  primaryPressed: "#5234B6",
   onPrimary: "#FFFFFF",
-  dangerPressed: "#C9483E",
-  dangerSoft: "#33191A",
+  dangerPressed: "#962F28",
+  dangerSoft: "#FBE9E6",
 };
 
 // Type scale (iOS text styles). Hierarchy from size and color; weights 400-600.
@@ -79,13 +78,13 @@ export const TYPE = {
   figure: { fontSize: 28, fontWeight: "600" as const, lineHeight: 34, fontVariant: ["tabular-nums"] as ["tabular-nums"] },
 };
 
-// Depth on dark comes from surface steps + hairlines, not shadows.
+// Depth comes from paper surface steps and hairlines, not heavy shadows.
 export const ELEVATION = {
   flat: { borderWidth: 1, borderColor: COLORS.border },
   raised: { borderWidth: 1, borderColor: COLORS.borderStrong },
 };
 
-// Control heights. Apple's minimum touch target is 44pt; "sm" reaches it via hitSlop.
+// Compact controls keep a real 44pt layout box to avoid overlapping hit areas.
 /**
  * Dynamic Type caps (Text maxFontSizeMultiplier). Body copy scales freely and
  * wraps; only text inside fixed-size chrome (tab bar, pills, badges, stepper
@@ -93,5 +92,5 @@ export const ELEVATION = {
  */
 export const FONT_SCALE = { chrome: 1.3, display: 1.3, control: 1.4 } as const;
 
-export const CONTROL = { sm: 36, md: 48, lg: 52 };
+export const CONTROL = { sm: 44, md: 48, lg: 52 };
 export const MIN_TOUCH = 44;
