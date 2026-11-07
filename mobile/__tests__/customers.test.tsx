@@ -73,4 +73,43 @@ describe('CustomerDetailScreen', () => {
     fireEvent.press(screen.getByText('New invoice for this customer'));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/inventory/invoices', params: { customer: 'c-1' } });
   });
+
+  it('validates, cancels and reports save and load failures', async () => {
+    const { Alert } = require('react-native');
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    (apiMock.getCustomer as jest.Mock).mockResolvedValue({ ...CUSTOMER, email: null, phone: null, tax_exempt: true, address: '1 Main', notes: 'VIP', invoices: [], orders: [
+      { order_id: null, transaction_id: 't-9', total: '50.00', item_count: 2, refunded: true, created_at: '2026-11-01T12:00:00Z' },
+    ] });
+    (apiMock.updateCustomer as jest.Mock).mockRejectedValueOnce(new Error('save down'));
+    const screen = render(<CustomerDetailScreen />);
+    expect(await screen.findByText('Refunded')).toBeTruthy();
+    expect(screen.getByText('No contact details')).toBeTruthy();
+    expect(screen.getByText('VIP')).toBeTruthy();
+    fireEvent.press(screen.getByText('Edit details'));
+    for (const label of ['Email', 'Phone', 'Address', 'Notes']) fireEvent.changeText(screen.getByLabelText(label), 'x');
+    fireEvent.changeText(screen.getByLabelText('Name'), '  ');
+    await act(async () => { fireEvent.press(screen.getByText('Save')); });
+    expect(alertSpy).toHaveBeenCalledWith('Name required', 'A customer needs a name.');
+    fireEvent.changeText(screen.getByLabelText('Name'), 'Marcus');
+    await act(async () => { fireEvent.press(screen.getByText('Save')); });
+    expect(alertSpy).toHaveBeenCalledWith('Save failed', 'save down');
+    fireEvent.press(screen.getByText('Cancel'));
+    expect(screen.getByText('Edit details')).toBeTruthy();
+    screen.unmount();
+
+    (apiMock.getCustomer as jest.Mock).mockRejectedValueOnce(new Error('gone'));
+    const failed = render(<CustomerDetailScreen />);
+    expect(await failed.findByText('gone')).toBeTruthy();
+    alertSpy.mockRestore();
+  });
+});
+
+describe('CustomersScreen errors', () => {
+  it('shows a load error and refreshes', async () => {
+    (apiMock.listCustomers as jest.Mock).mockRejectedValueOnce(new Error('list down')).mockResolvedValue([CUSTOMER]);
+    const screen = render(<CustomersScreen />);
+    expect(await screen.findByText('list down')).toBeTruthy();
+    await act(async () => { screen.getByTestId('customers-content').props.refreshControl.props.onRefresh(); });
+    expect(await screen.findByText('Marcus Reed')).toBeTruthy();
+  });
 });

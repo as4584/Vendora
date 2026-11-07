@@ -55,6 +55,7 @@ jest.mock('../services/api', () => ({
   updateItemStatus: jest.fn(),
   deleteItem: jest.fn(),
   uploadItemPhotos: jest.fn(),
+  refundTransaction: jest.fn(),
 }));
 
 function makeItem(overrides: Record<string, unknown> = {}) {
@@ -430,6 +431,32 @@ describe('ItemDetailScreen', () => {
     actions = alertSpy.mock.calls.at(-1)?.[2];
     await act(async () => actions[1].onPress());
     expect(alertSpy).toHaveBeenLastCalledWith('Delete failed', 'delete down');
+    alertSpy.mockRestore();
+  });
+
+  it('refunds a checkout sale after confirming and reports refund failures', async () => {
+    const { Alert } = require('react-native');
+    (apiMock.getItem as jest.Mock).mockResolvedValue(makeItem());
+    (apiMock.listTransactions as jest.Mock).mockResolvedValue({
+      items: [
+        { id: 'tx-1', method: 'cash', status: 'completed', is_refund: false, invoice_id: null, gross_amount: '200', quantity: 1, created_at: '2026-01-01T00:00:00Z' },
+        { id: 'tx-2', method: 'card', status: 'refunded', is_refund: false, invoice_id: null, gross_amount: '90', quantity: 2, created_at: '2026-01-01T00:00:00Z' },
+        { id: 'tx-3', method: 'card', status: 'completed', is_refund: true, invoice_id: null, gross_amount: '90', quantity: 2, created_at: '2026-01-02T00:00:00Z' },
+      ],
+    });
+    (apiMock.refundTransaction as jest.Mock).mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('refund down'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((...args: any[]) => {
+      args[2]?.find((b: any) => b.style === 'destructive')?.onPress?.();
+    });
+    const screen = render(<ItemDetailScreen />);
+    expect(await screen.findByText('CARD · REFUNDED')).toBeTruthy();
+    expect(screen.getByText('REFUND')).toBeTruthy();
+    expect(screen.getAllByText('Refund')).toHaveLength(1);
+    await act(async () => { fireEvent.press(screen.getByText('Refund')); });
+    await waitFor(() => expect(apiMock.refundTransaction).toHaveBeenCalledWith('tx-1'));
+    await screen.findByText('Refund');
+    await act(async () => { fireEvent.press(screen.getByText('Refund')); });
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Refund failed', 'refund down'));
     alertSpy.mockRestore();
   });
 });
