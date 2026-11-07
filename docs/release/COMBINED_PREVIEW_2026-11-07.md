@@ -4,6 +4,8 @@ Preview branch: `preview/big-update-20261107`. This is a local integration of PR
 
 Additional polish: scan-to-cart acknowledgement, a short stock-count fade that always displays the actual quantity, receipt perforation detailing, and Expo Go purchase guards. Motion respects Reduce Motion. Native purchases and the custom VisionKit reader require a native build, not Expo Go.
 
+Final hierarchy pass: More now groups destinations into Sales & customers, Business tools, and Account & help, with Show Summary as a featured action. Every destination has an explicit button role and label. Recovery screens use the shared graphite surface/border and text tokens. Updated localhost preview was inspected in the in-app browser. Post-change checks: 622 mobile tests (53 suites), typecheck, lint, web build, and 16 responsive browser layout checks passed (More/login/register/forgot-password at three iPhone widths and iPad). Native-device validation remains outstanding.
+
 ## Combined checks
 
 - Mobile `test:ci`: 53 suites / 621 tests passed; existing coverage gates unchanged. Additional assertions on scan acknowledgements subsequently passed in the 41-test checkout/motion/purchases subset.

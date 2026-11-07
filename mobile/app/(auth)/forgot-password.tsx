@@ -77,7 +77,7 @@ export default function ForgotPasswordScreen() {
                             accessibilityLabel="Email"
                             style={styles.input}
                             placeholder="you@example.com"
-                            placeholderTextColor="#8C8C96"
+                            placeholderTextColor={COLORS.textSoft}
                             value={email}
                             onChangeText={setEmail}
                             keyboardType="email-address"
@@ -99,10 +99,10 @@ export default function ForgotPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#0E0E11" },
+    container: { flex: 1, backgroundColor: COLORS.bg },
     content: { flex: 1, justifyContent: "center", paddingHorizontal: 32 },
-    title: { color: "#FFFFFF", fontSize: 30, fontWeight: "600", marginBottom: 12 },
-    subtitle: { color: "#A6A6B0", fontSize: 16, lineHeight: 23, marginBottom: 28 },
+    title: { color: COLORS.text, fontSize: 30, fontWeight: "600", marginBottom: 12 },
+    subtitle: { color: COLORS.textMuted, fontSize: 16, lineHeight: 23, marginBottom: 28 },
     label: {
         color: "#A6A6B0",
         fontSize: 13,
@@ -110,14 +110,14 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     input: {
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
         color: "#FFFFFF",
         fontSize: 16,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
     },
     button: {
         backgroundColor: COLORS.primary,
@@ -130,8 +130,8 @@ const styles = StyleSheet.create({
     buttonDisabled: { opacity: 0.6 },
     buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" },
     successCard: {
-        backgroundColor: "#141418",
-        borderColor: "#3E356F",
+        backgroundColor: COLORS.bgElevated,
+        borderColor: COLORS.borderStrong,
         borderWidth: 1,
         borderRadius: 14,
         padding: 20,
@@ -148,5 +148,5 @@ const styles = StyleSheet.create({
     },
     secondaryButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
     backLink: { alignItems: "center", marginTop: 24, paddingVertical: 8 },
-    backText: { color: "#8F82FF", fontSize: 14, fontWeight: "600" },
+    backText: { color: COLORS.primaryBright, fontSize: 14, fontWeight: "600" },
 });
