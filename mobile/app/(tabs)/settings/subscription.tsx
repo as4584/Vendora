@@ -120,6 +120,20 @@ export default function SubscriptionScreen() {
         {status?.current_period_end ? <Text style={styles.muted}>Current period ends {new Date(status.current_period_end).toLocaleDateString()}</Text> : null}
         {status?.managed_billing || (useApple && status?.provider === "apple") ? <ActionButton label={working === "portal" ? "Opening..." : status?.provider === "apple" && useApple ? "Manage Subscription" : "Manage Billing"} onPress={manageBilling} disabled={!!working} tone="secondary" /> : null}
       </Card>
+      {status?.tier !== "pro" ? (
+        <Card style={styles.card}>
+          <View testID="pro-compare" />
+          <SectionLabel>What Pro unlocks</SectionLabel>
+          {PRO_COMPARE.map(([feature, free, pro]) => (
+            <View key={feature} style={styles.compareRow}>
+              <Text style={styles.compareFeature}>{feature}</Text>
+              <Text style={styles.compareFree}>{free}</Text>
+              <Text style={styles.comparePro}>{pro}</Text>
+            </View>
+          ))}
+          <Text style={styles.muted}>One extra sale a month at a show usually covers Pro.</Text>
+        </Card>
+      ) : null}
       {useApple ? (
         <>
           {plans.length === 0 ? <Card style={styles.card}><Text style={styles.copy}>Plans are unavailable right now. Please try again later.</Text></Card> : null}
@@ -162,7 +176,18 @@ export default function SubscriptionScreen() {
   );
 }
 
+export const PRO_COMPARE: [string, string, string][] = [
+  ["Inventory items", "25", "Unlimited"],
+  ["CSV / spreadsheet exports", "—", "Included"],
+  ["Advanced analytics & trends", "—", "Included"],
+  ["Stripe card payments", "—", "Included"],
+];
+
 const styles = StyleSheet.create({
+  compareRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },
+  compareFeature: { flex: 2, color: COLORS.textSoft, fontSize: 13 },
+  compareFree: { flex: 1, color: COLORS.textMuted, fontSize: 13, textAlign: "center" },
+  comparePro: { flex: 1, color: COLORS.primary, fontSize: 13, fontWeight: "600", textAlign: "center" },
   container: { flex: 1, backgroundColor: COLORS.bg }, content: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: 48 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg, padding: SPACING.lg, gap: SPACING.sm },
   errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "600" },
