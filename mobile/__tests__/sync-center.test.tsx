@@ -146,7 +146,7 @@ describe('SyncCenterScreen', () => {
     (apiMock.listReconciliationIssues as jest.Mock).mockRejectedValue(new Error('x'));
     const screen = render(<SyncCenterScreen />);
     await screen.findByText('Integrations');
-    expect(screen.getAllByText('Not connected').length).toBe(4);
+    expect(screen.getAllByText('Not connected').length).toBe(5);
   });
 
   it('reports a partial result from Sync All Now', async () => {

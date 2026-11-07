@@ -11,6 +11,7 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel, Stepper } from "../../../components/ui";
+import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import ImportReview from "../../../components/ImportReview";
 
@@ -145,6 +146,8 @@ export default function InventoryImportScreen() {
         <ActionButton label={loading ? "Preparing Preview..." : "Choose CSV File"} onPress={handlePickFile} disabled={loading} />
         {fileName ? <Text style={styles.fileName}>Selected: {fileName}</Text> : null}
       </Card>
+
+      <GoogleSheetsPrompt title="Keep a Google Sheet in sync instead" cta="Set up Google Sheets sync" />
 
       <Card style={{ gap: SPACING.md }}>
         <SectionLabel>Read-Only Link</SectionLabel>

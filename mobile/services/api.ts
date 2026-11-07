@@ -1995,3 +1995,53 @@ export async function disconnectSquare(): Promise<{ disconnected: boolean; links
 export async function disconnectClover(): Promise<{ disconnected: boolean; links_retained: number }> {
   return request("/integrations/clover", { method: "DELETE" });
 }
+
+// ─── Google Sheets sync ───────────────────────────────
+// The linked sheet is the source of truth; the app reads and writes it.
+
+export interface GoogleSheetLink {
+  spreadsheet_id: string;
+  title: string | null;
+  url: string | null;
+  tab: string;
+  source_of_truth: boolean;
+  archive_missing: boolean;
+  last_synced_at: string | null;
+  last_error: string | null;
+  mapped_columns: string[];
+}
+
+export interface GoogleSheetsStatus {
+  configured: boolean;
+  connected: boolean;
+  email: string | null;
+  sheet: GoogleSheetLink | null;
+  pending_pushes: number;
+  failed_pushes: number;
+}
+
+export interface GoogleSheetsSyncResult {
+  run_id: string | null;
+  created: number;
+  updated: number;
+  archived: number;
+  appended: number;
+  conflicts: number;
+  note: string | null;
+  pushes_processed: number;
+}
+
+const GS = "/integrations/google";
+
+export const getGoogleSheetsStatus = () => request<GoogleSheetsStatus>(`${GS}/status`);
+export const getGoogleConnectUrl = (platform: "web" | "native") =>
+  request<{ authorization_url: string }>(`${GS}/connect?platform=${platform}`);
+export const disconnectGoogle = () => request<{ disconnected: boolean }>(GS, { method: "DELETE" });
+export const createGoogleSheet = () =>
+  request<GoogleSheetsStatus>(`${GS}/sheet/create`, { method: "POST", body: JSON.stringify({}) });
+export const linkGoogleSheet = (url: string) =>
+  request<GoogleSheetsStatus>(`${GS}/sheet/link`, { method: "POST", body: JSON.stringify({ url }) });
+export const updateGoogleSheetSettings = (settings: { source_of_truth?: boolean; archive_missing?: boolean }) =>
+  request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "PATCH", body: JSON.stringify(settings) });
+export const unlinkGoogleSheet = () => request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "DELETE" });
+export const syncGoogleSheets = () => request<GoogleSheetsSyncResult>(`${GS}/sync`, { method: "POST" });

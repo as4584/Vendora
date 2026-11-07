@@ -18,6 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from app.routers import auth, inventory, transactions, dashboard, invoices, webhooks
 from app.routers import export, features, sellers, integrations
 from app.routers import subscriptions, support, reset_bridge, legal_pages, scan, stockx, customers
+from app.routers import google_sheets
 from app.config import settings
 from app.rate_limit import limiter
 from app.http_hardening import HardeningMiddleware
@@ -128,6 +129,7 @@ app.include_router(features.router, prefix="/api/v1")
 app.include_router(sellers.router, prefix="/api/v1")
 app.include_router(integrations.router, prefix="/api/v1")
 app.include_router(stockx.router, prefix="/api/v1")
+app.include_router(google_sheets.router, prefix="/api/v1")
 app.include_router(subscriptions.router, prefix="/api/v1")
 app.include_router(support.router, prefix="/api/v1")
 app.include_router(scan.router, prefix="/api/v1")

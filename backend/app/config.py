@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     STOCKX_CLIENT_ID: str = ""
     STOCKX_CLIENT_SECRET: str = ""
     STOCKX_REDIRECT_URI: str = "https://vendora.lexmakesit.com/api/v1/integrations/stockx/callback"
+    # Google Sheets sync (OAuth web client). Scopes: drive.file + openid email.
+    # See docs/features/GOOGLE_SHEETS_SYNC.md for the Google Cloud setup.
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "https://vendora.lexmakesit.com/api/v1/integrations/google/callback"
+    # Optional browser API key for the Google Picker on web ("Use an existing sheet").
+    GOOGLE_PICKER_API_KEY: str = ""
     # Provider token encryption key (Fernet — 32-byte URL-safe base64).
     # Generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # If empty, a key is derived from SECRET_KEY via SHA-256 (acceptable for dev/test).

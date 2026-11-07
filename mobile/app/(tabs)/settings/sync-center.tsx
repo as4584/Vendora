@@ -8,7 +8,7 @@ import { EbayPayouts } from "../../../components/EbayPayouts";
 import { EbayPoliciesCard } from "../../../components/EbayPolicySetup";
 import { COLORS, SPACING } from "../../../theme/tokens";
 
-type ProviderKey = "lightspeed" | "square" | "clover" | "ebay";
+type ProviderKey = "lightspeed" | "square" | "clover" | "ebay" | "google_sheets";
 type ProviderStatus = { connected: boolean; last_synced_at: string | null };
 
 const PROVIDERS: { key: ProviderKey; name: string; icon: IconName; getStatus: () => Promise<ProviderStatus>; sync: () => Promise<unknown> }[] = [
@@ -16,17 +16,26 @@ const PROVIDERS: { key: ProviderKey; name: string; icon: IconName; getStatus: ()
   { key: "square", name: "Square", icon: "square", getStatus: api.getSquareStatus, sync: api.triggerSquareSync },
   { key: "clover", name: "Clover", icon: "apps", getStatus: api.getCloverStatus, sync: api.triggerCloverSync },
   { key: "ebay", name: "eBay", icon: "pricetag", getStatus: api.getEbayStatus, sync: api.triggerEbaySync },
+  { key: "google_sheets", name: "Google Sheets", icon: "grid", getStatus: googleSheetsStatus, sync: api.syncGoogleSheets },
 ];
+
+/** A Google Sheet counts as connected for Sync Center once a sheet is linked. */
+async function googleSheetsStatus(): Promise<ProviderStatus> {
+  const status = await api.getGoogleSheetsStatus();
+  return { connected: Boolean(status.connected && status.sheet), last_synced_at: status.sheet?.last_synced_at ?? null };
+}
 
 export function providerName(provider: string): string {
   if (provider === "ebay") return "eBay";
   if (provider === "stockx") return "StockX";
+  if (provider === "google_sheets") return "Google Sheets";
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
 export function jobLabel(job: api.OutboxJob): string {
   if (job.action === "delete_listing") return "Remove sold-out ask";
   if (job.action === "sync_quantity") return "Update quantity";
+  if (job.action === "push_row") return "Update sheet row";
   return job.action.replace(/_/g, " ");
 }
 

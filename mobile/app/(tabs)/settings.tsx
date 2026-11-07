@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/auth";
 import * as api from "../../services/api";
 import { StockxSettingsCard } from "../../components/Stockx";
+import { GoogleSheetsSettingsCard } from "../../components/GoogleSheets";
 import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/backgroundSync";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../components/ui";
 import { COLORS, SPACING } from "../../theme/tokens";
@@ -453,6 +454,7 @@ export default function SettingsScreen() {
         onDisconnect={handleDisconnectEbay}
       />
       <StockxSettingsCard />
+      <GoogleSheetsSettingsCard />
 
       <Modal
         visible={connectionProvider !== null}
