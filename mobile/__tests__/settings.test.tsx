@@ -289,6 +289,8 @@ describe('SettingsScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Delete Account')).toBeTruthy());
     fireEvent.press(screen.getByText('Delete Account'));
+    // iOS (jest-expo default platform): remind Apple subscribers to cancel with Apple.
+    expect(screen.getByTestId('delete-apple-subscription-note')).toBeTruthy();
     fireEvent.changeText(screen.getByLabelText('Account password'), 'TestPass123');
     fireEvent.changeText(screen.getByLabelText('Delete confirmation'), 'DELETE');
     fireEvent.press(screen.getByText('Delete Permanently'));
@@ -296,6 +298,16 @@ describe('SettingsScreen', () => {
     await waitFor(() => {
       expect(apiMock.deleteAccount).toHaveBeenCalledWith('TestPass123');
     });
+  });
+
+  it('omits the Apple subscription note off iOS', async () => {
+    setupAllDisconnected();
+    jest.spyOn(require('../services/purchases'), 'isAppleStorefront').mockReturnValue(false);
+    const screen = render(<SettingsScreen />);
+    await waitFor(() => expect(screen.getByText('Delete Account')).toBeTruthy());
+    fireEvent.press(screen.getByText('Delete Account'));
+    expect(screen.queryByTestId('delete-apple-subscription-note')).toBeNull();
+    jest.restoreAllMocks();
   });
 
   it('handles profile-photo permission, success, and upload failures', async () => {
