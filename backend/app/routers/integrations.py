@@ -659,11 +659,16 @@ async def ebay_deletion_notify(request: Request, db: Session = Depends(get_db)):
         await ebay_signature.verify_request(
             ebay_service, body, request.headers.get("x-ebay-signature")
         )
+    except (ebay_signature.KeyUnavailableError, httpx.HTTPError) as exc:
+        # We could not obtain eBay's key (other environment, keyset not yet
+        # enabled, or eBay unreachable). Acknowledge so the endpoint stays
+        # healthy for eBay, but take NO action: an unverified notice can never
+        # purge anything.
+        logger.warning("eBay deletion notice acknowledged without action (unverifiable): %s", exc)
+        return {"ok": True, "verified": False}
     except ebay_signature.SignatureError as exc:
         logger.warning("Rejected eBay deletion notice: %s", exc)
         raise HTTPException(status_code=status.HTTP_412_PRECONDITION_FAILED, detail="Invalid signature.")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify signature.")
 
     try:
         payload = json.loads(body)

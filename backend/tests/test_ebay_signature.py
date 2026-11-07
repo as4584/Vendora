@@ -37,14 +37,36 @@ def test_signature_from_another_key_is_rejected(client):
     assert signed_ebay_post(client, body, header=header).status_code == 412
 
 
-def test_key_fetch_network_failure_returns_503(client):
-    async def boom(service, kid):
-        raise httpx.ConnectError("down")
+@pytest.mark.parametrize("error", [
+    httpx.ConnectError("down"),
+    ebay_signature.KeyUnavailableError("Could not fetch eBay public key"),
+])
+def test_unverifiable_notice_is_acknowledged_but_purges_nothing(client, db, test_user, error):
+    """Found live: eBay's Production test notice can't be verified with Sandbox
+    keys. The endpoint must answer 200 (so eBay marks it healthy) yet act on
+    nothing, so a forged notice can never delete data."""
+    from app.models.integration import EbayToken
 
-    body = b"{}"
-    with patch("app.services.ebay_signature.fetch_public_key", boom):
+    from datetime import datetime, timedelta, timezone
+    db.add(EbayToken(user_id=test_user.id, account_id="victim", access_token="a", refresh_token="r",
+                     expires_at=datetime.now(timezone.utc) + timedelta(hours=1)))
+    db.commit()
+
+    async def unavailable(service, kid):
+        raise error
+
+    body = json.dumps({"notification": {"data": {"username": "victim"}}}).encode()
+    with patch("app.services.ebay_signature.fetch_public_key", unavailable):
         resp = client.post(URL, content=body, headers={"x-ebay-signature": sign_header(body)})
-    assert resp.status_code == 503
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "verified": False}
+    db.expire_all()
+    assert db.query(EbayToken).filter_by(account_id="victim").count() == 1
+
+
+def test_missing_signature_still_rejected_even_when_keys_unavailable(client):
+    resp = client.post(URL, json={"notification": {"data": {"username": "x"}}})
+    assert resp.status_code == 412
 
 
 def test_verify_rejects_bad_digest_and_key_type():
