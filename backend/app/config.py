@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     ALGORITHM: str = "HS256"
     ENVIRONMENT: str = "development"
+    # Grandfather early free users into Pro market pricing for a while.
+    # Users created before CUTOFF keep it until UNTIL (ISO dates). Unset = off.
+    PRICING_GRACE_CUTOFF: str = ""
+    PRICING_GRACE_UNTIL: str = ""
     ALLOWED_ORIGIN: str = "http://localhost:3000,http://localhost:8081"
     PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"
     TESTER_EMAIL_ALLOWLIST: str = "management.donxera@gmail.com"

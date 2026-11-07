@@ -78,7 +78,7 @@ def get_tier_info(tier: str) -> dict:
 def require_market_pricing(current_user):
     """Raise 403 pro_required unless the user can see market pricing."""
     from fastapi import HTTPException, status
-    if not is_feature_enabled("market_pricing", current_user.subscription_tier):
+    if not is_feature_enabled("market_pricing", current_user.subscription_tier) and not in_pricing_grace(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -87,3 +87,24 @@ def require_market_pricing(current_user):
                 "feature": "market_pricing",
             },
         )
+
+
+def _aware_iso(value: str):
+    from datetime import datetime, timezone
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def in_pricing_grace(user, now=None) -> bool:
+    """Early free users keep market pricing until PRICING_GRACE_UNTIL."""
+    from datetime import datetime, timezone
+    from app.config import settings
+    if not settings.PRICING_GRACE_CUTOFF or not settings.PRICING_GRACE_UNTIL or not user.created_at:
+        return False
+    try:
+        cutoff = _aware_iso(settings.PRICING_GRACE_CUTOFF)
+        until = _aware_iso(settings.PRICING_GRACE_UNTIL)
+    except ValueError:
+        return False
+    created = user.created_at if user.created_at.tzinfo else user.created_at.replace(tzinfo=timezone.utc)
+    return created < cutoff and (now or datetime.now(timezone.utc)) < until
