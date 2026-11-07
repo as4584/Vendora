@@ -97,13 +97,14 @@ def _aware_iso(value: str):
 
 def in_pricing_grace(user, now=None) -> bool:
     """Early free users keep market pricing until PRICING_GRACE_UNTIL."""
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
     from app.config import settings
-    if not settings.PRICING_GRACE_CUTOFF or not settings.PRICING_GRACE_UNTIL or not user.created_at:
+    if not settings.PRICING_GRACE_CUTOFF or not user.created_at:
         return False
     try:
         cutoff = _aware_iso(settings.PRICING_GRACE_CUTOFF)
-        until = _aware_iso(settings.PRICING_GRACE_UNTIL)
+        until = (_aware_iso(settings.PRICING_GRACE_UNTIL) if settings.PRICING_GRACE_UNTIL
+                 else cutoff + timedelta(days=settings.PRICING_GRACE_DAYS))
     except ValueError:
         return False
     created = user.created_at if user.created_at.tzinfo else user.created_at.replace(tzinfo=timezone.utc)

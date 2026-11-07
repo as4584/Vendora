@@ -13,8 +13,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ENVIRONMENT: str = "development"
     # Grandfather early free users into Pro market pricing for a while.
-    # Users created before CUTOFF keep it until UNTIL (ISO dates). Unset = off.
+    # Users created before CUTOFF (the release date, ISO) keep it for
+    # PRICING_GRACE_DAYS after it, or until PRICING_GRACE_UNTIL if set. Unset CUTOFF = off.
     PRICING_GRACE_CUTOFF: str = ""
+    PRICING_GRACE_DAYS: int = 7
     PRICING_GRACE_UNTIL: str = ""
     ALLOWED_ORIGIN: str = "http://localhost:3000,http://localhost:8081"
     PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"

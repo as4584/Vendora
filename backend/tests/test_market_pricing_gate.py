@@ -44,3 +44,18 @@ def test_grace_expired_or_new_user_is_gated(client, auth_headers, monkeypatch):
     monkeypatch.setattr(settings, "PRICING_GRACE_CUTOFF", "2000-01-01")  # user signed up after cutoff
     monkeypatch.setattr(settings, "PRICING_GRACE_UNTIL", "2999-01-01")
     assert client.get(url, headers=auth_headers).status_code == 403
+
+
+def test_grace_defaults_to_one_week_after_cutoff():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from app.config import settings
+    from app.services.feature_flags import in_pricing_grace
+    old = (settings.PRICING_GRACE_CUTOFF, settings.PRICING_GRACE_UNTIL)
+    settings.PRICING_GRACE_CUTOFF, settings.PRICING_GRACE_UNTIL = "2026-12-01", ""
+    try:
+        user = SimpleNamespace(created_at=datetime(2026, 11, 1, tzinfo=timezone.utc))
+        assert in_pricing_grace(user, now=datetime(2026, 12, 7, 23, tzinfo=timezone.utc))
+        assert not in_pricing_grace(user, now=datetime(2026, 12, 8, 0, 1, tzinfo=timezone.utc))
+    finally:
+        settings.PRICING_GRACE_CUTOFF, settings.PRICING_GRACE_UNTIL = old
