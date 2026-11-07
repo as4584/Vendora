@@ -262,11 +262,11 @@ def cancel_user_subscriptions(db: Session, user: User) -> None:
     for subscription in subscriptions:
         try:
             stripe.Subscription.cancel(subscription.stripe_subscription_id)
-        except stripe.error.InvalidRequestError as exc:
+        except stripe.InvalidRequestError as exc:
             # Already gone on Stripe's side: nothing left to bill.
             if getattr(exc, "code", None) != "resource_missing":
                 raise HTTPException(status_code=502, detail="Could not cancel your subscription. Please try again.") from exc
-        except stripe.error.StripeError as exc:
+        except stripe.StripeError as exc:
             raise HTTPException(status_code=502, detail="Could not cancel your subscription. Please try again.") from exc
 
 def handle_subscription_event(db: Session, event_type: str, event_data: dict) -> None:

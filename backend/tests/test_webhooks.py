@@ -59,7 +59,7 @@ class TestWebhookDeduplication:
         webhook = SimpleNamespace(construct_event=lambda *args: event)
         fake_stripe = SimpleNamespace(
             Webhook=webhook,
-            error=SimpleNamespace(SignatureVerificationError=SignatureVerificationError),
+            SignatureVerificationError=SignatureVerificationError,
         )
         monkeypatch.setitem(sys.modules, "stripe", fake_stripe)
         monkeypatch.setattr("app.routers.webhooks.STRIPE_AVAILABLE", True)
