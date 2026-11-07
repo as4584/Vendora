@@ -84,8 +84,6 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "https://vendora.lexmakesit.com/api/v1/integrations/google/callback"
-    # Where a web (browser popup) OAuth flow returns; its origin is the postMessage target.
-    GOOGLE_WEB_RETURN_URL: str = "https://vendora.lexmakesit.com/settings"
     # Optional browser API key for the Google Picker on web ("Use an existing sheet").
     GOOGLE_PICKER_API_KEY: str = ""
     # Provider token encryption key (Fernet — 32-byte URL-safe base64).

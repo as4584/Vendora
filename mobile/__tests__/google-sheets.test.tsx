@@ -1,7 +1,8 @@
 import React from 'react';
 import { Alert, Platform } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import * as WebBrowser from 'expo-web-browser';
+const mockOpen = jest.fn(async (_url: string) => 'closed');
+jest.mock('../utils/oauthConnect', () => ({ openProviderConnect: (url: string) => mockOpen(url) }));
 import * as Linking from 'expo-linking';
 import * as api from '../services/api';
 import {
@@ -85,7 +86,7 @@ describe('GoogleSheetsSettingsCard', () => {
     m.getGoogleConnectUrl.mockResolvedValueOnce({ authorization_url: 'https://accounts.google.test/auth' });
     render(<GoogleSheetsSettingsCard />);
     fireEvent.press(await screen.findByText('Connect Google'));
-    await waitFor(() => expect(WebBrowser.openAuthSessionAsync).toHaveBeenCalledWith('https://accounts.google.test/auth', 'vendora://settings'));
+    await waitFor(() => expect(mockOpen).toHaveBeenCalledWith('https://accounts.google.test/auth'));
     expect(m.getGoogleConnectUrl).toHaveBeenCalledWith(Platform.OS === 'web' ? 'web' : 'native');
     m.getGoogleConnectUrl.mockRejectedValueOnce(new Error('Google Sheets not configured'));
     fireEvent.press(screen.getByText('Connect Google'));
@@ -177,24 +178,42 @@ describe('GoogleSheetsSettingsCard', () => {
     expect(Alert.alert).toHaveBeenLastCalledWith('Disconnect failed', 'nope');
   });
 
-  it('reloads when the web OAuth popup posts back', async () => {
-    const original = Platform.OS;
-    Object.defineProperty(Platform, 'OS', { configurable: true, get: () => 'web' });
-    const listeners: Record<string, (e: unknown) => void> = {};
-    const win = { addEventListener: jest.fn((t: string, f: (e: unknown) => void) => { listeners[t] = f; }), removeEventListener: jest.fn() };
-    (global as unknown as { window: unknown }).window = win;
-    try {
-      const view = render(<GoogleSheetsSettingsCard />);
-      await screen.findByText('Sync now');
-      const calls = m.getGoogleSheetsStatus.mock.calls.length;
-      await act(async () => { listeners.message({ data: { type: 'other' } }); });
-      await act(async () => { listeners.message({ data: { type: 'resqlo-oauth', provider: 'google_sheets' } }); });
-      expect(m.getGoogleSheetsStatus.mock.calls.length).toBe(calls + 1);
-      view.unmount();
-      expect(win.removeEventListener).toHaveBeenCalled();
-    } finally {
-      Object.defineProperty(Platform, 'OS', { configurable: true, get: () => original });
-    }
+  it('tells the seller when Google sign-in was denied', async () => {
+    m.getGoogleSheetsStatus.mockResolvedValue({ ...CONNECTED, connected: false });
+    m.getGoogleConnectUrl.mockResolvedValueOnce({ authorization_url: 'https://accounts.google.test/auth' });
+    mockOpen.mockResolvedValueOnce('denied');
+    render(<GoogleSheetsSettingsCard />);
+    fireEvent.press(await screen.findByText('Connect Google'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Google not connected', 'Google sign-in was cancelled or denied.'));
+  });
+
+  it('shows the linked state after connecting', async () => {
+    m.getGoogleSheetsStatus.mockResolvedValueOnce({ ...CONNECTED, connected: false }).mockResolvedValue(CONNECTED);
+    m.getGoogleConnectUrl.mockResolvedValueOnce({ authorization_url: 'https://accounts.google.test/auth' });
+    mockOpen.mockResolvedValueOnce('connected');
+    render(<GoogleSheetsSettingsCard />);
+    fireEvent.press(await screen.findByText('Connect Google'));
+    expect(await screen.findByText('Create a Resqlo sheet')).toBeTruthy();
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+
+  it('reports failures for create, toggle and unlink', async () => {
+    m.getGoogleSheetsStatus.mockResolvedValue(CONNECTED);
+    m.createGoogleSheet.mockRejectedValueOnce(new Error('quota'));
+    render(<GoogleSheetsSettingsCard />);
+    fireEvent.press(await screen.findByText('Create a Resqlo sheet'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Could not create the sheet', 'quota'));
+  });
+
+  it('reports a failed settings save and a failed unlink', async () => {
+    m.updateGoogleSheetSettings.mockRejectedValueOnce(new Error('offline'));
+    m.unlinkGoogleSheet.mockRejectedValueOnce(new Error('gone'));
+    render(<GoogleSheetsSettingsCard />);
+    fireEvent(await screen.findByLabelText('Sheet is the source of truth'), 'valueChange', false);
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'offline'));
+    fireEvent.press(screen.getByText('Unlink sheet'));
+    await act(async () => { await pressAlertButton('Unlink'); });
+    expect(Alert.alert).toHaveBeenLastCalledWith('Unlink failed', 'gone');
   });
 });
 

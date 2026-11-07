@@ -6,9 +6,9 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Platform, StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import * as api from "../services/api";
+import { openProviderConnect } from "../utils/oauthConnect";
 import { Button } from "./Button";
 import { Card, Pill } from "./ui";
 import { COLORS, FONT_SCALE, RADII, SPACING, TYPE } from "../theme/tokens";
@@ -72,17 +72,6 @@ export function GoogleSheetsSettingsCard() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void reload(); }, [reload]);
 
-  // Web popup flow: the callback page posts a message to this window.
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; provider?: string } | null;
-      if (data?.type === "resqlo-oauth" && data.provider === "google_sheets") void reload();
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [reload]);
-
   const run = async (key: string, action: () => Promise<unknown>, failTitle: string) => {
     setBusy(key);
     try {
@@ -97,7 +86,9 @@ export function GoogleSheetsSettingsCard() {
   const connect = () =>
     run("connect", async () => {
       const { authorization_url } = await api.getGoogleConnectUrl(Platform.OS === "web" ? "web" : "native");
-      await WebBrowser.openAuthSessionAsync(authorization_url, Linking.createURL("settings"));
+      // Shared flow: native auth session, or a web popup that posts back.
+      const outcome = await openProviderConnect(authorization_url);
+      if (outcome === "denied") Alert.alert("Google not connected", "Google sign-in was cancelled or denied.");
       await reload();
     }, "Google unavailable");
 

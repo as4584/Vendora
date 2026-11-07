@@ -33,7 +33,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Awaitable, Callable, Optional
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import quote, urlencode
 
 import httpx
 import jwt
@@ -47,6 +47,7 @@ from app.models.inventory import InventoryItem, InventoryStockLedger
 from app.models.provider import ProviderSyncRun, ReconciliationIssue
 from app.models.provider_outbox import ProviderOutbox
 from app.security.token_encryption import decrypt_token, encrypt_token
+from app.services.oauth_return import RETURN_APP, RETURN_WEB
 from app.services.csv_export import INVENTORY_EXPORT_COLUMNS, safe_cell
 from app.services.spreadsheet_import import (
     normalize_header,
@@ -261,7 +262,7 @@ class GoogleSheetsService:
         payload = {
             "sub": str(user_id),
             "purpose": "google_oauth",
-            "ret": "web" if platform == "web" else "native",
+            "ret": RETURN_WEB if platform == RETURN_WEB else RETURN_APP,
             # The PKCE verifier travels encrypted: the browser only sees ciphertext.
             "cv": encrypt_token(verifier),
             "nonce": secrets.token_urlsafe(12),
@@ -276,7 +277,7 @@ class GoogleSheetsService:
                 raise ValueError("invalid state purpose")
             return {
                 "user_id": uuid.UUID(payload["sub"]),
-                "platform": payload.get("ret", "native"),
+                "platform": payload.get("ret", RETURN_APP),
                 "verifier": decrypt_token(payload["cv"]),
             }
         except (JWTError, KeyError, TypeError, ValueError) as exc:
@@ -901,11 +902,6 @@ async def pull_all(db: Session) -> int:
             db.rollback()
             logger.exception("Google Sheets periodic pull failed for a user")
     return len(user_ids)
-
-
-def web_return_origin() -> str:
-    parsed = urlparse(settings.GOOGLE_WEB_RETURN_URL)
-    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 google_sheets_service = GoogleSheetsService()

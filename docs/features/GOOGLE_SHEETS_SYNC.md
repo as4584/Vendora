@@ -61,7 +61,7 @@ A blank `name` or `status` cell means "no opinion" and never clears the field. A
 ## Owner setup
 
 1. **Google Cloud project.** At https://console.cloud.google.com, create (or reuse) a project, for example `resqlo-prod`.
-2. **Enable the API.** Under APIs and Services → Library, enable **Google Sheets API**. The Drive API is not needed: the app only uses `drive.file` through Sheets.
+2. **Enable the APIs.** Under APIs and Services → Library, enable **Google Sheets API** and **Google Drive API** (both are enabled on the owner's project). Sheets does all the reads and writes; Drive is enabled for the `drive.file` grant and for the future web Picker.
 3. **OAuth consent screen** (Google Auth Platform → Branding / Audience / Data access):
    - User type: **External**.
    - App name **Resqlo**, support email, and the developer contact.
@@ -73,11 +73,11 @@ A blank `name` or `status` cell means "no opinion" and never clears the field. A
    - Authorized redirect URI: `https://vendora.lexmakesit.com/api/v1/integrations/google/callback`
    - For local testing, also add `http://localhost:8000/api/v1/integrations/google/callback` and set `GOOGLE_REDIRECT_URI` to it locally.
    - No JavaScript origins are needed unless the web Picker is added later.
-5. **Doppler** (project `vendora`, config `prd`; see the `doppler-secret-ops` skill, since the CLI is broken on this machine):
+5. **Doppler** (project `lexmakesit`, config `prd`; see the `doppler-secret-ops` skill, since the CLI is broken on this machine):
    - `GOOGLE_CLIENT_ID`: the client ID (`….apps.googleusercontent.com`)
    - `GOOGLE_CLIENT_SECRET`: the client secret
    - `GOOGLE_REDIRECT_URI`: optional; defaults to the production URL above
-   - `GOOGLE_WEB_RETURN_URL`: optional; defaults to `https://vendora.lexmakesit.com/settings`. Its origin is the `postMessage` target for the web popup.
+   - The web return uses the shared `WEB_APP_URL` (default `https://vendora.lexmakesit.com`); nothing Google-specific to set.
    - `GOOGLE_PICKER_API_KEY`: reserved for the future web Picker; leave unset.
 6. **Deploy and check.** After the backend restarts with the keys, `GET /api/v1/integrations/google/status` returns `configured: true`. Settings → Google Sheets → Connect Google → Create a Resqlo sheet.
 
@@ -86,7 +86,7 @@ Without the keys, every endpoint answers `503 Google Sheets not configured` and 
 ## Return after Google sign-in
 
 - **Native** (`platform=native`): the callback redirects to `vendora://settings?integration=google_sheets&status=connected|denied|error`, which closes the auth session.
-- **Web** (`platform=web`): the callback returns a small page. If it was opened as a popup, it sends `{type: "resqlo-oauth", provider: "google_sheets", status}` to the opener with `postMessage`, restricted to the `GOOGLE_WEB_RETURN_URL` origin, then closes. Otherwise it redirects to `https://vendora.lexmakesit.com/settings?integration=google_sheets&status=…`. The Settings card listens for the message and reloads. This flow does not depend on the generic OAuth web-return work on `feature/import-review`.
+- **Web** (`platform=web`): the callback returns a small page. If it was opened as a popup, it sends `{type: "resqlo-oauth", provider: "google_sheets", status}` to the opener with `postMessage`, restricted to the `WEB_APP_URL` origin, and writes a localStorage event, then closes. Otherwise it redirects to `https://vendora.lexmakesit.com/settings?integration=google_sheets&status=…`. The Settings card waits for that result and reloads. This is the shared return used by every provider: `backend/app/services/oauth_return.py` (`finish_response`) and `mobile/utils/oauthConnect.ts` (`openProviderConnect`).
 
 ## API
 

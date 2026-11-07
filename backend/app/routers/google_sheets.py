@@ -1,18 +1,14 @@
 """Google Sheets sync endpoints under /integrations/google/…"""
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime
 from typing import Literal, Optional
-from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.provider_outbox import ProviderOutbox
@@ -22,8 +18,8 @@ from app.services.google_sheets import (
     PROVIDER,
     GoogleApiError,
     google_sheets_service,
-    web_return_origin,
 )
+from app.services.oauth_return import finish_response, return_target_for
 from app.services.outbox import process_outbox
 
 router = APIRouter(prefix="/integrations/google", tags=["integrations", "google_sheets"])
@@ -118,28 +114,11 @@ def google_connect(
     platform: Literal["web", "native"] = Query("native"),
     current_user: User = Depends(get_current_user),
 ):
-    return AuthUrlOut(authorization_url=google_sheets_service.authorization_url(current_user.id, platform))
+    return AuthUrlOut(authorization_url=google_sheets_service.authorization_url(current_user.id, return_target_for(platform)))
 
 
-def _web_return(result: str) -> HTMLResponse:
-    """Popup flow: tell the opener and close; a full-page flow lands on Settings."""
-    origin = web_return_origin()
-    fallback = f"{settings.GOOGLE_WEB_RETURN_URL}?{urlencode({'integration': PROVIDER, 'status': result})}"
-    message = {"type": "resqlo-oauth", "provider": PROVIDER, "status": result}
-    html = (
-        "<!doctype html><meta charset='utf-8'><title>Resqlo</title>"
-        "<p>Google Sheets connection finished. You can close this window.</p><script>"
-        f"var m={json.dumps(message)},o={json.dumps(origin)},f={json.dumps(fallback)};"
-        "if(window.opener&&!window.opener.closed){try{window.opener.postMessage(m,o);}catch(e){}window.close();}"
-        "setTimeout(function(){location.replace(f);},300);</script>"
-    )
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
-
-
-def _return(platform: str, result: str):
-    if platform == "web":
-        return _web_return(result)
-    return RedirectResponse(NATIVE_RETURN.format(status=result), status_code=status.HTTP_303_SEE_OTHER)
+def _return(state: str, result: str):
+    return finish_response(PROVIDER, result, state, app_url=NATIVE_RETURN.format(status=result))
 
 
 @router.get("/callback")
@@ -151,13 +130,13 @@ async def google_callback(
 ):
     parsed = google_sheets_service.parse_state(state)
     if error or not code:
-        return _return(parsed["platform"], "denied")
+        return _return(state, "denied")
     try:
         payload = await google_sheets_service.exchange_code(code, parsed["verifier"])
     except HTTPException:
-        return _return(parsed["platform"], "error")
+        return _return(state, "error")
     google_sheets_service.upsert_token(db, parsed["user_id"], payload)
-    return _return(parsed["platform"], "connected")
+    return _return(state, "connected")
 
 
 @router.delete("")

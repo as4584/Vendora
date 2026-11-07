@@ -224,7 +224,7 @@ class TestOAuth:
         state = parse_qs(urlparse(url).query)["state"][0]
         resp = client.get(f"/api/v1/integrations/google/callback?state={state}&code=abc")
         assert resp.status_code == 200
-        assert "postMessage" in resp.text and '"https://vendora.lexmakesit.com"' in resp.text
+        assert "postMessage" in resp.text and "resqlo-oauth" in resp.text
         assert "settings?integration=google_sheets&status=connected" in resp.text
 
     def test_denied_and_exchange_failure(self, client, test_user, fake):
