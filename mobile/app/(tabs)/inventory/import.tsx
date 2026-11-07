@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel, Stepper } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
+import ImportReview from "../../../components/ImportReview";
 
 export default function InventoryImportScreen() {
   const [preview, setPreview] = useState<api.InventoryImportPreview | null>(null);
@@ -21,6 +22,9 @@ export default function InventoryImportScreen() {
   const [link, setLink] = useState("");
   const [linkResult, setLinkResult] = useState<api.InventoryImportResult | null>(null);
   const [linkLoading, setLinkLoading] = useState<"preview" | "import" | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  // Bring a freshly loaded review into view once it has laid out.
+  const scrollToReview = useRef(false);
 
   const handlePickFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({
@@ -50,6 +54,7 @@ export default function InventoryImportScreen() {
         } as any);
       }
       const nextPreview = await api.previewInventoryImport(formData);
+      scrollToReview.current = true;
       setPreview(nextPreview);
     } catch (err: any) {
       Alert.alert("Import preview failed", err?.message || "Could not read this CSV file.");
@@ -62,10 +67,13 @@ export default function InventoryImportScreen() {
     setCommitting(true);
     try {
       const result = await api.commitInventoryImport(preview!.job_id);
+      const added = result.rows_created + result.rows_updated;
       Alert.alert(
-        "Import committed",
-        `${result.rows_created} created, ${result.rows_updated} updated, ${result.rows_skipped} skipped.`
+        added === 1 ? "1 item added" : `${added} items added`,
+        `${result.rows_created} new, ${result.rows_updated} updated${result.rows_skipped ? `, ${result.rows_skipped} left out` : ""}.`
       );
+      setPreview(null);
+      setFileName(null);
     } catch (err: any) {
       Alert.alert("Import failed", err?.message || "Could not commit the import.");
     } finally {
@@ -122,15 +130,15 @@ export default function InventoryImportScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
       <HeaderTitle
         title="Import Inventory"
-        subtitle="Upload a CSV, preview the matches, then add them to your inventory."
+        subtitle="Upload a CSV, review each item, then add them to your inventory."
       />
 
       <Card style={{ gap: SPACING.md }}>
         <SectionLabel>Flow</SectionLabel>
-        <Stepper steps={["Upload", "Preview", "Commit"]} active={preview ? 1 : 0} />
+        <Stepper steps={["Upload", "Review", "Add"]} active={preview ? 1 : 0} />
         <Text style={styles.helperText}>
           Re-importing a Resqlo export updates the same items. Nothing is duplicated, and rows we can’t read are flagged so you can fix them.
         </Text>
@@ -206,45 +214,15 @@ export default function InventoryImportScreen() {
       </Card>
 
       {preview ? (
-        <Card style={{ gap: SPACING.md }}>
-          <SectionLabel>Preview Summary</SectionLabel>
-          <View style={styles.summaryRow}>
-            <Pill label={`Create ${preview.rows_to_create}`} tone="success" />
-            <Pill label={`Update ${preview.rows_to_update}`} tone="info" />
-            <Pill label={`Errors ${preview.rows_errored}`} tone={preview.rows_errored > 0 ? "danger" : "neutral"} />
-          </View>
-          <Text style={styles.helperText}>
-            {preview.filename || "CSV file"} • {preview.total_rows} row{preview.total_rows === 1 ? "" : "s"}
-          </Text>
-          <View style={styles.previewList}>
-            {preview.rows.slice(0, 8).map((row) => (
-              <View key={`${row.row_number}-${row.action}`} style={styles.previewRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.previewTitle}>Row {row.row_number}</Text>
-                  <Text style={styles.previewBody}>
-                    {row.error_message ||
-                      row.mapped_data?.name ||
-                      row.match_value ||
-                      "Spreadsheet row"}
-                  </Text>
-                </View>
-                <Pill
-                  label={(row.action || "skip").toUpperCase()}
-                  tone={
-                    row.action === "create"
-                      ? "success"
-                      : row.action === "update"
-                        ? "info"
-                        : row.action === "error"
-                          ? "danger"
-                          : "neutral"
-                  }
-                />
-              </View>
-            ))}
-          </View>
-          <ActionButton label={committing ? "Committing..." : "Commit Import"} onPress={handleCommit} disabled={committing} />
-        </Card>
+        <View
+          onLayout={(event) => {
+            if (!scrollToReview.current) return;
+            scrollToReview.current = false;
+            scrollRef.current?.scrollTo({ y: Math.max(0, event.nativeEvent.layout.y - SPACING.md), animated: true });
+          }}
+        >
+          <ImportReview key={preview.job_id} preview={preview} committing={committing} onCommit={handleCommit} />
+        </View>
       ) : null}
     </ScrollView>
   );

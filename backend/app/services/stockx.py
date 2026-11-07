@@ -208,12 +208,13 @@ class StockxService(ProviderAdapter):
 
     # ── OAuth ──────────────────────────────────────────────────────────────────
 
-    def build_state(self, user_id: uuid.UUID) -> str:
+    def build_state(self, user_id: uuid.UUID, ret: str = "app") -> str:
         payload = {
             "sub": str(user_id),
             "purpose": "stockx_oauth",
             "nonce": secrets.token_urlsafe(16),
             "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+            "ret": ret,
         }
         return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 

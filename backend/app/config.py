@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # lets iOS open reset links straight in the app (Universal Links).
     APPLE_TEAM_ID: str = ""
     IOS_BUNDLE_ID: str = "com.vendora.app"
+    # Hosted web app origin: OAuth popups started on web report back here.
+    WEB_APP_URL: str = "https://vendora.lexmakesit.com"
     INTEGRATION_SUCCESS_URL: str = "vendora://settings?integration=lightspeed&status=connected"
     # Stripe
     STRIPE_SECRET_KEY: str = ""

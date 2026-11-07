@@ -22,6 +22,7 @@ jest.mock('../services/api', () => ({
   previewInventoryImport: jest.fn(),
   commitInventoryImport: jest.fn(),
   importInventoryFromLink: jest.fn(),
+  updateInventoryImportRow: jest.fn(),
 }));
 
 describe('InventoryImportScreen', () => {
@@ -60,10 +61,12 @@ describe('InventoryImportScreen', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Preview Summary')).toBeTruthy();
+      expect(screen.getByText('Review import')).toBeTruthy();
       expect(screen.getByText('Selected: inventory.csv')).toBeTruthy();
-      expect(screen.getByText('Create 1')).toBeTruthy();
-      expect(screen.getByText('Update 1')).toBeTruthy();
+      expect(screen.getByText('2 items · 1 update')).toBeTruthy();
+      expect(screen.getByText('New item')).toBeTruthy();
+      expect(screen.getByText('Updates existing')).toBeTruthy();
+      expect(screen.getByText('Add 2 items to inventory')).toBeTruthy();
     });
   });
 
@@ -99,14 +102,16 @@ describe('InventoryImportScreen', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Commit Import')).toBeTruthy();
+      expect(screen.getByText('Add 1 item to inventory')).toBeTruthy();
     });
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Commit Import'));
+      fireEvent.press(screen.getByText('Add 1 item to inventory'));
     });
 
     expect(apiMock.commitInventoryImport).toHaveBeenCalledWith('job-22');
+    expect(Alert.alert).toHaveBeenCalledWith('1 item added', '1 new, 0 updated.');
+    expect(screen.queryByText('Review import')).toBeNull();
   });
 
   it('previews a spreadsheet link and confirms the result', async () => {
@@ -219,15 +224,17 @@ describe('InventoryImportScreen', () => {
           mapped_data: null,
           match_value: null,
         },
+        { id: 'r2', row_number: 2, action: 'create', error_message: null, mapped_data: { name: 'Samba' }, match_value: null },
       ],
     });
     (apiMock.commitInventoryImport as jest.Mock).mockRejectedValueOnce(new Error('commit rejected'));
     const screen = render(<InventoryImportScreen />);
     fireEvent.press(screen.getByText('Choose CSV File'));
-    await screen.findByText('Commit Import');
-    fireEvent.press(screen.getByText('Commit Import'));
+    await screen.findByText('Add 1 item to inventory');
+    expect(screen.getByText('2 items · 1 needs a fix')).toBeTruthy();
+    fireEvent.press(screen.getByText('Add 1 item to inventory'));
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Import failed', 'commit rejected'));
-    expect(screen.getByText('Name missing')).toBeTruthy();
+    expect(screen.getByText(/Row 1: Name missing/)).toBeTruthy();
   });
 
   it('validates spreadsheet links and renders warnings, errors, and no-import outcomes', async () => {
