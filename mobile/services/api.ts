@@ -622,6 +622,8 @@ export async function updateItemVariants(
 }
 
 export interface ImportPreviewRow {
+  /** Import row id; target of updateInventoryImportRow. */
+  id: string | null;
   row_number: number;
   action: string | null;
   inventory_item_id: string | null;
@@ -725,6 +727,22 @@ export async function importInventoryFile(
       body: formData,
     }
   );
+}
+
+export type ImportRowEditableField =
+  | "name" | "category" | "sku" | "upc" | "size" | "color" | "condition" | "quantity"
+  | "buy_price" | "expected_sell_price" | "notes";
+
+/** Edit (data) or discard/restore (skip) one previewed import row. Validated server-side. */
+export async function updateInventoryImportRow(
+  jobId: string,
+  rowId: string,
+  body: { data?: Partial<Record<ImportRowEditableField, string | number | null>>; skip?: boolean }
+): Promise<ImportPreviewRow> {
+  return request<ImportPreviewRow>(`/inventory/imports/${jobId}/rows/${rowId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function commitInventoryImport(
@@ -1362,8 +1380,13 @@ export async function getLightspeedStatus(): Promise<LightspeedStatus> {
   return request<LightspeedStatus>("/integrations/lightspeed/status");
 }
 
+/** "?platform=web" on web so the OAuth callback answers with a popup page, not vendora://. */
+export function connectPlatformQuery(): string {
+  return Platform.OS === "web" ? "?platform=web" : "";
+}
+
 export async function getLightspeedConnectUrl(): Promise<{ authorization_url: string }> {
-  return request<{ authorization_url: string }>("/integrations/lightspeed/connect");
+  return request<{ authorization_url: string }>(`/integrations/lightspeed/connect${connectPlatformQuery()}`);
 }
 
 export async function triggerLightspeedSync(): Promise<{
@@ -1474,7 +1497,7 @@ export async function getEbayStatus(): Promise<EbayStatus> {
 }
 
 export async function getEbayConnectUrl(): Promise<{ authorization_url: string }> {
-  return request<{ authorization_url: string }>("/integrations/ebay/connect");
+  return request<{ authorization_url: string }>(`/integrations/ebay/connect${connectPlatformQuery()}`);
 }
 
 export async function triggerEbaySync(): Promise<{
@@ -1549,7 +1572,7 @@ export interface StockxMarket {
 const SX = "/integrations/stockx";
 
 export const getStockxStatus = () => request<StockxStatus>(`${SX}/status`);
-export const getStockxConnectUrl = () => request<{ authorization_url: string }>(`${SX}/connect`);
+export const getStockxConnectUrl = () => request<{ authorization_url: string }>(`${SX}/connect${connectPlatformQuery()}`);
 export const disconnectStockx = () => request<{ disconnected: boolean; links_retained: number }>(SX, { method: "DELETE" });
 export const syncStockx = () => request<{ transactions_imported: number; outbox_processed: number }>(`${SX}/sync`, { method: "POST" });
 export const getStockxItem = (itemId: string) => request<StockxItem>(`${SX}/items/${itemId}`);

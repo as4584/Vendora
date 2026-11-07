@@ -11,8 +11,7 @@ import {
   Image,
   Modal,
 } from "react-native";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
+import { openProviderConnect } from "../../utils/oauthConnect";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -158,7 +157,7 @@ export default function SettingsScreen() {
   const handleConnectLightspeed = async () => {
     try {
       const { authorization_url } = await api.getLightspeedConnectUrl();
-      await WebBrowser.openAuthSessionAsync(authorization_url, Linking.createURL("settings"));
+      await openProviderConnect(authorization_url);
       await registerBackgroundSync().catch(() => {});
       await fetchAll();
     } catch (err: any) {
@@ -230,7 +229,7 @@ export default function SettingsScreen() {
   const handleConnectEbay = async () => {
     try {
       const { authorization_url } = await api.getEbayConnectUrl();
-      await WebBrowser.openAuthSessionAsync(authorization_url, Linking.createURL("settings"));
+      await openProviderConnect(authorization_url);
       await fetchAll();
     } catch (err: any) {
       Alert.alert("eBay unavailable", err?.message || "Could not open the eBay connect flow.");

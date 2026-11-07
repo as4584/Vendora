@@ -103,6 +103,20 @@ def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
         assert resp.status_code == 200, (key, resp.status_code, resp.text[:200])
         out[key] = resp.json()
 
+    # Import review: a new item, an update to stock already on hand, and a row
+    # the seller has to fix (no name), as the review screen shows them.
+    csv_body = (
+        "name,category,sku,size,color,condition,quantity,cost,price\n"
+        "Nike Air Max 1 '86 OG Big Bubble Lost Sketch,Sneakers,DQ3989-100,10.5,White/Grey,New,2,$120.00,$175.00\n"
+        "Nike Dunk Low Retro White Black,Sneakers,DD1391-100,10,White/Black,New,4,110.00,165.00\n"
+        ",Collectibles,PKM-SV-ETB,,,New,3,40.00,60.00\n"
+        "Stussy 8 Ball Fleece,Clothing,,M,Black,Used,1,35.00,70.00\n"
+    ).encode()
+    preview = client.post("/api/v1/inventory/imports/preview",
+                          files={"file": ("show-pickups.csv", csv_body, "text/csv")}, headers=auth_headers)
+    assert preview.status_code == 201, preview.text
+    out["import_preview"] = preview.json()
+
     target = os.environ.get("UI_FIXTURES_OUT")
     if target:
         with open(target, "w", encoding="utf-8") as fh:

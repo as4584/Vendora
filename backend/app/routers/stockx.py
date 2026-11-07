@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import RedirectResponse
+
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.models.inventory import InventoryExternalLink, InventoryItem
 from app.models.provider_outbox import ProviderOutbox
 from app.models.stockx import StockxListing
 from app.models.user import User
+from app.services.oauth_return import finish_response, return_target_for
 from app.services.outbox import process_outbox as shared_process_outbox
 from app.services.stockx import (
     OPEN_LISTING_STATUSES,
@@ -196,8 +197,11 @@ def stockx_status(db: Session = Depends(get_db), current_user: User = Depends(ge
 
 
 @router.get("/connect", response_model=AuthUrlOut)
-def stockx_connect(current_user: User = Depends(get_current_user)):
-    state = stockx_service.build_state(current_user.id)
+def stockx_connect(
+    platform: Optional[str] = Query(None, description="'web' when started from the web app"),
+    current_user: User = Depends(get_current_user),
+):
+    state = stockx_service.build_state(current_user.id, ret=return_target_for(platform))
     return AuthUrlOut(authorization_url=stockx_service.authorization_url(state))
 
 
@@ -210,10 +214,10 @@ async def stockx_callback(
 ):
     user_id = stockx_service.parse_state(state)
     if error or not code:
-        return RedirectResponse(APP_REDIRECT.format(status="denied"), status_code=status.HTTP_303_SEE_OTHER)
+        return finish_response("stockx", "denied", state, app_url=APP_REDIRECT.format(status="denied"))
     payload = await stockx_service.exchange_authorization_code(code)
     stockx_service.upsert_token(db, user_id=user_id, payload=payload)
-    return RedirectResponse(APP_REDIRECT.format(status="connected"), status_code=status.HTTP_303_SEE_OTHER)
+    return finish_response("stockx", "connected", state, app_url=APP_REDIRECT.format(status="connected"))
 
 
 @router.delete("")

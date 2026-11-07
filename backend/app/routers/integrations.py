@@ -10,7 +10,7 @@ import uuid
 import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,7 @@ from app.models.inventory import InventoryExternalLink
 from app.models.provider import ProviderSyncRun, ReconciliationIssue
 from app.models.square import SquareCredential
 from app.models.user import User
+from app.services.oauth_return import finish_response, return_target_for
 from app.schemas.integration import (
     EbayPolicySetupRequest,
     LightspeedAuthURLResponse,
@@ -99,9 +100,12 @@ def lightspeed_status(
 
 
 @router.get("/lightspeed/connect", response_model=LightspeedAuthURLResponse)
-async def lightspeed_connect(current_user: User = Depends(get_current_user)):
+async def lightspeed_connect(
+    platform: Optional[str] = Query(None, description="'web' when started from the web app"),
+    current_user: User = Depends(get_current_user),
+):
     """Return the OAuth URL so the reseller can authorize Resqlo."""
-    state = lightspeed_service.build_state(current_user.id)
+    state = lightspeed_service.build_state(current_user.id, ret=return_target_for(platform))
     return LightspeedAuthURLResponse(authorization_url=lightspeed_service.authorization_url(state))
 
 
@@ -124,7 +128,7 @@ async def lightspeed_callback(code: str, state: str, db: Session = Depends(get_d
         expires_at=token_payload["expires_at"],
         scopes=token_payload.get("scope"),
     )
-    return RedirectResponse(settings.INTEGRATION_SUCCESS_URL, status_code=status.HTTP_303_SEE_OTHER)
+    return finish_response("lightspeed", "connected", state, app_url=settings.INTEGRATION_SUCCESS_URL)
 
 
 @router.post("/lightspeed/sync", response_model=LightspeedSyncResponse)
@@ -215,9 +219,12 @@ def ebay_status(
 
 
 @router.get("/ebay/connect", response_model=EbayAuthURLResponse)
-async def ebay_connect(current_user: User = Depends(get_current_user)):
+async def ebay_connect(
+    platform: Optional[str] = Query(None, description="'web' when started from the web app"),
+    current_user: User = Depends(get_current_user),
+):
     """Return the eBay OAuth consent URL so the reseller can authorize Resqlo."""
-    state = ebay_service.build_state(current_user.id)
+    state = ebay_service.build_state(current_user.id, ret=return_target_for(platform))
     return EbayAuthURLResponse(authorization_url=ebay_service.authorization_url(state))
 
 
@@ -237,10 +244,7 @@ async def ebay_callback(code: str, state: str, db: Session = Depends(get_db)):
         # eBay's code exchange omits the granted scope; record what we requested.
         scopes=token_payload.get("scope") or " ".join(ebay_service.requested_scopes),
     )
-    return RedirectResponse(
-        "vendora://settings?integration=ebay&status=connected",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+    return finish_response("ebay", "connected", state)
 
 
 @router.post("/ebay/sync", response_model=EbaySyncResponse)

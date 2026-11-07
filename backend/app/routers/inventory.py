@@ -40,6 +40,7 @@ from app.schemas.inventory import (
     ImportJobResponse,
     ImportPreviewResponse,
     ImportRowResult,
+    ImportRowUpdate,
     ImportCommitResponse,
     InventoryActivityEntry,
     InventoryImportRequest,
@@ -1089,6 +1090,7 @@ async def preview_import(
 
     for row_num, raw in enumerate(raw_rows, start=1):
         mapped, error = _coerce_row(raw, detected_mapping)
+        row_id = uuid.uuid4()
 
         if error:
             action = "error"
@@ -1121,9 +1123,11 @@ async def preview_import(
                     row_number=row_num, action=action, mapped_data=mapped,
                 )
 
+        row_result.id = row_id
         preview_rows.append(row_result)
 
         db.add(InventoryImportRow(
+            id=row_id,
             job_id=job.id,
             row_number=row_num,
             action=action,
@@ -1154,6 +1158,133 @@ async def preview_import(
         rows_to_update=counts["update"],
         rows_to_skip=counts["skip"],
         rows_errored=counts["error"],
+    )
+
+
+# Fields the review screen may edit on a previewed row. Same canonical names
+# the CSV mapper produces; internal keys (``_import_id``) are not editable.
+EDITABLE_IMPORT_FIELDS = {
+    "name", "category", "sku", "upc", "size", "color", "condition", "quantity",
+    "buy_price", "expected_sell_price", "actual_sell_price", "vendor_name",
+    "notes", "platform", "photo_front_url", "photo_back_url",
+}
+
+
+def _get_previewed_job(job_id: UUID, user_id, db: Session) -> InventoryImportJob:
+    job = db.query(InventoryImportJob).filter(
+        InventoryImportJob.id == job_id,
+        InventoryImportJob.user_id == user_id,
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Import job not found.")
+    if job.status != "previewed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job status is '{job.status}'. Only 'previewed' jobs can be changed.",
+        )
+    return job
+
+
+def _resolve_row_action(row: InventoryImportRow, mapped: dict, user_id, db: Session) -> None:
+    """Re-run the preview's create/update decision for an edited row."""
+    sku = (mapped.get("sku") or "").strip()
+    existing = None
+    if sku:
+        existing = db.query(InventoryItem).filter(
+            InventoryItem.user_id == user_id,
+            InventoryItem.deleted_at.is_(None),
+            func.lower(InventoryItem.sku) == sku.lower(),
+        ).first()
+    if existing:
+        row.action, row.inventory_item_id = "update", existing.id
+        row.match_key, row.match_value = "sku", sku
+        return
+    if row.match_key == "id" and row.inventory_item_id:
+        still_there = db.query(InventoryItem.id).filter(
+            InventoryItem.id == row.inventory_item_id,
+            InventoryItem.user_id == user_id,
+            InventoryItem.deleted_at.is_(None),
+        ).first()
+        if still_there:
+            row.action = "update"
+            return
+    row.action, row.inventory_item_id = "create", None
+    row.match_key = row.match_value = None
+
+
+def _recount_job(job: InventoryImportJob, db: Session) -> None:
+    rows = db.query(InventoryImportRow.action).filter(InventoryImportRow.job_id == job.id).all()
+    actions = [r[0] for r in rows]
+    job.rows_created = actions.count("create")
+    job.rows_updated = actions.count("update")
+    job.rows_skipped = actions.count("skip")
+    job.rows_errored = actions.count("error")
+
+
+@router.patch("/imports/{job_id}/rows/{row_id}", response_model=ImportRowResult)
+def update_import_row(
+    job_id: UUID,
+    row_id: UUID,
+    payload: ImportRowUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit or discard one row of a previewed import before committing.
+
+    Edits are validated with the same rules the CSV importer applies; a row
+    that fails validation becomes an ``error`` row and is not imported unless
+    fixed. ``skip: true`` discards the row; ``skip: false`` restores it.
+    """
+    job = _get_previewed_job(job_id, current_user.id, db)
+    row = db.query(InventoryImportRow).filter(
+        InventoryImportRow.id == row_id,
+        InventoryImportRow.job_id == job.id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Import row not found.")
+
+    if payload.data is not None:
+        unknown = sorted(set(payload.data) - EDITABLE_IMPORT_FIELDS)
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Unknown field(s): {', '.join(unknown)}")
+        as_text = {k: "" if v is None else str(v) for k, v in payload.data.items()}
+        mapped, error = _coerce_row(as_text, {k: k for k in as_text})
+        if not error and mapped.get("quantity") is not None and mapped["quantity"] < 0:
+            mapped, error = {}, "Quantity can't be negative."
+        if not error and any(mapped.get(f) is not None and mapped[f] < 0 for f in DECIMAL_FIELDS):
+            mapped, error = {}, "Prices can't be negative."
+        row.error_message = error
+        if error:
+            row.action = "error"
+            # Keep what the seller typed so they can fix it from the same sheet.
+            row.mapped_data = {k: v for k, v in payload.data.items() if v not in (None, "")}
+        else:
+            row.mapped_data = mapped
+            _resolve_row_action(row, mapped, current_user.id, db)
+
+    if payload.skip is True:
+        row.action = "skip"
+    elif payload.skip is False and row.action == "skip":
+        if row.error_message or not row.mapped_data:
+            row.action = "error"
+        else:
+            _resolve_row_action(row, row.mapped_data, current_user.id, db)
+
+    db.add(row)
+    db.flush()
+    _recount_job(job, db)
+    db.add(job)
+    db.commit()
+    db.refresh(row)
+    return ImportRowResult(
+        id=row.id,
+        row_number=row.row_number,
+        action=row.action,
+        inventory_item_id=row.inventory_item_id,
+        mapped_data=row.mapped_data,
+        match_key=row.match_key,
+        match_value=row.match_value,
+        error_message=row.error_message,
     )
 
 

@@ -7,8 +7,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
+import { openProviderConnect } from "../utils/oauthConnect";
 import * as api from "../services/api";
 import { Button } from "./Button";
 import { Card, Pill, SectionLabel } from "./ui";
@@ -75,7 +74,7 @@ export function StockxSettingsCard() {
   const connect = async () => {
     try {
       const { authorization_url } = await api.getStockxConnectUrl();
-      await WebBrowser.openAuthSessionAsync(authorization_url, Linking.createURL("settings"));
+      await openProviderConnect(authorization_url);
       await reload();
     } catch (err) {
       Alert.alert("StockX unavailable", errorText(err, "Could not open the StockX connect flow."));

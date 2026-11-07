@@ -24,6 +24,8 @@ const SCREENS: {
   /** Text of controls to tap, in order, before the screenshot. */
   steps?: string[];
   fullPage?: boolean;
+  /** Pick a CSV through the file chooser (import review) before the steps. */
+  upload?: boolean;
 }[] = [
   { name: 'login', path: '/login', authed: false },
   { name: 'register', path: '/register', authed: false },
@@ -45,6 +47,8 @@ const SCREENS: {
     fullPage: true,
   },
   { name: 'import', path: '/inventory/import' },
+  { name: 'import-review', path: '/inventory/import', ready: 'Choose CSV File', upload: true, fullPage: true },
+  { name: 'import-review-edit', path: '/inventory/import', ready: 'Choose CSV File', upload: true, steps: ['Fix'] },
   { name: 'more', path: '/more' },
   { name: 'settings', path: '/settings' },
   { name: 'subscription', path: '/settings/subscription' },
@@ -63,6 +67,7 @@ const SCREENS: {
 ];
 
 const ROUTES: [RegExp, unknown][] = [
+  [/\/inventory\/imports\/preview$/, fixtures.import_preview],
   [/\/auth\/me$/, fixtures.me],
   [/\/dashboard\/advanced/, fixtures.advanced],
   [/\/dashboard\/show-summary/, fixtures.show_summary],
@@ -156,6 +161,16 @@ async function openScreen(page: Page, screen: Screen, size: { width: number; hei
       await expect(ready).toBeVisible();
     }
   }
+  if (screen.upload) {
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByText('Choose CSV File', { exact: true }).first().click();
+    await (await chooser).setFiles({
+      name: 'show-pickups.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(['name,sku', 'Nike Air Max 1,DQ3989-100', ''].join('\n')),
+    });
+    await expect(page.getByText('Review import')).toBeVisible();
+  }
   for (const step of screen.steps ?? []) {
     await page.getByText(step, { exact: true }).first().click();
     await page.waitForTimeout(250);
@@ -188,7 +203,7 @@ test.describe('layout gate', () => {
  * case for capped chrome and a real large-size check for body copy.
  */
 const LARGE_TEXT = 1.3;
-const LARGE_TEXT_SCREENS = ['dashboard', 'inventory', 'item-detail', 'add', 'sale', 'sale-cart'];
+const LARGE_TEXT_SCREENS = ['dashboard', 'inventory', 'item-detail', 'add', 'sale', 'sale-cart', 'import-review'];
 
 async function scaleText(page: Page, factor: number) {
   await page.evaluate((k) => {

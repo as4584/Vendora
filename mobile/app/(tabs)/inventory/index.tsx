@@ -9,7 +9,6 @@ import {
   RefreshControl,
   TextInput,
   Alert,
-  Image,
   Modal,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -17,26 +16,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
 import { COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
-import { formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
+import { SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
+import InventoryCard, { STATUS_TONES } from "../../../components/InventoryCard";
 import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
-
-const STATUS_TONES: Record<string, "success" | "warning" | "danger" | "info" | "neutral" | "primary"> = {
-  in_stock: "success",
-  listed: "info",
-  sold: "danger",
-  shipped: "warning",
-  paid: "primary",
-  archived: "neutral",
-};
-
-const DOT_COLORS: Record<string, string> = {
-  success: COLORS.success,
-  info: COLORS.info,
-  danger: COLORS.danger,
-  warning: COLORS.warning,
-  primary: COLORS.primaryBright,
-  neutral: COLORS.textSoft,
-};
 
 /**
  * Case-insensitive subsequence match: every character of `query` must appear in
@@ -52,81 +34,6 @@ export function fuzzyMatch(query: string, text: string): boolean {
     if (t[ti] === q[qi]) qi += 1;
   }
   return qi === q.length;
-}
-
-function InventoryCard({
-  item,
-  onPress,
-  selectMode = false,
-  selected = false,
-  onToggleSelect,
-}: {
-  item: api.InventoryItem;
-  onPress: () => void;
-  selectMode?: boolean;
-  selected?: boolean;
-  onToggleSelect?: () => void;
-}) {
-  const qty = resolveQty(item);
-  const lowStock = qty > 0 && qty <= 3;
-  const sourceLabel = item.source ? SOURCE_LABELS[item.source] || item.source : "Manual";
-  const frontPhoto = resolvedPhoto(item, "front");
-  const backPhoto = resolvedPhoto(item, "back");
-
-  return (
-    <TouchableOpacity
-      accessibilityLabel={selectMode ? `Select ${item.name}` : `Open ${item.name}`}
-      accessibilityRole="button"
-      activeOpacity={0.84}
-      onPress={selectMode ? onToggleSelect : onPress}
-      onLongPress={onToggleSelect}
-    >
-      <Card style={selectMode && selected ? { ...styles.itemCard, ...styles.itemCardSelected } : styles.itemCard}>
-        <View style={styles.itemCardRow}>
-          {selectMode ? (
-            <View style={[styles.checkbox, selected && styles.checkboxOn]}>
-              {selected ? <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.checkboxTick}>✓</Text> : null}
-            </View>
-          ) : null}
-          <View style={styles.thumbBox}>
-            {frontPhoto || backPhoto ? (
-              <Image source={{ uri: frontPhoto || backPhoto || undefined }} style={styles.thumbImg} resizeMode="cover" />
-            ) : (
-              <View accessibilityLabel="No photo" style={[styles.thumbImg, styles.photoFallback]}><Icon name="image-outline" size={22} color={COLORS.textSoft} /></View>
-            )}
-          </View>
-
-          <View style={styles.itemBody}>
-            <View style={styles.itemTopRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                <Text style={styles.itemMeta}>
-                  {[item.category, item.sku ? `SKU ${item.sku}` : null].filter(Boolean).join(" • ")}
-                </Text>
-              </View>
-              <Text style={styles.itemPrice}>{formatCurrency(item.expected_sell_price)}</Text>
-            </View>
-
-            {/* One quiet status line: dot + status, stock count, and only the exceptions. */}
-            <View style={styles.statusRow}>
-              <View style={[styles.statusDot, { backgroundColor: DOT_COLORS[STATUS_TONES[item.status] || "neutral"] }]} />
-              <Text style={styles.statusText}>{STATUS_LABELS[item.status] || item.status}</Text>
-              <Text style={styles.statusSep}>·</Text>
-              <Text style={[styles.statusText, qty === 0 ? { color: COLORS.danger } : lowStock ? { color: COLORS.warning } : null]}>
-                {lowStock ? `Low stock ${qty}` : `Stock ${qty}`}
-              </Text>
-              {item._pending ? <Pill label="Sync pending" tone="warning" /> : null}
-            </View>
-
-            <Text style={styles.sizeLine}>{sizeBreakdown(item)}</Text>
-            <Text style={styles.secondaryLine}>
-              Cost {formatCurrency(item.buy_price)} · <Text>{sourceLabel}</Text>{item.vendor_name ? ` · ${item.vendor_name}` : ""}
-            </Text>
-          </View>
-        </View>
-      </Card>
-    </TouchableOpacity>
-  );
 }
 
 export default function InventoryListScreen() {
@@ -556,15 +463,6 @@ const styles = StyleSheet.create({
   },
   filterOptionText: { color: COLORS.textMuted, fontSize: 15, fontWeight: "600" },
   filterOptionTextActive: { color: COLORS.text, fontWeight: "600" },
-  itemCard: { padding: SPACING.md },
-  itemCardSelected: { borderColor: COLORS.primary, borderWidth: 2 },
-  itemCardRow: { flexDirection: "row", gap: SPACING.md },
-  checkbox: {
-    width: 26, height: 26, borderRadius: 999, borderWidth: 2, borderColor: COLORS.border,
-    alignItems: "center", justifyContent: "center", alignSelf: "center",
-  },
-  checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  checkboxTick: { color: "#fff", fontSize: 14, fontWeight: "600" },
   bulkBar: {
     position: "absolute", left: SPACING.lg, right: SPACING.lg, bottom: SPACING.lg,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
@@ -572,21 +470,6 @@ const styles = StyleSheet.create({
     borderRadius: 16, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
   },
   bulkCount: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
-  thumbBox: { width: 72, height: 72, borderRadius: 8, overflow: "hidden", backgroundColor: COLORS.cardAlt },
-  thumbImg: { width: "100%", height: "100%" },
-  photoFallback: { alignItems: "center", justifyContent: "center" },
-  photoFallbackText: { color: COLORS.textSoft, fontSize: 11, fontWeight: "600" },
-  itemBody: { flex: 1, minWidth: 0, gap: 6 },
-  itemTopRow: { flexDirection: "row", gap: SPACING.sm },
-  itemName: { color: COLORS.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
-  itemMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
-  itemPrice: { color: COLORS.text, fontSize: 16, fontWeight: "600", fontVariant: ["tabular-nums"] },
-  statusRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { color: COLORS.textMuted, fontSize: 13, fontWeight: "500" },
-  statusSep: { color: COLORS.textSoft, fontSize: 13 },
-  sizeLine: { color: COLORS.text, fontSize: 13, fontWeight: "500", fontVariant: ["tabular-nums"] },
-  secondaryLine: { color: COLORS.textMuted, fontSize: 12 },
   empty: { alignItems: "center", paddingVertical: SPACING.lg, gap: SPACING.xs },
   emptyTitle: { color: COLORS.text, fontSize: 16, fontWeight: "600", marginTop: SPACING.sm, textAlign: "center" },
   emptyText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, textAlign: "center", maxWidth: 260 },
