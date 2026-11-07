@@ -1598,6 +1598,40 @@ export async function getEbayListing(itemId: string): Promise<EbayListing> {
   return request<EbayListing>(`/integrations/ebay/listings/${encodeURIComponent(itemId)}`);
 }
 
+export type EbayPolicySummary = { id: string; name: string; label: string; created?: boolean };
+
+export interface EbayPolicyOverview {
+  opted_in: boolean;
+  marketplace_id: string;
+  policies: Record<"fulfillment" | "payment" | "return", EbayPolicySummary | null>;
+  missing: string[];
+  ready: boolean;
+}
+
+export interface EbayPolicySetupInput {
+  free_shipping?: boolean;
+  flat_shipping_cost?: string;
+  returns_accepted?: boolean;
+}
+
+export interface EbayPolicySetupResult {
+  opt_in: "already" | "opted_in";
+  marketplace_id: string;
+  policies: Record<string, EbayPolicySummary>;
+  ready: boolean;
+}
+
+export async function getEbayPolicies(): Promise<EbayPolicyOverview> {
+  return request<EbayPolicyOverview>("/integrations/ebay/policies");
+}
+
+export async function setupEbayPolicies(input: EbayPolicySetupInput = {}): Promise<EbayPolicySetupResult> {
+  return request<EbayPolicySetupResult>("/integrations/ebay/policies/setup", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function createEbayListing(input: EbayListingInput): Promise<EbayListing> {
   return request<EbayListing>("/integrations/ebay/listings", { method: "POST", body: JSON.stringify(input) });
 }
