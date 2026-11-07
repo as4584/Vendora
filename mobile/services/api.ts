@@ -1182,11 +1182,22 @@ export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
   return request<SubscriptionStatus>("/subscriptions/me");
 }
 
+// App Store Guideline 3.1.1: the iOS app sells digital subscriptions only via
+// Apple in-app purchase. These Stripe entry points are web/Android only and
+// refuse to run on iOS even if some screen calls them by mistake.
+export const STRIPE_BLOCKED_ON_IOS = "Subscriptions on iPhone and iPad are handled through the App Store.";
+
+function assertNotIOS(): void {
+  if (Platform.OS === "ios") throw new Error(STRIPE_BLOCKED_ON_IOS);
+}
+
 export async function createSubscriptionCheckout(plan: "pro" | "partner"): Promise<{ checkout_url: string; session_id: string }> {
+  assertNotIOS();
   return request("/subscriptions/checkout", { method: "POST", body: JSON.stringify({ plan }) });
 }
 
 export async function createBillingPortal(): Promise<{ portal_url: string }> {
+  assertNotIOS();
   return request("/subscriptions/portal", { method: "POST" });
 }
 

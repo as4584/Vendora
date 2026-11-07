@@ -32,6 +32,30 @@ function expectPath(url: string, path: string) {
   expect(url.endsWith(path)).toBe(true);
 }
 
+async function onWeb<T>(fn: () => Promise<T>): Promise<T> {
+  const original = Platform.OS;
+  Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+  try { return await fn(); } finally { Object.defineProperty(Platform, 'OS', { value: original, configurable: true }); }
+}
+
+describe('Stripe subscription endpoints on iOS (Guideline 3.1.1)', () => {
+  it('refuses to start Stripe checkout or the billing portal on iOS', async () => {
+    const realFetch = global.fetch;
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const original = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+    try {
+      await expect(api.createSubscriptionCheckout('pro')).rejects.toThrow(api.STRIPE_BLOCKED_ON_IOS);
+      await expect(api.createBillingPortal()).rejects.toThrow(api.STRIPE_BLOCKED_ON_IOS);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: original, configurable: true });
+      global.fetch = realFetch;
+    }
+  });
+});
+
 describe('API endpoint contracts', () => {
   const fetchMock = jest.spyOn(global, 'fetch');
 
@@ -278,8 +302,8 @@ describe('API endpoint contracts', () => {
       body: { status: 'paid' },
     },
     { name: 'subscription status', call: () => api.getSubscriptionStatus(), path: '/subscriptions/me' },
-    { name: 'subscription checkout', call: () => api.createSubscriptionCheckout('partner'), path: '/subscriptions/checkout', method: 'POST', body: { plan: 'partner' } },
-    { name: 'billing portal', call: () => api.createBillingPortal(), path: '/subscriptions/portal', method: 'POST' },
+    { name: 'subscription checkout', call: () => onWeb(() => api.createSubscriptionCheckout('partner')), path: '/subscriptions/checkout', method: 'POST', body: { plan: 'partner' } },
+    { name: 'billing portal', call: () => onWeb(() => api.createBillingPortal()), path: '/subscriptions/portal', method: 'POST' },
     { name: 'support request', call: () => api.submitSupportRequest('Help', 'Something broke'), path: '/support', method: 'POST', body: { subject: 'Help', message: 'Something broke' } },
     { name: 'advanced analytics default', call: () => api.getAdvancedAnalytics(), path: '/dashboard/advanced?days=30' },
     { name: 'advanced analytics range', call: () => api.getAdvancedAnalytics(90), path: '/dashboard/advanced?days=90' },

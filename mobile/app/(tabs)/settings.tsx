@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/auth";
 import * as api from "../../services/api";
+import { isAppleStorefront } from "../../services/purchases";
 import { StockxSettingsCard } from "../../components/Stockx";
 import { GoogleSheetsSettingsCard } from "../../components/GoogleSheets";
 import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/backgroundSync";
@@ -543,8 +544,13 @@ export default function SettingsScreen() {
           <Card style={styles.modalCard}>
             <SectionLabel>Delete Account Permanently</SectionLabel>
             <Text accessibilityRole="alert" style={styles.dangerText}>
-              This cannot be undone. Inventory, transactions, invoices, and integrations will be deleted.
+              This cannot be undone. Inventory, transactions, invoices, and integrations will be deleted, and access to connected eBay, StockX, and Google accounts is removed.
             </Text>
+            {isAppleStorefront() ? (
+              <Text testID="delete-apple-subscription-note" style={styles.inputLabel}>
+                If you subscribed with your Apple ID, cancel it in Settings &gt; Apple ID &gt; Subscriptions so you aren&apos;t billed again.
+              </Text>
+            ) : null}
             <Text style={styles.inputLabel}>Password</Text>
             <TextInput
               accessibilityLabel="Account password"
