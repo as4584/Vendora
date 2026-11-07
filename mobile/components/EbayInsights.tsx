@@ -28,6 +28,7 @@ export function EbayInsights({ itemId, listPrice }: { itemId: string; listPrice:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
+  const [ineligible, setIneligible] = useState<string | null>(null);
 
   const load = useCallback(async (refresh = false) => {
     try {
@@ -42,6 +43,18 @@ export function EbayInsights({ itemId, listPrice }: { itemId: string; listPrice:
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
+
+  const openSheet = async () => {
+    setError(null);
+    setIneligible(null);
+    setOpen(true);
+    try {
+      const check = await api.getEbayOfferEligibility(itemId);
+      if (!check.eligible) setIneligible(check.message || "eBay says this listing can't get offers right now.");
+    } catch {
+      // The send call reports the real reason; don't block on the pre-check.
+    }
+  };
 
   const submit = async () => {
     const d = Number(days);
@@ -82,7 +95,7 @@ export function EbayInsights({ itemId, listPrice }: { itemId: string; listPrice:
           size="sm"
           variant="secondary"
           leadingIcon="mail-outline"
-          onPress={() => { setError(null); setOpen(true); }}
+          onPress={() => void openSheet()}
           disabled={traffic?.watchers === 0}
         />
         <Button label="Refresh stats" size="sm" variant="ghost" onPress={() => void load(true)} />
@@ -143,8 +156,9 @@ export function EbayInsights({ itemId, listPrice }: { itemId: string; listPrice:
                 style={[styles.input, styles.multiline]}
                 placeholderTextColor={COLORS.textSoft}
               />
+              {ineligible ? <Text testID="ebay-offer-ineligible" style={styles.error}>{ineligible}</Text> : null}
               {error ? <Text testID="ebay-offer-error" style={styles.error}>{error}</Text> : null}
-              <Button testID="ebay-offer-submit" label="Send offer" onPress={submit} loading={busy} fullWidth />
+              <Button testID="ebay-offer-submit" label="Send offer" onPress={submit} loading={busy} disabled={!!ineligible} fullWidth />
               <Button label="Cancel" variant="ghost" onPress={() => setOpen(false)} fullWidth />
             </ScrollView>
           </View>
@@ -161,7 +175,7 @@ const styles = StyleSheet.create({
   hint: { ...TYPE.footnote, color: COLORS.warning },
   success: { ...TYPE.footnote, color: COLORS.success },
   muted: { ...TYPE.footnote, color: COLORS.textMuted },
-  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.55)" },
+  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: COLORS.overlay },
   sheet: {
     maxHeight: "92%",
     backgroundColor: COLORS.card,

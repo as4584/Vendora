@@ -31,6 +31,7 @@ from app.schemas.transaction import (
     TransactionListResponse,
     RefundCreate,
 )
+from app.services.customers import get_owned_customer
 from app.services.profit import calculate_net_amount
 from app.services.checkout import allocate
 from app.services.invoice_pdf import generate_receipt_pdf
@@ -185,6 +186,7 @@ def _order_response(txns: list[Transaction], payments: list[OrderPayment]) -> Sa
         fee_amount=total("fee_amount"),
         net_amount=total("net_amount"),
         payments=[OrderPaymentResponse.model_validate(p) for p in payments],
+        customer_id=txns[0].customer_id,
         created_at=txns[0].created_at,
         transactions=[TransactionResponse.model_validate(t) for t in txns],
     )
@@ -278,6 +280,7 @@ def create_sale_order(
             )
     for (item_id, size), qty in requested_sizes.items():
         check_invoice_item_availability(items[item_id], qty, size)
+    customer = get_owned_customer(db, current_user.id, payload.customer_id) if payload.customer_id else None
 
     amounts = payload.amounts()
     parts = payload.payment_parts()
@@ -301,6 +304,7 @@ def create_sale_order(
             txn = Transaction(
                 user_id=current_user.id,
                 item_id=line.item_id,
+                customer_id=customer.id if customer else None,
                 order_id=order_id,
                 method=line_method,
                 status="completed",
@@ -501,6 +505,7 @@ def refund_transaction(
     refund_txn = Transaction(
         user_id=current_user.id,
         item_id=original.item_id,
+        customer_id=original.customer_id,
         invoice_id=original.invoice_id,
         method=original.method,
         status="completed",

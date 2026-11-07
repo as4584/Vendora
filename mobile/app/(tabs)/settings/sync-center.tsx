@@ -51,6 +51,8 @@ export default function SyncCenterScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [busyRun, setBusyRun] = useState<string | null>(null);
+  const [busyIssue, setBusyIssue] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [statusResults, runsResult, issuesResult, outboxResult] = await Promise.all([
@@ -120,6 +122,31 @@ export default function SyncCenterScreen() {
     }
   };
 
+  const retryRun = async (run: api.ProviderSyncRun) => {
+    setBusyRun(run.id);
+    try {
+      const result = await api.retrySyncRun(run.id);
+      if (result.errors_count > 0) Alert.alert("Retried with errors", `${result.errors_count} item${result.errors_count === 1 ? "" : "s"} still failed.`);
+      await load();
+    } catch (err: any) {
+      Alert.alert("Retry failed", err?.detail?.message || err?.message || `Could not retry the ${providerName(run.provider)} sync.`);
+    } finally {
+      setBusyRun(null);
+    }
+  };
+
+  const settleIssue = async (issue: api.ReconciliationIssue, next: "resolved" | "dismissed") => {
+    setBusyIssue(issue.id);
+    try {
+      await api.updateReconciliationIssue(issue.id, { status: next });
+      await load();
+    } catch (err: any) {
+      Alert.alert("Update failed", err?.detail?.message || err?.message || "Could not update this issue.");
+    } finally {
+      setBusyIssue(null);
+    }
+  };
+
   if (loading) {
     return <View testID="sync-loading" style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
   }
@@ -183,6 +210,16 @@ export default function SyncCenterScreen() {
                 label={run.status === "completed" ? "Success" : run.status === "partial" ? "Partial" : run.status === "running" ? "Running" : "Failed"}
                 tone={run.status === "completed" ? "success" : run.status === "partial" ? "warning" : run.status === "running" ? "info" : "danger"}
               />
+              {run.status === "failed" || run.status === "partial" ? (
+                <Button
+                  label="Retry"
+                  size="sm"
+                  variant="secondary"
+                  loading={busyRun === run.id}
+                  onPress={() => void retryRun(run)}
+                  accessibilityLabel={`Retry ${providerName(run.provider)} sync`}
+                />
+              ) : null}
             </View>
           ))
         )}
@@ -231,7 +268,14 @@ export default function SyncCenterScreen() {
                   <Text style={styles.intName}>{issue.provider.charAt(0).toUpperCase() + issue.provider.slice(1)} · {issue.issue_type.replace(/_/g, " ")}</Text>
                   <Text style={styles.intMeta}>{issue.external_id || "No external id"} · {timeAgo(issue.detected_at)}</Text>
                 </View>
-                <Pill label={issue.status.toUpperCase()} tone={issue.status === "open" ? "warning" : "neutral"} />
+                {issue.status === "open" ? (
+                  <View style={styles.issueActions}>
+                    <Button label="Resolved" size="sm" variant="secondary" loading={busyIssue === issue.id} onPress={() => void settleIssue(issue, "resolved")} accessibilityLabel={`Mark ${providerName(issue.provider)} issue resolved`} />
+                    <Button label="Dismiss" size="sm" variant="ghost" disabled={busyIssue === issue.id} onPress={() => void settleIssue(issue, "dismissed")} accessibilityLabel={`Dismiss ${providerName(issue.provider)} issue`} />
+                  </View>
+                ) : (
+                  <Pill label={issue.status.toUpperCase()} tone="neutral" />
+                )}
               </View>
             ))}
           </Card>
@@ -247,7 +291,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
   stack: { gap: 0, paddingVertical: SPACING.xs },
   intRow: { flexDirection: "row", alignItems: "center", gap: SPACING.md, paddingVertical: SPACING.sm },
-  histRow: { flexDirection: "row", alignItems: "center", gap: SPACING.md, paddingVertical: SPACING.sm },
+  histRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: SPACING.md, paddingVertical: SPACING.sm },
+  issueActions: { flexDirection: "row", gap: SPACING.xs },
   intRowDivider: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
   intText: { flex: 1, gap: 3 },
   intName: { color: COLORS.text, fontSize: 15, fontWeight: "600" },

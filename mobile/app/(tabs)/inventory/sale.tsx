@@ -13,6 +13,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
+import { CustomerPicker } from "../../../components/CustomerPicker";
 import { isOnline } from "../../../services/offline";
 import { Card, Icon, Pill, SectionLabel } from "../../../components/ui";
 import { Button, IconButton, triggerHaptic } from "../../../components/Button";
@@ -67,6 +68,7 @@ export default function QuickSaleScreen() {
   const [defaultTax, setDefaultTax] = useState("");
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
+  const [customer, setCustomer] = useState<api.Customer | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -299,6 +301,7 @@ export default function QuickSaleScreen() {
           : { method }),
         fee_amount: centsToString(fee),
         notes: notes.trim() || undefined,
+        ...(customer ? { customer_id: customer.id } : {}),
       };
       if (totals.discount > 0) {
         if (discountMode === "percent") payload.discount_percent = discountValue.trim();
@@ -497,6 +500,18 @@ export default function QuickSaleScreen() {
             </View>
           </Card>
         ) : null}
+
+        <Card style={{ gap: SPACING.sm }}>
+          <SectionLabel>Customer (optional)</SectionLabel>
+          <CustomerPicker
+            selected={customer}
+            onChange={(next) => {
+              setCustomer(next);
+              // A tax-exempt buyer pays no sales tax.
+              if (next?.tax_exempt) setTaxOn(false);
+            }}
+          />
+        </Card>
 
         <Card style={{ gap: SPACING.md }}>
           <SectionLabel>Payment</SectionLabel>

@@ -36,7 +36,6 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('../services/api', () => ({
   listItems: jest.fn(),
-  exportInventoryCSV: jest.fn(),
   exportInventoryWarehouseCSV: jest.fn(),
   bulkDeleteItems: jest.fn(),
   getToken: jest.fn(async () => 'tok-123'),

@@ -31,7 +31,6 @@ jest.mock('../services/api', () => ({
   getDashboard: jest.fn(),
   getAdvancedAnalytics: jest.fn(),
   listItems: jest.fn(),
-  exportInventoryCSV: jest.fn(),
   exportInventoryWarehouseCSV: jest.fn(),
   getLightspeedStatus: jest.fn(),
   getSquareStatus: jest.fn(),

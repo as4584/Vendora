@@ -7,6 +7,7 @@ type MoreLink = { label: string; helper: string; icon: IconName; route: string }
 
 const LINKS: MoreLink[] = [
   { label: "Show Summary", helper: "Close out the show: cash box, profit, top items", icon: "storefront-outline", route: "/settings/show-summary" },
+  { label: "Customers", helper: "Buyers, purchase history and totals", icon: "people-outline", route: "/customers" },
   { label: "Invoices", helper: "Create and share branded invoices", icon: "receipt-outline", route: "/inventory/invoices" },
   { label: "Sync Center", helper: "Provider syncs & reconciliation", icon: "sync-outline", route: "/settings/sync-center" },
   { label: "Advanced Analytics", helper: "Revenue, sell-through, top categories", icon: "bar-chart-outline", route: "/settings/analytics" },

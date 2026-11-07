@@ -69,11 +69,8 @@ def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
     refund = client.post(f"/api/v1/transactions/{card.json()['transactions'][0]['id']}/refund",
                          json={"reason": "Wrong size"}, headers=auth_headers)
     assert refund.status_code == 201, refund.text
-    client.post("/api/v1/transactions/order", json={
-        "method": "card", "lines": [{"item_id": str(items[3].id), "quantity": 1, "unit_price": "185.00"}],
-    }, headers=auth_headers)
     inv = client.post("/api/v1/invoices", json={
-        "customer_name": "Marcus Reed", "customer_email": "marcus@example.com",
+        "customer_name": "Marcus Reed", "customer_email": "marcus@example.com", "customer_phone": "(201) 555-0148",
         "items": [{"inventory_item_id": str(items[2].id), "description": items[2].name, "quantity": 1, "unit_price": "130.00"}],
     }, headers=auth_headers)
     assert inv.status_code in (200, 201), inv.text
@@ -82,12 +79,25 @@ def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
         "amount": "50.00", "method": "cash", "note": "Deposit at the show",
     }, headers=auth_headers)
     assert paid.status_code == 201, paid.text
+    # Marcus also bought at the booth, so his customer page shows both kinds of history.
+    booth = client.post("/api/v1/transactions/order", json={
+        "method": "card", "customer_id": inv.json()["customer_id"],
+        "lines": [{"item_id": str(items[3].id), "quantity": 1, "unit_price": "185.00"}],
+    }, headers=auth_headers)
+    assert booth.status_code == 201, booth.text
+    wholesale = client.post("/api/v1/customers", json={
+        "name": "Garden State Cards Wholesale With A Long Business Name", "email": "orders@gardenstatecards.example",
+        "phone": "732-555-0190", "address": "12 Route 9, Freehold NJ", "tax_exempt": True,
+    }, headers=auth_headers)
+    assert wholesale.status_code == 201, wholesale.text
 
-    out ={"item_id": str(items[0].id), "invoice_id": inv.json()["id"]}
+    out = {"item_id": str(items[0].id), "invoice_id": inv.json()["id"], "customer_id": inv.json()["customer_id"]}
     paths = dict(SCREENS)
     paths["item"] = f"/inventory/{items[0].id}"
     paths["item_activity"] = f"/inventory/{items[0].id}/activity?limit=20"
     paths["invoice"] = f"/invoices/{out['invoice_id']}"
+    paths["customers"] = "/customers"
+    paths["customer"] = f"/customers/{out['customer_id']}"
     for key, path in paths.items():
         resp = client.get(f"/api/v1{path}", headers=auth_headers)
         assert resp.status_code == 200, (key, resp.status_code, resp.text[:200])

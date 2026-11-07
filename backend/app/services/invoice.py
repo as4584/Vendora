@@ -2,6 +2,7 @@
 
 Per STATE_MACHINES.md:
     draft → sent
+    draft → cancelled (void a draft)
     sent → paid
     sent → cancelled
     paid → (locked)
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 VALID_INVOICE_TRANSITIONS: dict[str, list[str]] = {
-    "draft": ["sent"],
+    "draft": ["sent", "cancelled"],
     "sent": ["paid", "cancelled"],
     # Money has been taken, so it only moves forward. Recording payments is
     # the normal way here; a manual "paid" records the remaining balance.

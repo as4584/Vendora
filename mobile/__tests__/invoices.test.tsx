@@ -18,6 +18,7 @@ const mockReplace = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, push: jest.fn() }),
+  useLocalSearchParams: () => ({}),
 }));
 
 jest.mock('../services/api', () => ({
@@ -26,6 +27,10 @@ jest.mock('../services/api', () => ({
   createInvoice: jest.fn(),
   exportInvoicePdf: jest.fn(),
   recordInvoicePayment: jest.fn(),
+  updateInvoiceStatus: jest.fn(),
+  listCustomers: jest.fn(async () => []),
+  createCustomer: jest.fn(),
+  getCustomer: jest.fn(),
 }));
 
 jest.mock('../utils/fileActions', () => ({
@@ -455,5 +460,46 @@ describe('InvoicesScreen', () => {
     fireEvent.press(history.getByText('Recent Invoices'));
     expect(history.getByText('PAID')).toBeTruthy();
     expect(history.getByText('SENT')).toBeTruthy();
+  });
+
+  it('voids a draft invoice after confirming', async () => {
+    (apiMock.listInvoices as jest.Mock).mockResolvedValueOnce({ items: [{ ...CREATED_INVOICE, items: [] }] });
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ items: [] });
+    (apiMock.updateInvoiceStatus as jest.Mock).mockResolvedValueOnce({ ...CREATED_INVOICE, items: [], status: 'cancelled' });
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
+      buttons?.find((b) => b.style === 'destructive')?.onPress?.();
+    });
+    const screen = render(<InvoicesScreen />);
+    await screen.findByText('Recent Invoices');
+    fireEvent.press(screen.getByText('Recent Invoices'));
+    fireEvent.press(screen.getByText('Open Invoice'));
+    expect(screen.getByText('Mark as sent')).toBeTruthy();
+    await act(async () => { fireEvent.press(screen.getByText('Void invoice')); });
+    expect(apiMock.updateInvoiceStatus).toHaveBeenCalledWith('inv-1', 'cancelled');
+    expect(screen.getAllByText('VOID').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Void invoice')).toBeNull();
+    alertSpy.mockRestore();
+  });
+
+  it('picks a saved customer and sends their id with the invoice', async () => {
+    (apiMock.listInvoices as jest.Mock).mockResolvedValueOnce({ items: [] });
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ items: [] });
+    (apiMock.listCustomers as jest.Mock).mockResolvedValue([
+      { id: 'c-1', name: 'Dana Cards', email: 'dana@example.com', phone: '7325550199', tax_exempt: false },
+    ]);
+    (apiMock.createInvoice as jest.Mock).mockResolvedValueOnce({ ...CREATED_INVOICE, customer_name: 'Dana Cards', items: [] });
+    const screen = render(<InvoicesScreen />);
+    await screen.findByText('Pick customer');
+    fireEvent.press(screen.getByText('Pick customer'));
+    fireEvent.press(await screen.findByLabelText('Pick Dana Cards'));
+    expect(screen.getByDisplayValue('Dana Cards')).toBeTruthy();
+    expect(screen.getByDisplayValue('7325550199')).toBeTruthy();
+    fireEvent.changeText(screen.getByLabelText('Line item 1 description'), 'Booster box');
+    fireEvent.changeText(screen.getByLabelText('Line item 1 unit price'), '120.00');
+    jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await act(async () => { const buttons = screen.getAllByText('Create Invoice'); fireEvent.press(buttons[buttons.length - 1]); });
+    expect(apiMock.createInvoice).toHaveBeenCalledWith(expect.objectContaining({
+      customer_id: 'c-1', customer_name: 'Dana Cards', customer_phone: '7325550199',
+    }));
   });
 });

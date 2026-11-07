@@ -52,6 +52,14 @@ const SCREENS: {
   { name: 'sync-center', path: '/settings/sync-center' },
   { name: 'analytics', path: '/settings/analytics' },
   { name: 'show-summary', path: '/settings/show-summary', ready: 'Count the cash box' },
+  { name: 'customers', path: '/customers', ready: 'Marcus Reed' },
+  { name: 'customer-detail', path: `/customers/${fixtures.customer_id}`, ready: 'Purchase history', fullPage: true },
+  {
+    name: 'invoice-customer-picker',
+    path: '/inventory/invoices',
+    ready: 'Pick customer',
+    steps: ['Pick customer'],
+  },
 ];
 
 const ROUTES: [RegExp, unknown][] = [
@@ -71,6 +79,8 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/integrations\/health/, fixtures.integrations_health],
   [/\/health$/, { status: 'ok' }],
   [/\/scan\/memory/, []],
+  [new RegExp(`/customers/${fixtures.customer_id}$`), fixtures.customer],
+  [/\/customers(\?|$)/, fixtures.customers],
 ];
 
 async function stubApi(page: Page) {
