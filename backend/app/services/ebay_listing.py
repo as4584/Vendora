@@ -447,11 +447,13 @@ async def fetch_policies(seller: SellerSession) -> dict[str, str]:
                 "error": "ebay_policies_missing",
                 "missing": missing,
                 "message": (
-                    "Your eBay account has no " + ", ".join(missing) + " policy. In eBay Seller Hub go to "
+                    "Your eBay account has no " + ", ".join(missing) + " policy. Tap 'Set up selling "
+                    "policies for me' and Resqlo will create them, or in eBay Seller Hub go to "
                     "Account > Business policies, opt in, and create shipping, payment and return policies, "
                     "then try again."
                 ),
                 "help_url": "https://www.ebay.com/bp/manage",
+                "setup_available": True,
             },
         )
     return found

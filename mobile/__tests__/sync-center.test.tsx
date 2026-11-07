@@ -31,6 +31,8 @@ jest.mock('../services/api', () => ({
   retryOutboxJob: jest.fn(),
   listEbayPayouts: jest.fn(async () => []),
   listEbayFees: jest.fn(async () => []),
+  getEbayPolicies: jest.fn(async () => ({ opted_in: true, marketplace_id: 'EBAY_US', policies: {}, missing: [], ready: true })),
+  setupEbayPolicies: jest.fn(),
   syncEbayFinances: jest.fn(),
   retrySyncRun: jest.fn(),
   updateReconciliationIssue: jest.fn(),

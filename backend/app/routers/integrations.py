@@ -22,6 +22,7 @@ from app.models.provider import ProviderSyncRun, ReconciliationIssue
 from app.models.square import SquareCredential
 from app.models.user import User
 from app.schemas.integration import (
+    EbayPolicySetupRequest,
     LightspeedAuthURLResponse,
     LightspeedSyncResponse,
     LightspeedPushResponse,
@@ -56,6 +57,7 @@ from app.services.clover import clover_service
 from app.services.ebay import ebay_service
 from app.services import ebay_signature
 from app.services import ebay_listing
+from app.services import ebay_policies
 from app.services import ebay_insights
 from app.services import outbox as outbox_service
 from app.models.inventory import InventoryItem
@@ -295,6 +297,31 @@ async def ebay_create_listing(
         postal_code=body.postal_code,
     )
     return _listing_response(body.item_id, payload)
+
+
+@router.get("/ebay/policies")
+async def ebay_get_policies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The seller's EBAY_US business policies and which kinds are missing."""
+    return await ebay_policies.policy_overview(db, current_user.id)
+
+
+@router.post("/ebay/policies/setup")
+async def ebay_setup_policies(
+    body: EbayPolicySetupRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Opt in to business policies and create any missing Resqlo default policies."""
+    return await ebay_policies.setup_policies(
+        db,
+        current_user.id,
+        free_shipping=body.free_shipping,
+        flat_shipping_cost=body.flat_shipping_cost,
+        returns_accepted=body.returns_accepted,
+    )
 
 
 @router.get("/ebay/listings/{item_id}", response_model=EbayListingResponse)

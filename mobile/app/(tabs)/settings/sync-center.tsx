@@ -5,6 +5,7 @@ import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill, SectionLabel, type IconName } from "../../../components/ui";
 import { Button } from "../../../components/Button";
 import { EbayPayouts } from "../../../components/EbayPayouts";
+import { EbayPoliciesCard } from "../../../components/EbayPolicySetup";
 import { COLORS, SPACING } from "../../../theme/tokens";
 
 type ProviderKey = "lightspeed" | "square" | "clover" | "ebay";
@@ -227,6 +228,8 @@ export default function SyncCenterScreen() {
       {runs.length > 4 ? (
         <ActionButton label={showAll ? "Show less" : "View All History"} onPress={() => setShowAll((v) => !v)} tone="secondary" />
       ) : null}
+
+      <EbayPoliciesCard connected={!!statuses.ebay?.connected} />
 
       <EbayPayouts connected={!!statuses.ebay?.connected} />
 

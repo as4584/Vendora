@@ -51,6 +51,21 @@ describe('API endpoint contracts', () => {
     method?: string;
     body?: unknown;
   }> = [
+    { name: 'ebay policies', call: () => api.getEbayPolicies(), path: '/integrations/ebay/policies' },
+    {
+      name: 'setup ebay policies',
+      call: () => api.setupEbayPolicies({ free_shipping: true, returns_accepted: false }),
+      path: '/integrations/ebay/policies/setup',
+      method: 'POST',
+      body: { free_shipping: true, returns_accepted: false },
+    },
+    {
+      name: 'setup ebay policies defaults',
+      call: () => api.setupEbayPolicies(),
+      path: '/integrations/ebay/policies/setup',
+      method: 'POST',
+      body: {},
+    },
     { name: 'ebay listing status', call: () => api.getEbayListing('i 1'), path: '/integrations/ebay/listings/i%201' },
     {
       name: 'create ebay listing',
