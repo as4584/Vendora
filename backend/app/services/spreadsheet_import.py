@@ -21,6 +21,10 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from fastapi import HTTPException, status
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 MAX_CSV_IMPORT_BYTES = 8 * 1024 * 1024
 MAX_XLSX_IMPORT_BYTES = 50 * 1024 * 1024
@@ -749,7 +753,7 @@ def _image_data_url(image_bytes: bytes, path: str) -> str | None:
                 encoded = base64.b64encode(output.getvalue()).decode("ascii")
                 return f"data:image/jpeg;base64,{encoded}"
         except Exception:
-            pass
+            logger.warning("Import: thumbnail conversion failed, using original image", exc_info=True)
 
     extension = path.rsplit(".", 1)[-1].lower()
     mime = {
