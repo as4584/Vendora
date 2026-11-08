@@ -215,7 +215,11 @@ async def stockx_callback(
     user_id = stockx_service.parse_state(state)
     if error or not code:
         return finish_response("stockx", "denied", state, app_url=APP_REDIRECT.format(status="denied"))
-    payload = await stockx_service.exchange_authorization_code(code)
+    try:
+        payload = await stockx_service.exchange_authorization_code(code)
+    except HTTPException:
+        # Send the seller back to the app with a clear failure, not a raw JSON page.
+        return finish_response("stockx", "error", state, app_url=APP_REDIRECT.format(status="error"))
     stockx_service.upsert_token(db, user_id=user_id, payload=payload)
     return finish_response("stockx", "connected", state, app_url=APP_REDIRECT.format(status="connected"))
 
