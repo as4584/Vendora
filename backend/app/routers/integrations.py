@@ -382,6 +382,9 @@ async def ebay_comps(
     current_user: User = Depends(get_current_user),
 ):
     """eBay price comps (active asks unless sold data is enabled; see ``kind``)."""
+    from app.services.feature_flags import require_market_pricing
+
+    require_market_pricing(current_user)
     return await ebay_listing.fetch_comps(q, condition=condition)
 
 

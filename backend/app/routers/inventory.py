@@ -712,8 +712,10 @@ async def get_ebay_comps(
     """eBay comps for an item. ``kind`` is "active_asks" (asking prices) unless
     the keyset has Marketplace Insights, in which case it is "sold"."""
     from app.services.ebay_listing import fetch_comps
+    from app.services.feature_flags import require_market_pricing
 
     item = _get_active_item(item_id, current_user.id, db)
+    require_market_pricing(current_user)
     brand = (item.custom_attributes or {}).get("brand") if isinstance(item.custom_attributes, dict) else None
     parts = [str(brand)] if brand and str(brand).lower() not in item.name.lower() else []
     parts.append(item.name)
@@ -733,7 +735,10 @@ def get_pricing_suggestion(
     current_user: User = Depends(get_current_user),
 ):
     """Smart pricing suggestion using own sales history and buy price margin."""
+    from app.services.feature_flags import require_market_pricing
+
     item = _get_active_item(item_id, current_user.id, db)
+    require_market_pricing(current_user)
 
     category_avg = (
         db.query(func.avg(InventoryItem.actual_sell_price))

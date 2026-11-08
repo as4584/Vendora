@@ -19,6 +19,7 @@ import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../co
 import { EbayListingCard } from "../../../components/EbayListingCard";
 import { Button } from "../../../components/Button";
 import { EbayCompsCard } from "../../../components/EbayCompsCard";
+import { ProUpsell, isProRequired } from "../../../components/ProUpsell";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 
@@ -44,6 +45,7 @@ export default function ItemDetailScreen() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [market, setMarket] = useState<api.MarketPriceResult | null>(null);
   const [suggestion, setSuggestion] = useState<api.PricingSuggestion | null>(null);
+  const [pricingLocked, setPricingLocked] = useState(false);
   const [pricingLoading, setPricingLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [refunding, setRefunding] = useState<string | null>(null);
@@ -172,7 +174,10 @@ export default function ItemDetailScreen() {
     try {
       const [nextMarket, nextSuggestion] = await Promise.all([
         api.getMarketPrice(item!.name, item!.upc || undefined),
-        api.getPricingSuggestion(item!.id),
+        api.getPricingSuggestion(item!.id).catch((err: any) => {
+          if (isProRequired(err)) { setPricingLocked(true); return null; }
+          throw err;
+        }),
       ]);
       setMarket(nextMarket); setSuggestion(nextSuggestion);
     } catch (err: any) { Alert.alert("Market pricing unavailable", err?.message || "Could not compare current pricing."); }
@@ -390,6 +395,7 @@ export default function ItemDetailScreen() {
         <SectionLabel>Market Pricing</SectionLabel>
         <Text style={styles.emptyText}>Compare external listings and your own sold history before changing the asking price.</Text>
         {suggestion ? <View style={styles.marketSummary}><Text style={styles.marketPrice}>{suggestion.suggested_price == null ? "More sales data needed" : formatCurrency(suggestion.suggested_price)}</Text><Pill label={`${suggestion.confidence.toUpperCase()} CONFIDENCE`} tone={suggestion.confidence === "high" ? "success" : "info"} /><Text style={styles.timelineMeta}>{suggestion.reason}</Text></View> : null}
+        {pricingLocked ? <ProUpsell testID="pricing-upsell" message="Get a suggested price from your own sales history and margins. Price suggestions are part of Pro." /> : null}
         {market?.sources.map((source) => <View key={`${source.source}-${source.label}`} style={styles.detailRow}><Text style={styles.detailLabel}>{source.label}</Text><Text style={styles.detailValue}>{source.price == null ? "No match" : formatCurrency(source.price)}</Text></View>)}
         <View style={[styles.actionRow, { marginTop: SPACING.sm }]}><ActionButton label={pricingLoading ? "Checking..." : "Check Market Price"} onPress={loadMarketPricing} disabled={pricingLoading} tone="secondary" compact /><ActionButton label={publishing ? "Publishing..." : "Publish to Lightspeed"} onPress={publishToLightspeed} disabled={publishing} tone="secondary" compact /></View>
       </Card>
