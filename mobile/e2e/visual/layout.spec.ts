@@ -24,6 +24,8 @@ const SCREENS: {
   /** Text of controls to tap, in order, before the screenshot. */
   steps?: string[];
   fullPage?: boolean;
+  /** Pick a CSV through the file chooser (import review) before the steps. */
+  upload?: boolean;
 }[] = [
   { name: 'login', path: '/login', authed: false },
   { name: 'register', path: '/register', authed: false },
@@ -45,16 +47,48 @@ const SCREENS: {
     fullPage: true,
   },
   { name: 'import', path: '/inventory/import' },
+  { name: 'import-review', path: '/inventory/import', ready: 'Choose CSV File', upload: true, fullPage: true },
+  { name: 'import-review-edit', path: '/inventory/import', ready: 'Choose CSV File', upload: true, steps: ['Fix'] },
   { name: 'more', path: '/more' },
   { name: 'settings', path: '/settings' },
+  { name: 'settings-google-sheets', path: '/settings', ready: 'Sheet is the source of truth', fullPage: true },
   { name: 'subscription', path: '/settings/subscription' },
   { name: 'support', path: '/settings/support' },
   { name: 'sync-center', path: '/settings/sync-center' },
   { name: 'analytics', path: '/settings/analytics' },
   { name: 'show-summary', path: '/settings/show-summary', ready: 'Count the cash box' },
+  { name: 'customers', path: '/customers', ready: 'Marcus Reed' },
+  { name: 'customer-detail', path: `/customers/${fixtures.customer_id}`, ready: 'Purchase history', fullPage: true },
+  {
+    name: 'invoice-customer-picker',
+    path: '/inventory/invoices',
+    ready: 'Pick customer',
+    steps: ['Pick customer'],
+  },
 ];
 
+const GOOGLE_SHEETS_STATUS = {
+  configured: true,
+  connected: true,
+  email: 'seller@example.com',
+  sheet: {
+    spreadsheet_id: '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789',
+    title: 'Resqlo Inventory with a fairly long spreadsheet title for wrapping',
+    url: 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit',
+    tab: 'Inventory',
+    source_of_truth: true,
+    archive_missing: false,
+    last_synced_at: new Date().toISOString(),
+    last_error: null,
+    mapped_columns: ['id', 'name', 'quantity'],
+  },
+  pending_pushes: 2,
+  failed_pushes: 1,
+};
+
 const ROUTES: [RegExp, unknown][] = [
+  [/\/inventory\/imports\/preview$/, fixtures.import_preview],
+  [/\/integrations\/google\/status/, GOOGLE_SHEETS_STATUS],
   [/\/auth\/me$/, fixtures.me],
   [/\/dashboard\/advanced/, fixtures.advanced],
   [/\/dashboard\/show-summary/, fixtures.show_summary],
@@ -71,6 +105,8 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/integrations\/health/, fixtures.integrations_health],
   [/\/health$/, { status: 'ok' }],
   [/\/scan\/memory/, []],
+  [new RegExp(`/customers/${fixtures.customer_id}$`), fixtures.customer],
+  [/\/customers(\?|$)/, fixtures.customers],
 ];
 
 async function stubApi(page: Page) {
@@ -146,6 +182,16 @@ async function openScreen(page: Page, screen: Screen, size: { width: number; hei
       await expect(ready).toBeVisible();
     }
   }
+  if (screen.upload) {
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByText('Choose CSV File', { exact: true }).first().click();
+    await (await chooser).setFiles({
+      name: 'show-pickups.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(['name,sku', 'Nike Air Max 1,DQ3989-100', ''].join('\n')),
+    });
+    await expect(page.getByText('Review import')).toBeVisible();
+  }
   for (const step of screen.steps ?? []) {
     await page.getByText(step, { exact: true }).first().click();
     await page.waitForTimeout(250);
@@ -178,7 +224,7 @@ test.describe('layout gate', () => {
  * case for capped chrome and a real large-size check for body copy.
  */
 const LARGE_TEXT = 1.3;
-const LARGE_TEXT_SCREENS = ['dashboard', 'inventory', 'item-detail', 'add', 'sale', 'sale-cart'];
+const LARGE_TEXT_SCREENS = ['dashboard', 'inventory', 'item-detail', 'add', 'sale', 'sale-cart', 'import-review'];
 
 async function scaleText(page: Page, factor: number) {
   await page.evaluate((k) => {

@@ -16,6 +16,7 @@ from sqlalchemy import Column, String, Numeric, Integer, ForeignKey, CheckConstr
 # from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
+from app.models import customer as _customer  # noqa: F401  (registers the customers FK target)
 
 
 class Invoice(Base, TimestampMixin):
@@ -28,6 +29,7 @@ class Invoice(Base, TimestampMixin):
         Index("ix_invoices_user_id", "user_id"),
         Index("ix_invoices_status", "status"),
         Index("ix_invoices_created_at", "created_at"),
+        Index("ix_invoices_customer_id", "customer_id"),
         UniqueConstraint("user_id", "number", name="uq_invoices_user_number"),
         # Offline replay key: the same queued create never makes two invoices.
         UniqueConstraint("user_id", "client_request_id", name="uq_invoices_user_client_request"),
@@ -43,6 +45,8 @@ class Invoice(Base, TimestampMixin):
     number = Column(Integer, nullable=False)
     customer_name = Column(String(255), nullable=False)
     customer_email = Column(String(255), nullable=True)
+    customer_phone = Column(String(50), nullable=True)
+    customer_id = Column(Uuid, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
     status = Column(String(20), nullable=False, server_default="draft")
     subtotal = Column(Numeric(10, 2), nullable=False, server_default="0.00")
     tax = Column(Numeric(10, 2), nullable=False, server_default="0.00")

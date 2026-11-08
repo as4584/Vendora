@@ -28,6 +28,7 @@ export const COLORS = {
   warning: "#E5B04A",
   danger: "#E5584D",
   info: "#6EA8F5",
+  overlay: "rgba(0,0,0,0.55)",
 };
 
 // Gradients are no longer used on surfaces. Kept as neutral tone shifts for

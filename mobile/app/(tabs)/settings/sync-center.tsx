@@ -5,9 +5,10 @@ import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill, SectionLabel, type IconName } from "../../../components/ui";
 import { Button } from "../../../components/Button";
 import { EbayPayouts } from "../../../components/EbayPayouts";
+import { EbayPoliciesCard } from "../../../components/EbayPolicySetup";
 import { COLORS, SPACING } from "../../../theme/tokens";
 
-type ProviderKey = "lightspeed" | "square" | "clover" | "ebay";
+type ProviderKey = "lightspeed" | "square" | "clover" | "ebay" | "google_sheets";
 type ProviderStatus = { connected: boolean; last_synced_at: string | null };
 
 const PROVIDERS: { key: ProviderKey; name: string; icon: IconName; getStatus: () => Promise<ProviderStatus>; sync: () => Promise<unknown> }[] = [
@@ -15,17 +16,26 @@ const PROVIDERS: { key: ProviderKey; name: string; icon: IconName; getStatus: ()
   { key: "square", name: "Square", icon: "square", getStatus: api.getSquareStatus, sync: api.triggerSquareSync },
   { key: "clover", name: "Clover", icon: "apps", getStatus: api.getCloverStatus, sync: api.triggerCloverSync },
   { key: "ebay", name: "eBay", icon: "pricetag", getStatus: api.getEbayStatus, sync: api.triggerEbaySync },
+  { key: "google_sheets", name: "Google Sheets", icon: "grid", getStatus: googleSheetsStatus, sync: api.syncGoogleSheets },
 ];
+
+/** A Google Sheet counts as connected for Sync Center once a sheet is linked. */
+async function googleSheetsStatus(): Promise<ProviderStatus> {
+  const status = await api.getGoogleSheetsStatus();
+  return { connected: Boolean(status.connected && status.sheet), last_synced_at: status.sheet?.last_synced_at ?? null };
+}
 
 export function providerName(provider: string): string {
   if (provider === "ebay") return "eBay";
   if (provider === "stockx") return "StockX";
+  if (provider === "google_sheets") return "Google Sheets";
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
 export function jobLabel(job: api.OutboxJob): string {
   if (job.action === "delete_listing") return "Remove sold-out ask";
   if (job.action === "sync_quantity") return "Update quantity";
+  if (job.action === "push_row") return "Update sheet row";
   return job.action.replace(/_/g, " ");
 }
 
@@ -51,6 +61,8 @@ export default function SyncCenterScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [busyRun, setBusyRun] = useState<string | null>(null);
+  const [busyIssue, setBusyIssue] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [statusResults, runsResult, issuesResult, outboxResult] = await Promise.all([
@@ -120,6 +132,31 @@ export default function SyncCenterScreen() {
     }
   };
 
+  const retryRun = async (run: api.ProviderSyncRun) => {
+    setBusyRun(run.id);
+    try {
+      const result = await api.retrySyncRun(run.id);
+      if (result.errors_count > 0) Alert.alert("Retried with errors", `${result.errors_count} item${result.errors_count === 1 ? "" : "s"} still failed.`);
+      await load();
+    } catch (err: any) {
+      Alert.alert("Retry failed", err?.detail?.message || err?.message || `Could not retry the ${providerName(run.provider)} sync.`);
+    } finally {
+      setBusyRun(null);
+    }
+  };
+
+  const settleIssue = async (issue: api.ReconciliationIssue, next: "resolved" | "dismissed") => {
+    setBusyIssue(issue.id);
+    try {
+      await api.updateReconciliationIssue(issue.id, { status: next });
+      await load();
+    } catch (err: any) {
+      Alert.alert("Update failed", err?.detail?.message || err?.message || "Could not update this issue.");
+    } finally {
+      setBusyIssue(null);
+    }
+  };
+
   if (loading) {
     return <View testID="sync-loading" style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
   }
@@ -183,6 +220,16 @@ export default function SyncCenterScreen() {
                 label={run.status === "completed" ? "Success" : run.status === "partial" ? "Partial" : run.status === "running" ? "Running" : "Failed"}
                 tone={run.status === "completed" ? "success" : run.status === "partial" ? "warning" : run.status === "running" ? "info" : "danger"}
               />
+              {run.status === "failed" || run.status === "partial" ? (
+                <Button
+                  label="Retry"
+                  size="sm"
+                  variant="secondary"
+                  loading={busyRun === run.id}
+                  onPress={() => void retryRun(run)}
+                  accessibilityLabel={`Retry ${providerName(run.provider)} sync`}
+                />
+              ) : null}
             </View>
           ))
         )}
@@ -190,6 +237,8 @@ export default function SyncCenterScreen() {
       {runs.length > 4 ? (
         <ActionButton label={showAll ? "Show less" : "View All History"} onPress={() => setShowAll((v) => !v)} tone="secondary" />
       ) : null}
+
+      <EbayPoliciesCard connected={!!statuses.ebay?.connected} />
 
       <EbayPayouts connected={!!statuses.ebay?.connected} />
 
@@ -231,7 +280,14 @@ export default function SyncCenterScreen() {
                   <Text style={styles.intName}>{issue.provider.charAt(0).toUpperCase() + issue.provider.slice(1)} · {issue.issue_type.replace(/_/g, " ")}</Text>
                   <Text style={styles.intMeta}>{issue.external_id || "No external id"} · {timeAgo(issue.detected_at)}</Text>
                 </View>
-                <Pill label={issue.status.toUpperCase()} tone={issue.status === "open" ? "warning" : "neutral"} />
+                {issue.status === "open" ? (
+                  <View style={styles.issueActions}>
+                    <Button label="Resolved" size="sm" variant="secondary" loading={busyIssue === issue.id} onPress={() => void settleIssue(issue, "resolved")} accessibilityLabel={`Mark ${providerName(issue.provider)} issue resolved`} />
+                    <Button label="Dismiss" size="sm" variant="ghost" disabled={busyIssue === issue.id} onPress={() => void settleIssue(issue, "dismissed")} accessibilityLabel={`Dismiss ${providerName(issue.provider)} issue`} />
+                  </View>
+                ) : (
+                  <Pill label={issue.status.toUpperCase()} tone="neutral" />
+                )}
               </View>
             ))}
           </Card>
@@ -247,7 +303,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
   stack: { gap: 0, paddingVertical: SPACING.xs },
   intRow: { flexDirection: "row", alignItems: "center", gap: SPACING.md, paddingVertical: SPACING.sm },
-  histRow: { flexDirection: "row", alignItems: "center", gap: SPACING.md, paddingVertical: SPACING.sm },
+  histRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: SPACING.md, paddingVertical: SPACING.sm },
+  issueActions: { flexDirection: "row", gap: SPACING.xs },
   intRowDivider: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
   intText: { flex: 1, gap: 3 },
   intName: { color: COLORS.text, fontSize: 15, fontWeight: "600" },

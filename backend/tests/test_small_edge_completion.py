@@ -39,10 +39,17 @@ def test_auth_rejects_missing_subject_and_missing_user(client):
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid token payload."
 
-    missing_user = create_access_token({"sub": str(uuid.uuid4())})
+    # Unknown user with an unknown session: the session check rejects it.
+    missing_user = create_access_token({"sub": str(uuid.uuid4()), "sid": str(uuid.uuid4())})
     response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {missing_user}"})
     assert response.status_code == 401
-    assert response.json()["detail"] == "User not found or account deleted."
+
+    # Security regression: a validly signed access token that is not bound
+    # to a revocable session is refused (logout/reset could not revoke it).
+    sessionless = create_access_token({"sub": str(uuid.uuid4())})
+    response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {sessionless}"})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid token payload."
 
 
 def test_non_access_jwt_is_rejected():
@@ -174,6 +181,7 @@ def test_reset_password_normalizes_naive_expiry(monkeypatch):
     monkeypatch.setattr(auth_router, "revoke_all_sessions", lambda *args: None)
     response = auth_router.reset_password(
         PasswordResetConfirm(token="a" * 32, password="NewPassword2"),
+        request=None,
         db=db,
     )
     assert response.message.startswith("Your password")

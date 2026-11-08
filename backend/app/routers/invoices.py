@@ -40,6 +40,7 @@ from app.services.invoice import (
     record_invoice_payment,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
+from app.services.customers import get_owned_customer, upsert_customer
 from app.services.stripe_service import create_payment_intent
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -58,6 +59,8 @@ def _invoice_to_response(invoice: Invoice, db: Session) -> InvoiceResponse:
         invoice_number=invoice.invoice_number,
         customer_name=invoice.customer_name,
         customer_email=invoice.customer_email,
+        customer_phone=invoice.customer_phone,
+        customer_id=invoice.customer_id,
         status=invoice.status,
         subtotal=invoice.subtotal,
         tax=invoice.tax,
@@ -78,6 +81,15 @@ def _invoice_to_response(invoice: Invoice, db: Session) -> InvoiceResponse:
         ],
         created_at=invoice.created_at,
         updated_at=invoice.updated_at,
+    )
+
+
+def _resolve_customer(db: Session, user_id, payload):
+    """The picked customer, or the one matching (or made from) the typed details."""
+    if getattr(payload, "customer_id", None):
+        return get_owned_customer(db, user_id, payload.customer_id)
+    return upsert_customer(
+        db, user_id, payload.customer_name, payload.customer_email, getattr(payload, "customer_phone", None)
     )
 
 
@@ -121,6 +133,8 @@ def create_invoice(
         payload.items, payload.tax, payload.shipping, payload.discount
     )
 
+    customer = _resolve_customer(db, current_user.id, payload)
+
     # Create invoice with the next number for this user. Locking the user row
     # serialises concurrent creates so two invoices never share a number.
     db.query(User).filter(User.id == current_user.id).with_for_update().first()
@@ -132,6 +146,8 @@ def create_invoice(
         number=next_number,
         customer_name=payload.customer_name,
         customer_email=payload.customer_email,
+        customer_phone=payload.customer_phone,
+        customer_id=customer.id if customer else None,
         subtotal=totals["subtotal"],
         tax=payload.tax,
         shipping=payload.shipping,
@@ -262,6 +278,9 @@ def update_invoice(
 
     invoice.customer_name = payload.customer_name
     invoice.customer_email = payload.customer_email
+    invoice.customer_phone = payload.customer_phone
+    customer = _resolve_customer(db, current_user.id, payload)
+    invoice.customer_id = customer.id if customer else None
     invoice.subtotal = totals["subtotal"]
     invoice.tax = payload.tax
     invoice.shipping = payload.shipping

@@ -84,6 +84,12 @@ class EbayListingCreateRequest(BaseModel):
     postal_code: Optional[str] = Field(default=None, pattern=r"^\d{5}$")
 
 
+class EbayPolicySetupRequest(BaseModel):
+    free_shipping: bool = False
+    flat_shipping_cost: Optional[Decimal] = Field(default=None, ge=0, le=500, max_digits=6, decimal_places=2)
+    returns_accepted: bool = True
+
+
 class EbayListingUpdateRequest(BaseModel):
     price: Optional[Decimal] = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     quantity: Optional[int] = Field(default=None, ge=0, le=10000)

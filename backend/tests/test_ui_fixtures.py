@@ -69,11 +69,8 @@ def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
     refund = client.post(f"/api/v1/transactions/{card.json()['transactions'][0]['id']}/refund",
                          json={"reason": "Wrong size"}, headers=auth_headers)
     assert refund.status_code == 201, refund.text
-    client.post("/api/v1/transactions/order", json={
-        "method": "card", "lines": [{"item_id": str(items[3].id), "quantity": 1, "unit_price": "185.00"}],
-    }, headers=auth_headers)
     inv = client.post("/api/v1/invoices", json={
-        "customer_name": "Marcus Reed", "customer_email": "marcus@example.com",
+        "customer_name": "Marcus Reed", "customer_email": "marcus@example.com", "customer_phone": "(201) 555-0148",
         "items": [{"inventory_item_id": str(items[2].id), "description": items[2].name, "quantity": 1, "unit_price": "130.00"}],
     }, headers=auth_headers)
     assert inv.status_code in (200, 201), inv.text
@@ -82,16 +79,43 @@ def test_busy_seller_screens_all_load(client, auth_headers, db, test_user):
         "amount": "50.00", "method": "cash", "note": "Deposit at the show",
     }, headers=auth_headers)
     assert paid.status_code == 201, paid.text
+    # Marcus also bought at the booth, so his customer page shows both kinds of history.
+    booth = client.post("/api/v1/transactions/order", json={
+        "method": "card", "customer_id": inv.json()["customer_id"],
+        "lines": [{"item_id": str(items[3].id), "quantity": 1, "unit_price": "185.00"}],
+    }, headers=auth_headers)
+    assert booth.status_code == 201, booth.text
+    wholesale = client.post("/api/v1/customers", json={
+        "name": "Garden State Cards Wholesale With A Long Business Name", "email": "orders@gardenstatecards.example",
+        "phone": "732-555-0190", "address": "12 Route 9, Freehold NJ", "tax_exempt": True,
+    }, headers=auth_headers)
+    assert wholesale.status_code == 201, wholesale.text
 
-    out ={"item_id": str(items[0].id), "invoice_id": inv.json()["id"]}
+    out = {"item_id": str(items[0].id), "invoice_id": inv.json()["id"], "customer_id": inv.json()["customer_id"]}
     paths = dict(SCREENS)
     paths["item"] = f"/inventory/{items[0].id}"
     paths["item_activity"] = f"/inventory/{items[0].id}/activity?limit=20"
     paths["invoice"] = f"/invoices/{out['invoice_id']}"
+    paths["customers"] = "/customers"
+    paths["customer"] = f"/customers/{out['customer_id']}"
     for key, path in paths.items():
         resp = client.get(f"/api/v1{path}", headers=auth_headers)
         assert resp.status_code == 200, (key, resp.status_code, resp.text[:200])
         out[key] = resp.json()
+
+    # Import review: a new item, an update to stock already on hand, and a row
+    # the seller has to fix (no name), as the review screen shows them.
+    csv_body = (
+        "name,category,sku,size,color,condition,quantity,cost,price\n"
+        "Nike Air Max 1 '86 OG Big Bubble Lost Sketch,Sneakers,DQ3989-100,10.5,White/Grey,New,2,$120.00,$175.00\n"
+        "Nike Dunk Low Retro White Black,Sneakers,DD1391-100,10,White/Black,New,4,110.00,165.00\n"
+        ",Collectibles,PKM-SV-ETB,,,New,3,40.00,60.00\n"
+        "Stussy 8 Ball Fleece,Clothing,,M,Black,Used,1,35.00,70.00\n"
+    ).encode()
+    preview = client.post("/api/v1/inventory/imports/preview",
+                          files={"file": ("show-pickups.csv", csv_body, "text/csv")}, headers=auth_headers)
+    assert preview.status_code == 201, preview.text
+    out["import_preview"] = preview.json()
 
     target = os.environ.get("UI_FIXTURES_OUT")
     if target:

@@ -288,10 +288,44 @@ def public_image_urls(item: InventoryItem) -> list[str]:
     return urls
 
 
+MAX_PUBLIC_IMAGE_BYTES = 12 * 1024 * 1024
+
+# Magic bytes -> media type. The served Content-Type comes from the bytes, not
+# the stored data-URL header, so a stored "data:image/svg+xml" (script-capable)
+# or HTML payload can never be served from the app's own origin.
+_IMAGE_SIGNATURES = (
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+
+
+def _sniff_image(data: bytes) -> str | None:
+    for magic, media in _IMAGE_SIGNATURES:
+        if data.startswith(magic):
+            return media
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 def decode_data_url(value: str) -> tuple[bytes, str]:
+    """Decode a stored photo data URL into (bytes, safe raster media type).
+
+    Raises ValueError for anything that is not a JPEG/PNG/GIF/WebP raster
+    image within the size limit.
+    """
     header, _, data = value.partition(",")
-    media = header[5:].split(";")[0] or "image/jpeg"
-    return base64.b64decode(data), media
+    if ";base64" not in header:
+        raise ValueError("photo data URL must be base64")
+    if len(data) > MAX_PUBLIC_IMAGE_BYTES * 4 // 3 + 4:
+        raise ValueError("photo too large")
+    raw = base64.b64decode(data)
+    media = _sniff_image(raw)
+    if media is None:
+        raise ValueError("not a raster image")
+    return raw, media
 
 
 def _attrs(item: InventoryItem) -> dict:
@@ -413,11 +447,13 @@ async def fetch_policies(seller: SellerSession) -> dict[str, str]:
                 "error": "ebay_policies_missing",
                 "missing": missing,
                 "message": (
-                    "Your eBay account has no " + ", ".join(missing) + " policy. In eBay Seller Hub go to "
+                    "Your eBay account has no " + ", ".join(missing) + " policy. Tap 'Set up selling "
+                    "policies for me' and Resqlo will create them, or in eBay Seller Hub go to "
                     "Account > Business policies, opt in, and create shipping, payment and return policies, "
                     "then try again."
                 ),
                 "help_url": "https://www.ebay.com/bp/manage",
+                "setup_available": True,
             },
         )
     return found

@@ -47,7 +47,21 @@ def _after_commit(session: Session) -> None:
     kick()
 
 
+def _pull_sheets_once() -> None:
+    from app.database import SessionLocal
+    from app.services.google_sheets import pull_all
+
+    db = SessionLocal()
+    try:
+        asyncio.run(pull_all(db))
+    except Exception:  # noqa: BLE001 - worker must never crash the app
+        logger.exception("google sheets periodic pull failed")
+    finally:
+        db.close()
+
+
 async def sweep_forever() -> None:  # pragma: no cover - long-running loop
     while True:
         await asyncio.sleep(SWEEP_SECONDS)
+        await asyncio.to_thread(_pull_sheets_once)
         await asyncio.to_thread(_run_once)

@@ -11,6 +11,7 @@ from sqlalchemy import Column, String, Numeric, ForeignKey, CheckConstraint, Ind
 # from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
+from app.models import customer as _customer  # noqa: F401  (registers the customers FK target)
 
 
 class Transaction(Base, TimestampMixin):
@@ -29,6 +30,7 @@ class Transaction(Base, TimestampMixin):
         Index("ix_transactions_created_at", "created_at"),
         Index("ix_transactions_invoice_id", "invoice_id"),
         Index("ix_transactions_order_id", "order_id"),
+        Index("ix_transactions_customer_id", "customer_id"),
         Index(
             "uq_transactions_user_source_external",
             "user_id",
@@ -50,6 +52,8 @@ class Transaction(Base, TimestampMixin):
         ForeignKey("inventory_items.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Who bought it (checkout sales); invoices carry their own customer_id.
+    customer_id = Column(Uuid, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
     method = Column(String(20), nullable=False)
     status = Column(String(20), nullable=False, server_default="completed")
     gross_amount = Column(Numeric(10, 2), nullable=False)

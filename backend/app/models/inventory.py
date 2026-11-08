@@ -144,7 +144,7 @@ class InventoryExternalLink(Base, TimestampMixin):
             name="uq_external_link_user_provider",
         ),
         CheckConstraint(
-            "provider IN ('lightspeed','square','clover','ebay','stockx','spreadsheet')",
+            "provider IN ('lightspeed','square','clover','ebay','stockx','spreadsheet','google_sheets')",
             name="ck_ext_link_provider",
         ),
         Index("ix_external_links_item_id", "inventory_item_id"),

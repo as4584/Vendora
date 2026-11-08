@@ -208,12 +208,13 @@ class StockxService(ProviderAdapter):
 
     # ── OAuth ──────────────────────────────────────────────────────────────────
 
-    def build_state(self, user_id: uuid.UUID) -> str:
+    def build_state(self, user_id: uuid.UUID, ret: str = "app") -> str:
         payload = {
             "sub": str(user_id),
             "purpose": "stockx_oauth",
             "nonce": secrets.token_urlsafe(16),
             "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+            "ret": ret,
         }
         return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -249,7 +250,16 @@ class StockxService(ProviderAdapter):
                 data={**data, "client_id": self.client_id, "client_secret": self.client_secret},
             )
         if resp.status_code >= 400:
-            logger.error("StockX token request failed %s", resp.status_code)
+            # Log StockX's OAuth error code (never the request, which holds secrets).
+            try:
+                err = resp.json()
+                reason = f"{err.get('error')}: {str(err.get('error_description', ''))[:200]}"
+            except Exception:
+                reason = resp.text[:200]
+            logger.error(
+                "StockX token request failed %s grant=%s reason=%s",
+                resp.status_code, data.get("grant_type"), reason,
+            )
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail="StockX token request failed")
         payload = resp.json()
         payload["expires_at"] = datetime.now(timezone.utc) + timedelta(

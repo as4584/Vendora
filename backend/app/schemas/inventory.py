@@ -153,6 +153,7 @@ class InventoryActivityEntry(BaseModel):
 
 class ImportRowResult(BaseModel):
     """Preview or commit result for a single CSV row."""
+    id: Optional[UUID] = None       # InventoryImportRow id — target of PATCH .../rows/{row_id}
     row_number: int
     action: Optional[str]           # create | update | skip | error
     inventory_item_id: Optional[UUID] = None
@@ -160,6 +161,16 @@ class ImportRowResult(BaseModel):
     match_key: Optional[str] = None
     match_value: Optional[str] = None
     error_message: Optional[str] = None
+
+
+class ImportRowUpdate(BaseModel):
+    """PATCH body for one previewed import row.
+
+    ``data`` replaces the row's mapped fields (validated exactly like a CSV
+    cell); ``skip`` discards the row (true) or restores it (false).
+    """
+    data: Optional[dict[str, Any]] = None
+    skip: Optional[bool] = None
 
 
 class ImportJobResponse(BaseModel):
