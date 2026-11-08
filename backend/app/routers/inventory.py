@@ -3,6 +3,7 @@
 Soft-delete 404 rule: All GET/PUT/PATCH filter WHERE deleted_at IS NULL.
 Soft-deleted records return 404, never exposed.
 """
+import logging
 import csv
 import asyncio
 import io
@@ -60,6 +61,8 @@ from app.services.spreadsheet_import import (
     MAX_CSV_IMPORT_BYTES,
     MAX_XLSX_IMPORT_BYTES,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -644,7 +647,7 @@ async def get_market_price(
                             "count": len(prices),
                         })
         except Exception:
-            pass  # graceful degradation
+            logger.warning("Market price: retail lookup failed", exc_info=True)
 
     # 2. Internal history — avg sell price for similar-named items in user's account
     name_avg = (
@@ -698,7 +701,7 @@ async def get_market_price(
                     "count": comps["count"],
                 })
         except Exception:
-            pass  # graceful degradation
+            logger.warning("Market price: eBay comps lookup failed", exc_info=True)
 
     return result
 
