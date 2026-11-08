@@ -5,6 +5,7 @@ import { Button, triggerHaptic } from "../../../components/Button";
 import * as api from "../../../services/api";
 import { COLORS, RADII, SPACING, TYPE } from "../../../theme/tokens";
 import { buildShowSummaryText, formatCents, paymentLabel, toSignedCents } from "../../../utils/checkout";
+import { errorMessage } from "../../../services/errors";
 
 type Window = "show" | "today" | "week";
 
@@ -47,8 +48,8 @@ export default function ShowSummaryScreen() {
       const summary = await api.getShowSummary({ since: windowSince(which, start) });
       setData(summary);
       setShowStart(summary.show_started_at);
-    } catch (err: any) {
-      setError(err?.message || "Could not load the summary.");
+    } catch (err) {
+      setError(errorMessage(err, "Could not load the summary."));
     } finally {
       setLoading(false);
     }
@@ -65,7 +66,7 @@ export default function ShowSummaryScreen() {
         setLoading(false);
       })
       .catch((err: any) => {
-        setError(err?.message || "Could not load the summary.");
+        setError(errorMessage(err, "Could not load the summary."));
         setLoading(false);
       });
   }, [load]);
@@ -84,8 +85,8 @@ export default function ShowSummaryScreen() {
       setData(summary);
       setWin("show");
       triggerHaptic("success");
-    } catch (err: any) {
-      Alert.alert("Couldn't start the show", err?.message || "Try again when you're online.");
+    } catch (err) {
+      Alert.alert("Couldn't start the show", errorMessage(err, "Try again when you're online."));
     } finally {
       setBusy(false);
     }
@@ -103,8 +104,8 @@ export default function ShowSummaryScreen() {
             setShowStart(null);
             setWin("today");
             load("today", null);
-          } catch (err: any) {
-            Alert.alert("Couldn't end the show", err?.message || "Try again when you're online.");
+          } catch (err) {
+            Alert.alert("Couldn't end the show", errorMessage(err, "Try again when you're online."));
           }
         },
       },

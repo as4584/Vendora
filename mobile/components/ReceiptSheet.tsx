@@ -7,6 +7,7 @@ import { useReducedMotion } from "./useReducedMotion";
 import { Icon } from "./ui";
 import { COLORS, RADII, SPACING, TYPE } from "../theme/tokens";
 import { buildReceiptText, formatCents, paymentLabel, type ReceiptData } from "../utils/checkout";
+import { errorMessage } from "../services/errors";
 
 /**
  * Post-sale receipt: what was sold, totals, how it was paid, and a Share
@@ -43,8 +44,8 @@ export function ReceiptSheet({
         "application/pdf",
         (status) => `Could not get the PDF receipt (${status}).`,
       );
-    } catch (err: any) {
-      Alert.alert("PDF receipt", err?.message || "Could not share the PDF receipt.");
+    } catch (err) {
+      Alert.alert("PDF receipt", errorMessage(err, "Could not share the PDF receipt."));
     } finally {
       setPdfBusy(false);
     }

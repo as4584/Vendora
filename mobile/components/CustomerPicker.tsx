@@ -7,6 +7,7 @@ import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import * as api from "../services/api";
 import { Button } from "./Button";
 import { COLORS, FONT_SCALE, RADII, SPACING, TYPE } from "../theme/tokens";
+import { errorMessage } from "../services/errors";
 
 export function customerContact(c: Pick<api.Customer, "email" | "phone">): string {
   return [c.email, c.phone].filter(Boolean).join(" · ") || "No contact details";
@@ -39,7 +40,7 @@ export function CustomerPicker({
       setLoading(true);
       api.listCustomers(query)
         .then((items) => { if (live) { setResults(items); setError(null); } })
-        .catch((err: any) => { if (live) setError(err?.message || "Could not load customers."); })
+        .catch((err: any) => { if (live) setError(errorMessage(err, "Could not load customers.")); })
         .finally(() => { if (live) setLoading(false); });
     }, 250);
     return () => { live = false; clearTimeout(timer); };
@@ -63,8 +64,8 @@ export function CustomerPicker({
       setAdding(false);
       setName(""); setEmail(""); setPhone("");
       pick(created);
-    } catch (err: any) {
-      setError(err?.message || "Could not save the customer.");
+    } catch (err) {
+      setError(errorMessage(err, "Could not save the customer."));
     } finally {
       setSaving(false);
     }

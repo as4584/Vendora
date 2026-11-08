@@ -22,6 +22,7 @@ import { EbayCompsCard } from "../../../components/EbayCompsCard";
 import { ProUpsell, isProRequired } from "../../../components/ProUpsell";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
+import { errorMessage } from "../../../services/errors";
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   in_stock: ["listed", "sold"],
@@ -70,8 +71,8 @@ export default function ItemDetailScreen() {
       if (nextActivity.status === "fulfilled") setActivity(nextActivity.value);
       if (nextTransactions.status === "fulfilled") setTransactions(nextTransactions.value.items);
       if (nextInvoices.status === "fulfilled") setInvoices(nextInvoices.value.items);
-    } catch (err: any) {
-      setLoadError(err?.message || "Could not load this item.");
+    } catch (err) {
+      setLoadError(errorMessage(err, "Could not load this item."));
     } finally {
       setLoading(false);
     }
@@ -92,8 +93,8 @@ export default function ItemDetailScreen() {
         side === "back" ? uri : undefined
       );
       setItem(updated);
-    } catch (err: any) {
-      Alert.alert("Upload failed", err?.message || "Could not update the item photo.");
+    } catch (err) {
+      Alert.alert("Upload failed", errorMessage(err, "Could not update the item photo."));
     } finally {
       setPhotoUploading(false);
     }
@@ -132,8 +133,8 @@ export default function ItemDetailScreen() {
           try {
             await api.refundTransaction(transaction.id);
             await loadItem();
-          } catch (err: any) {
-            Alert.alert("Refund failed", err?.detail?.message || err?.message || "Could not refund this sale.");
+          } catch (err) {
+            Alert.alert("Refund failed", errorMessage(err, "Could not refund this sale."));
           } finally {
             setRefunding(null);
           }
@@ -146,8 +147,8 @@ export default function ItemDetailScreen() {
     try {
       const updated = await api.updateItemStatus(item!.id, status);
       setItem(updated);
-    } catch (err: any) {
-      Alert.alert("Status update failed", err?.message || "Could not update item status.");
+    } catch (err) {
+      Alert.alert("Status update failed", errorMessage(err, "Could not update item status."));
     }
   };
 
@@ -161,8 +162,8 @@ export default function ItemDetailScreen() {
           try {
             await api.deleteItem(item!.id);
             replace("/(tabs)/inventory");
-          } catch (err: any) {
-            Alert.alert("Delete failed", err?.message || "Could not delete this item.");
+          } catch (err) {
+            Alert.alert("Delete failed", errorMessage(err, "Could not delete this item."));
           }
         },
       },
@@ -180,7 +181,7 @@ export default function ItemDetailScreen() {
         }),
       ]);
       setMarket(nextMarket); setSuggestion(nextSuggestion);
-    } catch (err: any) { Alert.alert("Market pricing unavailable", err?.message || "Could not compare current pricing."); }
+    } catch (err) { Alert.alert("Market pricing unavailable", errorMessage(err, "Could not compare current pricing.")); }
     finally { setPricingLoading(false); }
   };
 
@@ -189,7 +190,7 @@ export default function ItemDetailScreen() {
     try {
       const result = await api.pushItemToLightspeed(item!.id);
       Alert.alert("Published to Lightspeed", result.items_created ? "A linked Lightspeed catalog item was created." : "The linked Lightspeed catalog item was updated.");
-    } catch (err: any) { Alert.alert("Publish failed", err?.message || "Connect Lightspeed in Settings first."); }
+    } catch (err) { Alert.alert("Publish failed", errorMessage(err, "Connect Lightspeed in Settings first.")); }
     finally { setPublishing(false); }
   };
 

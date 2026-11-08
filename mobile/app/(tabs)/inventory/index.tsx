@@ -22,6 +22,7 @@ import { COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
 import { SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import InventoryCard, { STATUS_TONES } from "../../../components/InventoryCard";
 import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
+import { errorMessage } from "../../../services/errors";
 
 /**
  * Case-insensitive subsequence match: every character of `query` must appear in
@@ -97,8 +98,8 @@ export default function InventoryListScreen() {
         setTotal(result.total);
         setPage(result.page);
         setPages(result.pages);
-      } catch (err: any) {
-        Alert.alert("Inventory unavailable", err?.message || "Could not load inventory.");
+      } catch (err) {
+        Alert.alert("Inventory unavailable", errorMessage(err, "Could not load inventory."));
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -160,8 +161,8 @@ export default function InventoryListScreen() {
       await fetchItems({ page: 1, refresh: true });
       const extra = result.source_note ? `\n\n${result.source_note}` : "";
       Alert.alert("Deleted", `${result.deleted} item${result.deleted === 1 ? "" : "s"} removed.${extra}`);
-    } catch (err: any) {
-      Alert.alert("Delete failed", err?.message || "Could not delete the selected items.");
+    } catch (err) {
+      Alert.alert("Delete failed", errorMessage(err, "Could not delete the selected items."));
     } finally {
       setDeleting(false);
     }
@@ -185,8 +186,8 @@ export default function InventoryListScreen() {
     try {
       const token = await api.getToken();
       await downloadAndShareRemote(api.exportInventoryXlsxUrl(), "resqlo-inventory.xlsx", token);
-    } catch (err: any) {
-      Alert.alert("Export failed", err?.message || "Could not export the Excel file.");
+    } catch (err) {
+      Alert.alert("Export failed", errorMessage(err, "Could not export the Excel file."));
     } finally {
       setExporting(false);
     }
@@ -196,8 +197,8 @@ export default function InventoryListScreen() {
     try {
       const csv = await api.exportInventoryWarehouseCSV();
       await downloadTextFile(csv, "resqlo-inventory.csv");
-    } catch (err: any) {
-      Alert.alert("Export failed", err?.message || "Could not export the inventory CSV.");
+    } catch (err) {
+      Alert.alert("Export failed", errorMessage(err, "Could not export the inventory CSV."));
     }
   };
 

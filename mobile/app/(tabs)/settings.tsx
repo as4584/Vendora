@@ -24,6 +24,7 @@ import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/ba
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../components/ui";
 import { COLORS, SPACING } from "../../theme/tokens";
 import { formatCompactDate } from "../../utils/inventory";
+import { errorMessage } from "../../services/errors";
 
 function ProviderCard({
   name,
@@ -148,8 +149,8 @@ export default function SettingsScreen() {
       try {
         await api.updateProfile(user?.business_name, `data:image/jpeg;base64,${result.assets[0].base64}`);
         await refreshUser();
-      } catch (err: any) {
-        Alert.alert("Photo update failed", err?.message || "Could not update your profile photo.");
+      } catch (err) {
+        Alert.alert("Photo update failed", errorMessage(err, "Could not update your profile photo."));
       } finally {
         setPhotoSaving(false);
       }
@@ -162,8 +163,8 @@ export default function SettingsScreen() {
       await openProviderConnect(authorization_url);
       await registerBackgroundSync().catch(() => {});
       await fetchAll();
-    } catch (err: any) {
-      Alert.alert("Lightspeed unavailable", err?.message || "Could not open the Lightspeed connect flow.");
+    } catch (err) {
+      Alert.alert("Lightspeed unavailable", errorMessage(err, "Could not open the Lightspeed connect flow."));
     }
   };
 
@@ -173,8 +174,8 @@ export default function SettingsScreen() {
       await api.triggerLightspeedSync();
       await fetchAll();
       router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("Lightspeed sync failed", err?.message || "Could not complete the Lightspeed sync.");
+    } catch (err) {
+      Alert.alert("Lightspeed sync failed", errorMessage(err, "Could not complete the Lightspeed sync."));
     } finally {
       setLsSyncing(false);
     }
@@ -186,7 +187,7 @@ export default function SettingsScreen() {
       const result = await api.pushLightspeedInventory();
       Alert.alert("Lightspeed updated", `${result.items_updated} linked item${result.items_updated === 1 ? "" : "s"} pushed to the POS.${result.errors_count ? ` ${result.errors_count} failed.` : ""}`);
       await fetchAll();
-    } catch (err: any) { Alert.alert("Lightspeed push failed", err?.message || "Could not publish inventory updates."); }
+    } catch (err) { Alert.alert("Lightspeed push failed", errorMessage(err, "Could not publish inventory updates.")); }
     finally { setLsSyncing(false); }
   };
 
@@ -197,7 +198,7 @@ export default function SettingsScreen() {
       { text: "Cancel", style: "cancel" },
       { text: "Disconnect", style: "destructive", onPress: async () => {
         try { await api.disconnectLightspeed(); await unregisterBackgroundSync().catch(() => {}); await fetchAll(); }
-        catch (err: any) { Alert.alert("Disconnect failed", err?.message || "Could not disconnect Lightspeed."); }
+        catch (err) { Alert.alert("Disconnect failed", errorMessage(err, "Could not disconnect Lightspeed.")); }
       } },
     ],
   );
@@ -208,8 +209,8 @@ export default function SettingsScreen() {
       await api.triggerSquareSync();
       await fetchAll();
       router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("Square sync failed", err?.message || "Could not complete the Square sync.");
+    } catch (err) {
+      Alert.alert("Square sync failed", errorMessage(err, "Could not complete the Square sync."));
     } finally {
       setSqSyncing(false);
     }
@@ -221,8 +222,8 @@ export default function SettingsScreen() {
       await api.triggerCloverSync();
       await fetchAll();
       router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("Clover sync failed", err?.message || "Could not complete the Clover sync.");
+    } catch (err) {
+      Alert.alert("Clover sync failed", errorMessage(err, "Could not complete the Clover sync."));
     } finally {
       setCvSyncing(false);
     }
@@ -233,8 +234,8 @@ export default function SettingsScreen() {
       const { authorization_url } = await api.getEbayConnectUrl();
       await openProviderConnect(authorization_url);
       await fetchAll();
-    } catch (err: any) {
-      Alert.alert("eBay unavailable", err?.message || "Could not open the eBay connect flow.");
+    } catch (err) {
+      Alert.alert("eBay unavailable", errorMessage(err, "Could not open the eBay connect flow."));
     }
   };
 
@@ -244,8 +245,8 @@ export default function SettingsScreen() {
       await api.triggerEbaySync();
       await fetchAll();
       router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("eBay sync failed", err?.message || "Could not complete the eBay sync.");
+    } catch (err) {
+      Alert.alert("eBay sync failed", errorMessage(err, "Could not complete the eBay sync."));
     } finally {
       setEbSyncing(false);
     }
@@ -258,7 +259,7 @@ export default function SettingsScreen() {
       { text: "Cancel", style: "cancel" },
       { text: "Disconnect", style: "destructive", onPress: async () => {
         try { await api.disconnectEbay(); await fetchAll(); }
-        catch (err: any) { Alert.alert("Disconnect failed", err?.message || "Could not disconnect eBay."); }
+        catch (err) { Alert.alert("Disconnect failed", errorMessage(err, "Could not disconnect eBay.")); }
       } },
     ],
   );
@@ -274,7 +275,7 @@ export default function SettingsScreen() {
           try {
             await (provider === "square" ? api.disconnectSquare() : api.disconnectClover());
             await fetchAll();
-          } catch (err: any) { Alert.alert("Disconnect failed", err?.message || `Could not disconnect ${label}.`); }
+          } catch (err) { Alert.alert("Disconnect failed", errorMessage(err, `Could not disconnect ${label}.`)); }
         } },
       ],
     );
@@ -319,8 +320,8 @@ export default function SettingsScreen() {
       setConnectionProvider(null);
       await fetchAll();
       Alert.alert("Connected", `${providerName} is connected. You can sync inventory now.`);
-    } catch (err: any) {
-      Alert.alert("Connection failed", err?.message || "Could not save the provider connection.");
+    } catch (err) {
+      Alert.alert("Connection failed", errorMessage(err, "Could not save the provider connection."));
     } finally {
       setConnectionSaving(false);
     }
@@ -340,8 +341,8 @@ export default function SettingsScreen() {
       await api.deleteAccount(deletePassword);
       setDeleteModalOpen(false);
       await signOut();
-    } catch (err: any) {
-      Alert.alert("Account deletion failed", err?.message || "Could not delete your account.");
+    } catch (err) {
+      Alert.alert("Account deletion failed", errorMessage(err, "Could not delete your account."));
     } finally {
       setDeleteSaving(false);
     }
@@ -612,8 +613,8 @@ function InvoiceBrandingCard({ user, onSaved }: { user: api.User | null; onSaved
       });
       await onSaved();
       Alert.alert("Saved", "Your invoice branding was updated.");
-    } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "Could not update branding.");
+    } catch (err) {
+      Alert.alert("Save failed", errorMessage(err, "Could not update branding."));
     } finally {
       setSaving(false);
     }

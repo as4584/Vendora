@@ -6,6 +6,7 @@ import { Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/u
 import { customerContact } from "../../../components/CustomerPicker";
 import { COLORS, FONT_SCALE, SPACING, TYPE } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency } from "../../../utils/inventory";
+import { errorMessage } from "../../../services/errors";
 
 export default function CustomersScreen() {
   const router = useRouter();
@@ -19,8 +20,8 @@ export default function CustomersScreen() {
     try {
       setCustomers(await api.listCustomers(q));
       setError(null);
-    } catch (err: any) {
-      setError(err?.message || "Could not load customers.");
+    } catch (err) {
+      setError(errorMessage(err, "Could not load customers."));
     } finally {
       setLoading(false);
       setRefreshing(false);

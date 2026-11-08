@@ -32,6 +32,7 @@ import {
   type DiscountMode,
   type ReceiptData,
 } from "../../../utils/checkout";
+import { errorMessage } from "../../../services/errors";
 
 // Cash and card first: that is how almost every show sale is paid.
 const PRIMARY_METHODS = ["cash", "card"];
@@ -198,8 +199,8 @@ export default function QuickSaleScreen() {
       await api.updateProfile({ sales_tax_rate: taxRate.trim() || "0" });
       setDefaultTax(taxRate.trim());
       triggerHaptic("success");
-    } catch (err: any) {
-      Alert.alert("Couldn't save", err?.message || "Try again when you're online.");
+    } catch (err) {
+      Alert.alert("Couldn't save", errorMessage(err, "Try again when you're online."));
     }
   };
 
@@ -329,8 +330,8 @@ export default function QuickSaleScreen() {
         pending: offline,
         orderId: offline ? undefined : order.order_id,
       });
-    } catch (err: any) {
-      Alert.alert("Sale failed", err?.message || "Could not log this sale.");
+    } catch (err) {
+      Alert.alert("Sale failed", errorMessage(err, "Could not log this sale."));
     } finally {
       setSubmitting(false);
     }

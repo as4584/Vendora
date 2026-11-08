@@ -10,6 +10,7 @@ import { Button } from "./Button";
 import { Card, Pill, SectionLabel } from "./ui";
 import { ProUpsell, isProRequired } from "./ProUpsell";
 import { COLORS, SPACING, TYPE } from "../theme/tokens";
+import { errorMessage } from "../services/errors";
 
 type Props = { itemId?: string; query?: string; onUsePrice?: (price: string) => void };
 
@@ -32,7 +33,7 @@ export function EbayCompsCard({ itemId, query, onUsePrice }: Props) {
       else setError("Enter an item name first.");
     } catch (err: any) {
       if (isProRequired(err)) { setLocked(true); return; }
-      setError(err?.detail?.message || err?.message || "eBay prices are unavailable right now.");
+      setError(errorMessage(err, "eBay prices are unavailable right now."));
     } finally {
       setLoading(false);
     }

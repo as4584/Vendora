@@ -8,6 +8,7 @@ import * as api from "../services/api";
 import { Button } from "./Button";
 import { Card, Pill, SectionLabel } from "./ui";
 import { COLORS, SPACING, TYPE } from "../theme/tokens";
+import { errorMessage } from "../services/errors";
 
 const money = (v: string | null) => (v == null ? "—" : `$${Number(v).toFixed(2)}`);
 
@@ -48,7 +49,7 @@ export function EbayPayouts({ connected }: { connected: boolean }) {
       await api.syncEbayFinances();
       await load();
     } catch (err: any) {
-      Alert.alert("eBay fees unavailable", err?.detail?.message || err?.message || "Try again later.");
+      Alert.alert("eBay fees unavailable", errorMessage(err, "Try again later."));
     } finally {
       setSyncing(false);
     }
