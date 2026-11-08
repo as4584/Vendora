@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { Alert, Modal, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Animated, Modal, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import * as api from "../services/api";
 import { downloadAndShareRemote } from "../utils/fileActions";
 import { Button } from "./Button";
+import { useReducedMotion } from "./useReducedMotion";
 import { Icon } from "./ui";
 import { COLORS, RADII, SPACING, TYPE } from "../theme/tokens";
 import { buildReceiptText, formatCents, paymentLabel, type ReceiptData } from "../utils/checkout";
@@ -21,6 +22,7 @@ export function ReceiptSheet({
   onDone: () => void;
 }) {
   const [pdfBusy, setPdfBusy] = useState(false);
+  const reducedMotion = useReducedMotion();
   const share = async () => {
     if (!receipt) return;
     try {
@@ -49,12 +51,13 @@ export function ReceiptSheet({
   };
 
   return (
-    <Modal visible={!!receipt} animationType="slide" transparent onRequestClose={onDone}>
+    <Modal visible={!!receipt} animationType={reducedMotion ? "none" : "slide"} transparent onRequestClose={onDone}>
       <View style={styles.backdrop}>
         <View style={styles.sheet} accessibilityViewIsModal>
           {receipt ? (
             <ScrollView contentContainerStyle={styles.content}>
               <View style={styles.hero}>
+                {!receipt.pending ? <SoldStamp key={receipt.orderId || receipt.date.toISOString()} reducedMotion={reducedMotion} /> : null}
                 <View style={[styles.badge, receipt.pending && styles.badgePending]}>
                   <Icon
                     name={receipt.pending ? "cloud-offline-outline" : "checkmark"}
@@ -121,6 +124,22 @@ export function ReceiptSheet({
   );
 }
 
+function SoldStamp({ reducedMotion }: { reducedMotion: boolean }) {
+  const [scale] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    if (reducedMotion) return;
+    scale.setValue(1.12);
+    const animation = Animated.timing(scale, { toValue: 1, duration: 180, useNativeDriver: true });
+    animation.start();
+    return () => { animation.stop(); scale.setValue(1); };
+  }, [reducedMotion, scale]);
+  return (
+    <Animated.View style={[styles.stamp, { transform: [{ scale }, { rotate: "-6deg" }] }]}>
+      <Text style={styles.stampText}>SOLD</Text>
+    </Animated.View>
+  );
+}
+
 function TotalRow({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
     <View style={styles.row}>
@@ -145,6 +164,8 @@ const styles = StyleSheet.create({
   },
   content: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: SPACING.xl },
   hero: { alignItems: "center", gap: SPACING.xs },
+  stamp: { borderWidth: 2, borderColor: COLORS.success, borderRadius: 4, paddingHorizontal: 16, paddingVertical: 4, marginBottom: SPACING.sm },
+  stampText: { ...TYPE.headline, color: COLORS.success, letterSpacing: 3 },
   badge: {
     width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.bgElevated, borderWidth: 1, borderColor: COLORS.success,
