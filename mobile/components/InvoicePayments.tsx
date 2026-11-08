@@ -31,11 +31,12 @@ export function methodLabel(method: string): string {
 export function invoiceStatusLabel(invoice: api.InvoiceData): string {
   if (invoice._pending) return "PENDING SYNC";
   if (invoice.status === "partially_paid") return "PART PAID";
+  if (invoice.status === "cancelled") return "VOID";
   return invoice.status.toUpperCase();
 }
 
 export function invoiceStatusTone(invoice: api.InvoiceData): "success" | "info" | "warning" | "neutral" {
-  if (invoice._pending) return "neutral";
+  if (invoice._pending || invoice.status === "cancelled") return "neutral";
   if (invoice.status === "paid") return "success";
   if (invoice.status === "sent" || invoice.status === "partially_paid") return "info";
   return "warning";

@@ -21,10 +21,19 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from fastapi import HTTPException, status
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 MAX_CSV_IMPORT_BYTES = 8 * 1024 * 1024
 MAX_XLSX_IMPORT_BYTES = 50 * 1024 * 1024
 MAX_EMBEDDED_IMAGE_BYTES = 12 * 1024 * 1024
+# Zip-bomb guard for XLSX (a zip archive): total inflated size, member count,
+# and per-member compression ratio (legit XML compresses ~10-20x).
+MAX_XLSX_UNCOMPRESSED_BYTES = 300 * 1024 * 1024
+MAX_XLSX_MEMBERS = 5000
+MAX_XLSX_COMPRESSION_RATIO = 1000
 MAX_EMBEDDED_IMAGE_DIMENSION = 640
 JPEG_THUMBNAIL_QUALITY = 76
 
@@ -695,6 +704,32 @@ def _warehouse_matrix_rows_to_dicts(
     return rows
 
 
+def assert_safe_xlsx_archive(content: bytes) -> None:
+    """Refuse zip bombs before openpyxl or our own reader inflates anything.
+
+    The declared uncompressed sizes in the central directory are checked; a
+    member that lies about its size is still capped because zipfile verifies
+    the size/CRC while reading.
+    """
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile:
+        return  # not a zip at all: nothing to inflate; the parser reports it
+
+    infos = archive.infolist()
+    total = sum(info.file_size for info in infos)
+    if len(infos) > MAX_XLSX_MEMBERS or total > MAX_XLSX_UNCOMPRESSED_BYTES or any(
+        info.file_size > 0 and info.compress_size > 0
+        and info.file_size / info.compress_size > MAX_XLSX_COMPRESSION_RATIO
+        and info.file_size > 1024 * 1024
+        for info in infos
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Spreadsheet expands to more data than Resqlo can import.",
+        )
+
+
 def _image_data_url(image_bytes: bytes, path: str) -> str | None:
     if len(image_bytes) > MAX_EMBEDDED_IMAGE_BYTES:
         return None
@@ -718,7 +753,7 @@ def _image_data_url(image_bytes: bytes, path: str) -> str | None:
                 encoded = base64.b64encode(output.getvalue()).decode("ascii")
                 return f"data:image/jpeg;base64,{encoded}"
         except Exception:
-            pass
+            logger.warning("Import: thumbnail conversion failed, using original image", exc_info=True)
 
     extension = path.rsplit(".", 1)[-1].lower()
     mime = {
@@ -903,6 +938,7 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="XLSX import support is not installed on the server.",
             ) from exc
+        assert_safe_xlsx_archive(content)
 
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         last_error: HTTPException | None = None

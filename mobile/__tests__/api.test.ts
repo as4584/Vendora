@@ -122,7 +122,7 @@ describe('api.ts — request()', () => {
     );
 
     try {
-      await api.exportInventoryCSV();
+      await api.exportInventoryWarehouseCSV();
       fail('Should have thrown');
     } catch (err: any) {
       expect(err).toBeInstanceOf(api.ApiError);

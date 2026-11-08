@@ -10,7 +10,7 @@ import uuid
 import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,9 @@ from app.models.inventory import InventoryExternalLink
 from app.models.provider import ProviderSyncRun, ReconciliationIssue
 from app.models.square import SquareCredential
 from app.models.user import User
+from app.services.oauth_return import finish_response, return_target_for
 from app.schemas.integration import (
+    EbayPolicySetupRequest,
     LightspeedAuthURLResponse,
     LightspeedSyncResponse,
     LightspeedPushResponse,
@@ -56,6 +58,7 @@ from app.services.clover import clover_service
 from app.services.ebay import ebay_service
 from app.services import ebay_signature
 from app.services import ebay_listing
+from app.services import ebay_policies
 from app.services import ebay_insights
 from app.services import outbox as outbox_service
 from app.models.inventory import InventoryItem
@@ -97,9 +100,12 @@ def lightspeed_status(
 
 
 @router.get("/lightspeed/connect", response_model=LightspeedAuthURLResponse)
-async def lightspeed_connect(current_user: User = Depends(get_current_user)):
+async def lightspeed_connect(
+    platform: Optional[str] = Query(None, description="'web' when started from the web app"),
+    current_user: User = Depends(get_current_user),
+):
     """Return the OAuth URL so the reseller can authorize Resqlo."""
-    state = lightspeed_service.build_state(current_user.id)
+    state = lightspeed_service.build_state(current_user.id, ret=return_target_for(platform))
     return LightspeedAuthURLResponse(authorization_url=lightspeed_service.authorization_url(state))
 
 
@@ -122,7 +128,7 @@ async def lightspeed_callback(code: str, state: str, db: Session = Depends(get_d
         expires_at=token_payload["expires_at"],
         scopes=token_payload.get("scope"),
     )
-    return RedirectResponse(settings.INTEGRATION_SUCCESS_URL, status_code=status.HTTP_303_SEE_OTHER)
+    return finish_response("lightspeed", "connected", state, app_url=settings.INTEGRATION_SUCCESS_URL)
 
 
 @router.post("/lightspeed/sync", response_model=LightspeedSyncResponse)
@@ -213,9 +219,12 @@ def ebay_status(
 
 
 @router.get("/ebay/connect", response_model=EbayAuthURLResponse)
-async def ebay_connect(current_user: User = Depends(get_current_user)):
+async def ebay_connect(
+    platform: Optional[str] = Query(None, description="'web' when started from the web app"),
+    current_user: User = Depends(get_current_user),
+):
     """Return the eBay OAuth consent URL so the reseller can authorize Resqlo."""
-    state = ebay_service.build_state(current_user.id)
+    state = ebay_service.build_state(current_user.id, ret=return_target_for(platform))
     return EbayAuthURLResponse(authorization_url=ebay_service.authorization_url(state))
 
 
@@ -235,10 +244,7 @@ async def ebay_callback(code: str, state: str, db: Session = Depends(get_db)):
         # eBay's code exchange omits the granted scope; record what we requested.
         scopes=token_payload.get("scope") or " ".join(ebay_service.requested_scopes),
     )
-    return RedirectResponse(
-        "vendora://settings?integration=ebay&status=connected",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+    return finish_response("ebay", "connected", state)
 
 
 @router.post("/ebay/sync", response_model=EbaySyncResponse)
@@ -297,6 +303,31 @@ async def ebay_create_listing(
     return _listing_response(body.item_id, payload)
 
 
+@router.get("/ebay/policies")
+async def ebay_get_policies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The seller's EBAY_US business policies and which kinds are missing."""
+    return await ebay_policies.policy_overview(db, current_user.id)
+
+
+@router.post("/ebay/policies/setup")
+async def ebay_setup_policies(
+    body: EbayPolicySetupRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Opt in to business policies and create any missing Resqlo default policies."""
+    return await ebay_policies.setup_policies(
+        db,
+        current_user.id,
+        free_shipping=body.free_shipping,
+        flat_shipping_cost=body.flat_shipping_cost,
+        returns_accepted=body.returns_accepted,
+    )
+
+
 @router.get("/ebay/listings/{item_id}", response_model=EbayListingResponse)
 def ebay_get_listing(
     item_id: uuid.UUID,
@@ -304,7 +335,18 @@ def ebay_get_listing(
     current_user: User = Depends(get_current_user),
 ):
     """Listing status for an item (listed=false when it has no eBay listing)."""
-    link = ebay_listing.get_ebay_link(db, current_user.id, item_id)
+    owned = (
+        db.query(InventoryItem.id)
+        .filter(
+            InventoryItem.id == item_id,
+            InventoryItem.user_id == current_user.id,
+            InventoryItem.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if owned is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found.")
+    link =ebay_listing.get_ebay_link(db, current_user.id, item_id)
     return _listing_response(item_id, ebay_listing.link_payload(link))
 
 
@@ -340,6 +382,9 @@ async def ebay_comps(
     current_user: User = Depends(get_current_user),
 ):
     """eBay price comps (active asks unless sold data is enabled; see ``kind``)."""
+    from app.services.feature_flags import require_market_pricing
+
+    require_market_pricing(current_user)
     return await ebay_listing.fetch_comps(q, condition=condition)
 
 
@@ -367,7 +412,14 @@ def ebay_listing_image(
         data, media = ebay_listing.decode_data_url(value)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    return Response(content=data, media_type=media, headers={"Cache-Control": "public, max-age=3600"})
+    return Response(
+        content=data,
+        media_type=media,
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
 
 
 # ─── eBay insights: fees + payouts, traffic, offers, notifications ───────────
@@ -573,7 +625,7 @@ def _outbox_response(job: ProviderOutbox, names: dict) -> OutboxJobResponse:
 @router.get("/outbox", response_model=list[OutboxJobResponse])
 def list_outbox(
     only_errors: bool = Query(True, description="Only jobs that are not done and have an error"),
-    provider: Optional[str] = Query(None, pattern="^(stockx|ebay)$"),
+    provider: Optional[str] = Query(None, pattern="^(stockx|ebay|google_sheets)$"),
     limit: int = Query(100, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -641,11 +693,16 @@ async def ebay_deletion_notify(request: Request, db: Session = Depends(get_db)):
         await ebay_signature.verify_request(
             ebay_service, body, request.headers.get("x-ebay-signature")
         )
+    except (ebay_signature.KeyUnavailableError, httpx.HTTPError) as exc:
+        # We could not obtain eBay's key (other environment, keyset not yet
+        # enabled, or eBay unreachable). Acknowledge so the endpoint stays
+        # healthy for eBay, but take NO action: an unverified notice can never
+        # purge anything.
+        logger.warning("eBay deletion notice acknowledged without action (unverifiable): %s", exc)
+        return {"ok": True, "verified": False}
     except ebay_signature.SignatureError as exc:
         logger.warning("Rejected eBay deletion notice: %s", exc)
         raise HTTPException(status_code=status.HTTP_412_PRECONDITION_FAILED, detail="Invalid signature.")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify signature.")
 
     try:
         payload = json.loads(body)
@@ -761,6 +818,34 @@ async def square_sync(
 
 
 # ─── Clover ───────────────────────────────────────────────────────────────────
+
+def _disconnect_credential(db: Session, user_id, provider: str, credential) -> LightspeedDisconnectResponse:
+    """Forget the stored token; keep item links so a reconnect re-matches safely."""
+    if credential:
+        db.delete(credential)
+        db.commit()
+    links = db.query(InventoryExternalLink).filter(
+        InventoryExternalLink.user_id == user_id,
+        InventoryExternalLink.provider == provider,
+    ).count()
+    return LightspeedDisconnectResponse(disconnected=True, links_retained=links)
+
+
+@router.delete("/square", response_model=LightspeedDisconnectResponse)
+def square_disconnect(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _disconnect_credential(db, current_user.id, "square", square_service._get_credential(db, current_user.id))
+
+
+@router.delete("/clover", response_model=LightspeedDisconnectResponse)
+def clover_disconnect(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _disconnect_credential(db, current_user.id, "clover", clover_service._get_credential(db, current_user.id))
+
 
 @router.get("/clover/status", response_model=CloverStatusResponse)
 def clover_status(
@@ -954,7 +1039,7 @@ async def square_webhook(request: Request, db: Session = Depends(get_db)):
 
     # ── HMAC-SHA256 signature verification ────────────────────────────────
     signature_key = settings.SQUARE_WEBHOOK_SIGNATURE_KEY
-    if settings.ENVIRONMENT == "production" and not signature_key:
+    if settings.ENVIRONMENT not in ("development", "testing") and not signature_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Square webhook verification is not configured.",
@@ -1068,6 +1153,19 @@ async def retry_sync_run(
     if not original:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync run not found.")
 
+    if original.provider == "google_sheets":
+        from app.services.google_sheets import google_sheets_service
+
+        run = await google_sheets_service.pull(db, current_user.id, trigger="retry")
+        return SyncRetryResponse(
+            message="Google Sheets sync retried.",
+            new_run_id=run.id,
+            status=run.status,
+            items_imported=run.items_imported,
+            items_updated=run.items_updated,
+            errors_count=run.errors_count,
+        )
+
     provider_map = {
         "lightspeed": lightspeed_service,
         "square": square_service,
@@ -1103,7 +1201,7 @@ def provider_health(
     Includes last run timestamp, last run status, count of failed runs in the
     past 24 hours, and count of currently open reconciliation issues.
     """
-    providers = ["lightspeed", "square", "clover", "ebay"]
+    providers = ["lightspeed", "square", "clover", "ebay", "google_sheets"]
     entries = []
 
     for prov in providers:

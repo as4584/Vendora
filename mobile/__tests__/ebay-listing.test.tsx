@@ -13,6 +13,7 @@ import {
 } from '../components/EbayListingCard';
 import { EbayCompsCard, compsHeadline } from '../components/EbayCompsCard';
 
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), replace: jest.fn() }) }));
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: { getItem: jest.fn(async () => null), setItem: jest.fn(), removeItem: jest.fn() },

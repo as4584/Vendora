@@ -474,7 +474,7 @@ class TestProviderHealth:
         assert resp.status_code == 200
         data = resp.json()
         providers = {entry["provider"] for entry in data["providers"]}
-        assert providers == {"lightspeed", "square", "clover", "ebay"}
+        assert providers == {"lightspeed", "square", "clover", "ebay", "google_sheets"}
 
     def test_health_with_no_runs_shows_none(self, client, auth_headers):
         resp = client.get("/api/v1/integrations/health", headers=auth_headers)

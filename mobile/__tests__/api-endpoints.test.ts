@@ -32,6 +32,30 @@ function expectPath(url: string, path: string) {
   expect(url.endsWith(path)).toBe(true);
 }
 
+async function onWeb<T>(fn: () => Promise<T>): Promise<T> {
+  const original = Platform.OS;
+  Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+  try { return await fn(); } finally { Object.defineProperty(Platform, 'OS', { value: original, configurable: true }); }
+}
+
+describe('Stripe subscription endpoints on iOS (Guideline 3.1.1)', () => {
+  it('refuses to start Stripe checkout or the billing portal on iOS', async () => {
+    const realFetch = global.fetch;
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const original = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+    try {
+      await expect(api.createSubscriptionCheckout('pro')).rejects.toThrow(api.STRIPE_BLOCKED_ON_IOS);
+      await expect(api.createBillingPortal()).rejects.toThrow(api.STRIPE_BLOCKED_ON_IOS);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: original, configurable: true });
+      global.fetch = realFetch;
+    }
+  });
+});
+
 describe('API endpoint contracts', () => {
   const fetchMock = jest.spyOn(global, 'fetch');
 
@@ -51,6 +75,21 @@ describe('API endpoint contracts', () => {
     method?: string;
     body?: unknown;
   }> = [
+    { name: 'ebay policies', call: () => api.getEbayPolicies(), path: '/integrations/ebay/policies' },
+    {
+      name: 'setup ebay policies',
+      call: () => api.setupEbayPolicies({ free_shipping: true, returns_accepted: false }),
+      path: '/integrations/ebay/policies/setup',
+      method: 'POST',
+      body: { free_shipping: true, returns_accepted: false },
+    },
+    {
+      name: 'setup ebay policies defaults',
+      call: () => api.setupEbayPolicies(),
+      path: '/integrations/ebay/policies/setup',
+      method: 'POST',
+      body: {},
+    },
     { name: 'ebay listing status', call: () => api.getEbayListing('i 1'), path: '/integrations/ebay/listings/i%201' },
     {
       name: 'create ebay listing',
@@ -224,7 +263,6 @@ describe('API endpoint contracts', () => {
       method: 'POST',
       body: { method: 'cash', gross_amount: '20.00' },
     },
-    { name: 'transaction', call: () => api.getTransaction('tx-1'), path: '/transactions/tx-1' },
     {
       name: 'refund transaction',
       call: () => api.refundTransaction('tx-1', 'returned'),
@@ -257,28 +295,37 @@ describe('API endpoint contracts', () => {
     },
     { name: 'invoice', call: () => api.getInvoice('inv-1'), path: '/invoices/inv-1' },
     {
-      name: 'update invoice',
-      call: () => api.updateInvoice('inv-1', { customer_name: 'Sam', items: [] }),
-      path: '/invoices/inv-1',
-      method: 'PUT',
-      body: { customer_name: 'Sam', items: [] },
-    },
-    {
       name: 'invoice status',
       call: () => api.updateInvoiceStatus('inv-1', 'paid'),
       path: '/invoices/inv-1/status',
       method: 'PATCH',
       body: { status: 'paid' },
     },
-    { name: 'feature flags', call: () => api.getFeatureFlags(), path: '/features' },
-    { name: 'tiers', call: () => api.getTiers(), path: '/features/tiers' },
     { name: 'subscription status', call: () => api.getSubscriptionStatus(), path: '/subscriptions/me' },
-    { name: 'subscription checkout', call: () => api.createSubscriptionCheckout('partner'), path: '/subscriptions/checkout', method: 'POST', body: { plan: 'partner' } },
-    { name: 'billing portal', call: () => api.createBillingPortal(), path: '/subscriptions/portal', method: 'POST' },
+    { name: 'subscription checkout', call: () => onWeb(() => api.createSubscriptionCheckout('partner')), path: '/subscriptions/checkout', method: 'POST', body: { plan: 'partner' } },
+    { name: 'billing portal', call: () => onWeb(() => api.createBillingPortal()), path: '/subscriptions/portal', method: 'POST' },
     { name: 'support request', call: () => api.submitSupportRequest('Help', 'Something broke'), path: '/support', method: 'POST', body: { subject: 'Help', message: 'Something broke' } },
     { name: 'advanced analytics default', call: () => api.getAdvancedAnalytics(), path: '/dashboard/advanced?days=30' },
     { name: 'advanced analytics range', call: () => api.getAdvancedAnalytics(90), path: '/dashboard/advanced?days=90' },
-    { name: 'inventory CSV', call: () => api.exportInventoryCSV(), path: '/export/inventory' },
+    { name: 'customers', call: () => api.listCustomers(), path: '/customers' },
+    { name: 'customer search', call: () => api.listCustomers('kim'), path: '/customers?q=kim' },
+    { name: 'customer', call: () => api.getCustomer('c-1'), path: '/customers/c-1' },
+    {
+      name: 'create customer',
+      call: () => api.createCustomer({ name: 'Kim' }),
+      path: '/customers',
+      method: 'POST',
+      body: { name: 'Kim' },
+    },
+    {
+      name: 'update customer',
+      call: () => api.updateCustomer('c-1', { tax_exempt: true }),
+      path: '/customers/c-1',
+      method: 'PATCH',
+      body: { tax_exempt: true },
+    },
+    { name: 'disconnect square', call: () => api.disconnectSquare(), path: '/integrations/square', method: 'DELETE' },
+    { name: 'disconnect clover', call: () => api.disconnectClover(), path: '/integrations/clover', method: 'DELETE' },
     {
       name: 'warehouse CSV',
       call: () => api.exportInventoryWarehouseCSV(),

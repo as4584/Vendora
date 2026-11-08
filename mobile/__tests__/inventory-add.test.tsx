@@ -6,12 +6,13 @@ import * as ImagePicker from 'expo-image-picker';
 import * as api from '../services/api';
 
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 const mockRequestCameraPermission = jest.fn();
 let mockCameraPermission: { granted: boolean } | null = { granted: true };
 const mockTakePicture = jest.fn(async () => ({ uri: 'file:///label.jpg' }));
 
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ replace: mockReplace }),
+  useRouter: () => ({ replace: mockReplace, push: mockPush }),
 }));
 
 jest.mock('expo-image-picker', () => ({
@@ -383,7 +384,10 @@ describe('add inventory screen', () => {
     const screen = render(<AddItemScreen />);
     enterRequired(screen);
     fireEvent.press(screen.getByText('Add to Inventory'));
-    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Tier Limit', 'Upgrade now'));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("You've hit the free limit", 'Upgrade now', expect.any(Array)));
+    const buttons = alertSpy.mock.calls.at(-1)[2];
+    buttons.find((b: any) => b.text === 'See Pro').onPress();
+    expect(mockPush).toHaveBeenCalledWith('/(tabs)/settings/subscription');
 
     mockedApi.createItem.mockRejectedValueOnce(new Error('Network offline'));
     fireEvent.press(screen.getByText('Add to Inventory'));

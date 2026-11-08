@@ -7,7 +7,6 @@ import pytest
 from app.models.user import User
 from app.models.auth_session import AuthSession
 from app.services.auth import (
-    create_access_token,
     hash_password,
     hash_password_reset_token,
 )
@@ -355,7 +354,8 @@ class TestMe:
         db.commit()
         db.refresh(user)
 
-        token = create_access_token(data={"sub": str(user.id)})
+        from tests.conftest import session_token
+        token = session_token(db, user)
         resp = client.get("/api/v1/auth/me", headers={
             "Authorization": f"Bearer {token}"
         })

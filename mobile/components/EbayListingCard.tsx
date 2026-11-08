@@ -12,6 +12,7 @@ import * as api from "../services/api";
 import { Button } from "./Button";
 import { Card, Pill, SectionLabel } from "./ui";
 import { EbayInsights } from "./EbayInsights";
+import { EbayPolicySetup, isMissingPoliciesError } from "./EbayPolicySetup";
 import { COLORS, RADII, SPACING, TYPE } from "../theme/tokens";
 
 export const EBAY_CONDITIONS: { value: string; label: string }[] = [
@@ -78,6 +79,7 @@ export function EbayListingCard({ item, available, onChanged }: Props) {
   const [condition, setCondition] = useState("NEW");
   const [quantity, setQuantity] = useState("1");
   const [formError, setFormError] = useState<string | null>(null);
+  const [needsPolicies, setNeedsPolicies] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -102,6 +104,7 @@ export function EbayListingCard({ item, available, onChanged }: Props) {
     setCondition(defaultEbayCondition(item.condition));
     setQuantity(String(Math.max(1, Math.min(available, 1))));
     setFormError(null);
+    setNeedsPolicies(false);
     setSheet("list");
   };
 
@@ -119,13 +122,19 @@ export function EbayListingCard({ item, available, onChanged }: Props) {
     if (!Number.isInteger(q) || q < 1 || q > available) return setFormError(`Quantity must be 1 to ${available}.`);
     setBusy(true);
     setFormError(null);
+    setNeedsPolicies(false);
     try {
       const result = await api.createEbayListing({ item_id: item.id, price: p, quantity: q, title: title.trim(), condition });
       setListing(result);
       setSheet(null);
       onChanged?.();
     } catch (err: any) {
-      setFormError(errorMessage(err, "Could not list on eBay."));
+      if (isMissingPoliciesError(err)) {
+        setNeedsPolicies(true);
+        setFormError("Your eBay account needs selling policies before you can list.");
+      } else {
+        setFormError(errorMessage(err, "Could not list on eBay."));
+      }
     } finally {
       setBusy(false);
     }
@@ -280,6 +289,15 @@ export function EbayListingCard({ item, available, onChanged }: Props) {
               ) : null}
 
               {formError ? <Text testID="ebay-form-error" style={styles.error}>{formError}</Text> : null}
+
+              {sheet === "list" && needsPolicies ? (
+                <EbayPolicySetup
+                  onDone={() => {
+                    setNeedsPolicies(false);
+                    void submitList();
+                  }}
+                />
+              ) : null}
 
               <View style={styles.stack}>
                 <Button

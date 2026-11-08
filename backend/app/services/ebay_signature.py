@@ -26,6 +26,15 @@ class SignatureError(Exception):
     pass
 
 
+class KeyUnavailableError(SignatureError):
+    """eBay's public key could not be obtained, so the signature can't be checked.
+
+    Happens when a notice comes from the other eBay environment (e.g. a
+    Production test notice while this server holds Sandbox keys), or when the
+    keyset is not yet enabled. Distinct from a signature that is checked and wrong.
+    """
+
+
 def parse_header(header: str) -> dict:
     try:
         parsed = json.loads(base64.b64decode(header, validate=True))
@@ -76,14 +85,14 @@ async def fetch_public_key(service, kid: str) -> dict:
             data={"grant_type": "client_credentials", "scope": "https://api.ebay.com/oauth/api_scope"},
         )
         if token_resp.status_code >= 400:
-            raise SignatureError("Could not obtain eBay application token")
+            raise KeyUnavailableError("Could not obtain eBay application token")
         app_token = token_resp.json().get("access_token")
         key_resp = await client.get(
             f"{service.api_base}/commerce/notification/v1/public_key/{kid}",
             headers={"Authorization": f"Bearer {app_token}"},
         )
     if key_resp.status_code >= 400:
-        raise SignatureError("Could not fetch eBay public key")
+        raise KeyUnavailableError("Could not fetch eBay public key")
     data = key_resp.json()
     result = {"key": data.get("key", ""), "digest": data.get("digest") or "SHA1"}
     _key_cache[kid] = (time.monotonic(), json.dumps(result))

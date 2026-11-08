@@ -94,6 +94,8 @@ jest.mock('../services/api', () => ({
   disconnectEbay: jest.fn(),
   connectSquare: jest.fn(),
   connectClover: jest.fn(),
+  disconnectSquare: jest.fn(),
+  disconnectClover: jest.fn(),
   updateProfile: jest.fn(),
   deleteAccount: jest.fn(),
 }));
@@ -287,6 +289,8 @@ describe('SettingsScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Delete Account')).toBeTruthy());
     fireEvent.press(screen.getByText('Delete Account'));
+    // iOS (jest-expo default platform): remind Apple subscribers to cancel with Apple.
+    expect(screen.getByTestId('delete-apple-subscription-note')).toBeTruthy();
     fireEvent.changeText(screen.getByLabelText('Account password'), 'TestPass123');
     fireEvent.changeText(screen.getByLabelText('Delete confirmation'), 'DELETE');
     fireEvent.press(screen.getByText('Delete Permanently'));
@@ -294,6 +298,16 @@ describe('SettingsScreen', () => {
     await waitFor(() => {
       expect(apiMock.deleteAccount).toHaveBeenCalledWith('TestPass123');
     });
+  });
+
+  it('omits the Apple subscription note off iOS', async () => {
+    setupAllDisconnected();
+    jest.spyOn(require('../services/purchases'), 'isAppleStorefront').mockReturnValue(false);
+    const screen = render(<SettingsScreen />);
+    await waitFor(() => expect(screen.getByText('Delete Account')).toBeTruthy());
+    fireEvent.press(screen.getByText('Delete Account'));
+    expect(screen.queryByTestId('delete-apple-subscription-note')).toBeNull();
+    jest.restoreAllMocks();
   });
 
   it('handles profile-photo permission, success, and upload failures', async () => {
@@ -607,5 +621,24 @@ describe('SettingsScreen', () => {
     (apiMock.updateProfile as jest.Mock).mockRejectedValueOnce(new Error('save down'));
     fireEvent.press(screen.getByText('Save Branding'));
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Save failed', 'save down'));
+  });
+
+  it('disconnects Square and Clover after confirming and reports failures', async () => {
+    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_LS);
+    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_SQ, connected: true });
+    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_CV, connected: true });
+    (apiMock.getEbayStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_EB);
+    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue(EMPTY_HEALTH);
+    (apiMock.disconnectSquare as jest.Mock).mockResolvedValue({ disconnected: true, links_retained: 1 });
+    (apiMock.disconnectClover as jest.Mock).mockRejectedValue(new Error('clover gone'));
+    const screen = render(<SettingsScreen />);
+    await waitFor(() => expect(screen.getAllByText('Disconnect')).toHaveLength(2));
+    (Alert.alert as jest.Mock).mockImplementation((_t, _m, buttons) => buttons?.[1]?.onPress?.());
+    fireEvent.press(screen.getAllByText('Disconnect')[0]);
+    await waitFor(() => expect(apiMock.disconnectSquare).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getAllByText('Disconnect').length).toBeGreaterThan(0));
+    const buttons = screen.getAllByText('Disconnect');
+    fireEvent.press(buttons[buttons.length - 1]);
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Disconnect failed', 'clover gone'));
   });
 });

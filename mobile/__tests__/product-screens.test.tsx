@@ -36,7 +36,11 @@ beforeEach(() => {
 
 afterEach(() => jest.restoreAllMocks());
 
-describe('subscription product', () => {
+describe('subscription product (web: Stripe)', () => {
+  beforeEach(() => {
+    jest.spyOn(require('../services/purchases'), 'isAppleStorefront').mockReturnValue(false);
+  });
+
   it('shows loading then opens Pro and Partner checkout', async () => {
     let resolveStatus!: (value: any) => void;
     (api.getSubscriptionStatus as jest.Mock).mockReturnValueOnce(new Promise((resolve) => { resolveStatus = resolve; }));
@@ -44,6 +48,8 @@ describe('subscription product', () => {
     expect(screen.getByTestId('subscription-loading')).toBeTruthy();
     resolveStatus(subscription);
     await screen.findByTestId('subscription-content');
+    expect(screen.getByTestId('pro-compare')).toBeTruthy();
+    expect(screen.getByText('Unlimited')).toBeTruthy();
     (api.createSubscriptionCheckout as jest.Mock).mockResolvedValue({ checkout_url: 'https://checkout', session_id: 'cs' });
     fireEvent.press(screen.getByText('Upgrade to Pro'));
     await waitFor(() => expect(api.createSubscriptionCheckout).toHaveBeenCalledWith('pro'));
@@ -57,6 +63,7 @@ describe('subscription product', () => {
     (api.createBillingPortal as jest.Mock).mockResolvedValue({ portal_url: 'https://portal' });
     const screen = render(<SubscriptionScreen />);
     await screen.findByText('PARTNER');
+    expect(screen.queryByTestId('pro-compare')).toBeNull();
     expect(screen.getAllByText('Active')).toHaveLength(2);
     fireEvent.press(screen.getByText('Manage Billing'));
     await waitFor(() => expect(WebBrowser.openBrowserAsync).toHaveBeenCalledWith('https://portal'));
@@ -136,7 +143,9 @@ describe('subscription product on iOS (Apple in-app purchase)', () => {
 
   beforeEach(() => {
     iap = require('../services/purchases');
+    jest.spyOn(iap, 'isAppleStorefront').mockReturnValue(true);
     jest.spyOn(iap, 'iapEnabled').mockReturnValue(true);
+    jest.spyOn(iap, 'manageSubscriptions').mockResolvedValue(undefined);
     jest.spyOn(iap, 'loadPlans').mockResolvedValue([plan]);
     jest.spyOn(iap, 'buy').mockResolvedValue(true);
     jest.spyOn(iap, 'restore').mockResolvedValue(false);
@@ -158,6 +167,50 @@ describe('subscription product on iOS (Apple in-app purchase)', () => {
     await waitFor(() => expect(iap.buy).toHaveBeenCalledWith(plan));
     await screen.findByText('Active');
     expect(api.createSubscriptionCheckout).not.toHaveBeenCalled();
+  });
+
+  // Guideline 3.1.1 / 3.1.3: iOS must never render Stripe checkout, the Stripe
+  // billing portal, web prices, or "buy on our website" style CTAs.
+  const expectNoStripeSurface = (screen: ReturnType<typeof render>) => {
+    for (const forbidden of [/stripe/i, /\$20/, /\+\$5/, /website/i, /upgrade to pro/i, /add partner/i, /manage billing/i, /checkout/i]) {
+      expect(screen.queryAllByText(forbidden)).toHaveLength(0);
+    }
+    expect(api.createSubscriptionCheckout).not.toHaveBeenCalled();
+    expect(api.createBillingPortal).not.toHaveBeenCalled();
+    expect(WebBrowser.openBrowserAsync).not.toHaveBeenCalled();
+  };
+
+  it('never falls back to Stripe when the RevenueCat key is missing from the build', async () => {
+    iap.iapEnabled.mockReturnValue(false);
+    const screen = render(<SubscriptionScreen />);
+    await screen.findByText('Plans are unavailable right now. Please try again later.');
+    expect(iap.loadPlans).not.toHaveBeenCalled();
+    expectNoStripeSurface(screen);
+    fireEvent.press(screen.getByText('Restore Purchases'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Restore unavailable', expect.any(String)));
+    expect(iap.restore).not.toHaveBeenCalled();
+  });
+
+  it('shows Apple plans with no Stripe surface for free users', async () => {
+    const screen = render(<SubscriptionScreen />);
+    await screen.findByText('Subscribe $19.99/month');
+    expectNoStripeSurface(screen);
+  });
+
+  it('hides the Stripe billing portal for a web-billed subscriber on iOS', async () => {
+    (api.getSubscriptionStatus as jest.Mock).mockResolvedValue({ tier: 'pro', is_partner: false, status: 'active', current_period_end: null, managed_billing: true, provider: 'stripe' });
+    const screen = render(<SubscriptionScreen />);
+    await screen.findByTestId('billing-managed-elsewhere');
+    expect(screen.queryByText('Manage Subscription')).toBeNull();
+    expectNoStripeSurface(screen);
+  });
+
+  it('manages Apple subscriptions through the App Store sheet', async () => {
+    (api.getSubscriptionStatus as jest.Mock).mockResolvedValue({ tier: 'pro', is_partner: false, status: 'active', current_period_end: null, managed_billing: true, provider: 'apple' });
+    const screen = render(<SubscriptionScreen />);
+    fireEvent.press(await screen.findByText('Manage Subscription'));
+    await waitFor(() => expect(iap.manageSubscriptions).toHaveBeenCalled());
+    expectNoStripeSurface(screen);
   });
 
   it('tells the user when there is nothing to restore', async () => {

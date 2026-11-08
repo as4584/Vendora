@@ -16,6 +16,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('../services/api', () => ({
   getEbayTraffic: jest.fn(),
   sendEbayOffer: jest.fn(),
+  getEbayOfferEligibility: jest.fn(async () => ({ listing_id: 'L1', eligible: true, message: null })),
   listEbayPayouts: jest.fn(),
   listEbayFees: jest.fn(),
   syncEbayFinances: jest.fn(),
@@ -148,5 +149,31 @@ describe('EbayPayouts', () => {
     expect(feeParts(FEE)).toBe('Final value $32.90 · Ads $5.00 · Label $9.10 · Other $0.85');
     expect(feeParts({ ...FEE, final_value_fee: '0', ad_fee: '0', shipping_label: '0', other_fees: '0' })).toBe('No fees');
     expect(feeParts({ ...FEE, gross: null } as any)).toMatch(/Final value/);
+  });
+
+  it('blocks sending when eBay says the listing is not eligible', async () => {
+    m.getEbayTraffic.mockResolvedValue(TRAFFIC);
+    (m.getEbayOfferEligibility as jest.Mock).mockResolvedValueOnce({ listing_id: 'L1', eligible: false, message: 'No watchers yet.' });
+    const s = render(<EbayInsights itemId="i1" listPrice="250.00" />);
+    await s.findByText('48 views · 3 watchers · 0 sales');
+    await act(async () => { fireEvent.press(s.getByTestId('ebay-offer-button')); });
+    expect(s.getByTestId('ebay-offer-ineligible')).toBeTruthy();
+    expect(s.getByText('No watchers yet.')).toBeTruthy();
+    await act(async () => { fireEvent.press(s.getByTestId('ebay-offer-submit')); });
+    expect(m.sendEbayOffer).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a default reason and ignores a failed eligibility check', async () => {
+    m.getEbayTraffic.mockResolvedValue(TRAFFIC);
+    (m.getEbayOfferEligibility as jest.Mock)
+      .mockResolvedValueOnce({ listing_id: 'L1', eligible: false, message: null })
+      .mockRejectedValueOnce(new Error('down'));
+    const s = render(<EbayInsights itemId="i1" listPrice="250.00" />);
+    await s.findByText('48 views · 3 watchers · 0 sales');
+    await act(async () => { fireEvent.press(s.getByTestId('ebay-offer-button')); });
+    expect(s.getByText(/can't get offers right now/)).toBeTruthy();
+    fireEvent.press(s.getByText('Cancel'));
+    await act(async () => { fireEvent.press(s.getByTestId('ebay-offer-button')); });
+    expect(s.queryByTestId('ebay-offer-ineligible')).toBeNull();
   });
 });

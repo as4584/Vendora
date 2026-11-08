@@ -57,6 +57,7 @@ class TransactionResponse(BaseModel):
     tax_amount: Decimal = Decimal("0.00")
     variant_size: Optional[str] = None
     cost_amount: Optional[Decimal] = None
+    customer_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -95,6 +96,8 @@ class SaleOrderCreate(BaseModel):
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=30, max_digits=6, decimal_places=3)
     notes: Optional[str] = Field(None, max_length=500)
     client_request_id: Optional[str] = Field(None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    # The buyer, picked at checkout (optional).
+    customer_id: Optional[UUID] = None
 
     def amounts(self):
         from app.services.checkout import compute_order_amounts
@@ -149,6 +152,7 @@ class SaleOrderResponse(BaseModel):
     fee_amount: Decimal
     net_amount: Decimal
     payments: list[OrderPaymentResponse] = []
+    customer_id: Optional[UUID] = None
     created_at: Optional[datetime] = None
     transactions: list[TransactionResponse]
 

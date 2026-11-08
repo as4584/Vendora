@@ -1,4 +1,5 @@
 """Auth dependency — extracts and validates current user from JWT."""
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, status
@@ -34,23 +35,38 @@ def get_current_user(
             detail="Invalid token payload.",
         )
 
+    # Every access token the API issues is bound to a revocable AuthSession.
+    # A token without one could not be revoked by logout or password reset,
+    # so it is refused.
     session_id = payload.get("sid")
-    if session_id is not None:
-        session = (
-            db.query(AuthSession)
-            .filter(
-                AuthSession.id == session_id,
-                AuthSession.user_id == user_id,
-                AuthSession.revoked_at.is_(None),
-                AuthSession.expires_at > datetime.now(timezone.utc),
-            )
-            .first()
+    if session_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload.",
         )
-        if session is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session has expired or been revoked.",
-            )
+    try:
+        session_id = uuid.UUID(str(session_id))
+        user_id = uuid.UUID(str(user_id))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload.",
+        )
+    session = (
+        db.query(AuthSession)
+        .filter(
+            AuthSession.id == session_id,
+            AuthSession.user_id == user_id,
+            AuthSession.revoked_at.is_(None),
+            AuthSession.expires_at > datetime.now(timezone.utc),
+        )
+        .first()
+    )
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session has expired or been revoked.",
+        )
 
     user = (
         db.query(User)
