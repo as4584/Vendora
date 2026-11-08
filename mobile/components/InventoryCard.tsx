@@ -27,6 +27,13 @@ const DOT_COLORS: Record<string, string> = {
   neutral: COLORS.textSoft,
 };
 
+// "New" alone is not evidence of an unworn, boxed sneaker.
+const CONDITION_LABELS: Record<string, string> = {
+  ds: "DS · Deadstock", deadstock: "DS · Deadstock",
+  vnds: "VNDS · Very near deadstock", "very near deadstock": "VNDS · Very near deadstock",
+  new: "New", used: "Pre-owned", refurbished: "Refurbished",
+};
+
 export interface InventoryCardProps {
   item: api.InventoryItem;
   onPress: () => void;
@@ -56,6 +63,11 @@ export default function InventoryCard({
   testID,
 }: InventoryCardProps) {
   const qty = resolveQty(item);
+  const condition = item.condition?.trim();
+  const grade = condition?.toLowerCase();
+  const conditionLabel = condition && grade
+    ? (Object.prototype.hasOwnProperty.call(CONDITION_LABELS, grade) ? CONDITION_LABELS[grade] : condition)
+    : null;
   const lowStock = qty > 0 && qty <= 3;
   const sourceLabel = item.source ? SOURCE_LABELS[item.source] || item.source : "Manual";
   const frontPhoto = resolvedPhoto(item, "front");
@@ -113,6 +125,12 @@ export default function InventoryCard({
               {item._pending ? <Pill label="Sync pending" tone="warning" /> : null}
             </View>
 
+            {conditionLabel ? (
+              <View style={styles.conditionTag} accessibilityLabel={`Condition: ${conditionLabel}`}>
+                <Text style={styles.conditionText}>{conditionLabel}</Text>
+              </View>
+            ) : null}
+
             <Text style={styles.sizeLine}>{sizeBreakdown(item)}</Text>
             <Text style={styles.secondaryLine}>
               Cost {formatCurrency(item.buy_price)} · <Text>{sourceLabel}</Text>{item.vendor_name ? ` · ${item.vendor_name}` : ""}
@@ -150,5 +168,7 @@ const styles = StyleSheet.create({
   statusSep: { color: COLORS.textSoft, fontSize: 13 },
   sizeLine: { color: COLORS.text, fontSize: 13, fontWeight: "500", fontVariant: ["tabular-nums"] },
   secondaryLine: { color: COLORS.textMuted, fontSize: 12 },
+  conditionTag: { alignSelf: "flex-start", maxWidth: "100%", borderWidth: 1, borderColor: COLORS.border, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 3, backgroundColor: COLORS.cardAlt },
+  conditionText: { color: COLORS.textMuted, fontSize: 12, lineHeight: 17, fontWeight: "600" },
   footer: { marginTop: SPACING.sm, gap: SPACING.sm },
 });
