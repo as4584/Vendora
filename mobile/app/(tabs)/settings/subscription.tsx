@@ -163,7 +163,7 @@ export default function SubscriptionScreen() {
                 <SectionLabel>{`${partner ? "Pro + Partner" : "Pro"} · ${plan.price}/${plan.period}`}</SectionLabel>
                 <Text style={styles.copy}>{partner
                   ? "Everything in Pro, plus a public storefront, verified badge, and priority support."
-                  : "Unlimited inventory, invoices, barcode tools, exports, and advanced analytics."}</Text>
+                  : "Unlimited inventory, price suggestions and eBay comps, spreadsheet exports, advanced analytics, and card payments."}</Text>
                 {plan.trial && !active ? <Text style={styles.muted}>{`${plan.trial}, then ${plan.price}/${plan.period}. Cancel before it ends and you won't be charged.`}</Text> : null}
                 {active ? <Pill label="Active" tone="success" /> : <ActionButton label={working === plan.id ? "Waiting for Apple..." : plan.trial ? `Start ${plan.trial}` : `Subscribe ${plan.price}/${plan.period}`} onPress={() => buyApple(plan)} disabled={!!working} />}
               </Card>
@@ -180,7 +180,7 @@ export default function SubscriptionScreen() {
         <>
           <Card style={styles.card}>
             <SectionLabel>Pro · $20/month</SectionLabel>
-            <Text style={styles.copy}>Unlimited inventory, invoices, barcode tools, exports, Stripe payments, and advanced analytics.</Text>
+            <Text style={styles.copy}>Unlimited inventory, price suggestions and eBay comps, spreadsheet exports, advanced analytics, and Stripe card payments.</Text>
             {status?.tier !== "pro" ? <ActionButton label={working === "pro" ? "Opening checkout..." : "Upgrade to Pro"} onPress={() => openCheckout("pro")} disabled={!!working} /> : <Pill label="Active" tone="success" />}
           </Card>
           <Card style={styles.card}>
