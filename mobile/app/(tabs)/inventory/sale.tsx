@@ -56,6 +56,7 @@ export default function QuickSaleScreen() {
   const params = useLocalSearchParams<{ add?: string }>();
   const [items, setItems] = useState<api.InventoryItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
+  const [itemsError, setItemsError] = useState(false);
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const [method, setMethod] = useState("cash");
@@ -95,6 +96,7 @@ export default function QuickSaleScreen() {
     return api
       .listItems({ perPage: 100, availableOnly: true })
       .then((result) => {
+        setItemsError(false);
         setItems(result.items);
         // Deep link from an item ("Sell this"): /inventory/sale?add=<item id>.
         const hit = addParam && !prefilled.current ? result.items.find((i) => i.id === addParam) : undefined;
@@ -103,7 +105,7 @@ export default function QuickSaleScreen() {
           addToCart(hit);
         }
       })
-      .catch(() => Alert.alert("Quick sale unavailable", "Could not load sellable inventory."))
+      .catch(() => setItemsError(true))
       .finally(() => setLoadingItems(false));
   }, [addParam, addToCart]);
 
@@ -356,7 +358,15 @@ export default function QuickSaleScreen() {
             <IconButton icon="barcode-outline" label="Scan barcode to add" variant="primary" onPress={openScanner} />
           </View>
           {loadingItems ? (
-            <ActivityIndicator color={COLORS.primary} />
+            <View accessibilityRole="progressbar" accessibilityLabel="Loading sellable inventory" style={{ gap: SPACING.xs }}>
+              <ActivityIndicator color={COLORS.primary} />
+              <Text style={styles.helperText}>Getting your stock ready…</Text>
+            </View>
+          ) : itemsError ? (
+            <View style={{ gap: SPACING.sm }}>
+              <Text accessibilityRole="alert" style={styles.helperText}>{"Couldn't load your stock. Try again."}</Text>
+              <Button label="Try loading stock again" variant="secondary" onPress={() => { setLoadingItems(true); void loadItems(); }} />
+            </View>
           ) : (
             <View style={{ gap: SPACING.sm }}>
               {filtered.slice(0, 12).map((item) => {
@@ -382,7 +392,16 @@ export default function QuickSaleScreen() {
                   </TouchableOpacity>
                 );
               })}
-              {filtered.length === 0 ? <Text style={styles.helperText}>No sellable items match that search.</Text> : null}
+              {filtered.length === 0 ? (
+                <View style={{ gap: SPACING.sm }}>
+                  <Text style={styles.helperText}>{items.length === 0 ? "Table's empty — add stock to start a sale." : "No sellable items match that search."}</Text>
+                  {items.length === 0 ? (
+                    <Button testID="sale-empty-add-stock" label="Add stock" variant="secondary" leadingIcon="add" onPress={() => router.push("/inventory/add")} />
+                  ) : (
+                    <Button label="Clear search" variant="secondary" onPress={() => setQuery("")} />
+                  )}
+                </View>
+              ) : null}
             </View>
           )}
         </Card>
