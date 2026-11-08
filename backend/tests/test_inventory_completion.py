@@ -27,6 +27,11 @@ def _item(db, user, **overrides):
 
 
 class TestMarketAndPricing:
+    @pytest.fixture(autouse=True)
+    def _pro(self, test_user, db):
+        test_user.subscription_tier = "pro"
+        db.flush()
+
     def test_market_price_without_upc_and_with_empty_provider_results(
         self, client, auth_headers, monkeypatch
     ):

@@ -23,6 +23,7 @@ FEATURES = {
     "invoices": {"tiers": ["pro"], "description": "Create and send customer invoices"},
     "stripe_payments": {"tiers": ["pro"], "description": "Accept Stripe payments"},
     "analytics_advanced": {"tiers": ["pro"], "description": "Advanced analytics and reporting"},
+    "market_pricing": {"tiers": ["pro"], "description": "eBay comps and smart price suggestions"},
     "unlimited_items": {"tiers": ["pro"], "description": "Unlimited inventory items"},
 
     # Partner-only features
@@ -72,3 +73,46 @@ def get_tier_info(tier: str) -> dict:
         },
     }
     return tiers.get(tier, tiers["free"])
+
+
+def require_market_pricing(current_user):
+    """Raise 403 pro_required unless the user can see market pricing."""
+    from fastapi import HTTPException, status
+    if not is_feature_enabled("market_pricing", current_user.subscription_tier) and not in_pricing_grace(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "pro_required",
+                "message": "Price suggestions and eBay comps are part of Pro ($20/mo).",
+                "feature": "market_pricing",
+            },
+        )
+
+
+def _aware_iso(value: str):
+    from datetime import datetime, timezone
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def in_pricing_grace(user, now=None) -> bool:
+    """Early free users keep market pricing until the grace end."""
+    from datetime import datetime, timezone
+    end = pricing_grace_end(user)
+    return end is not None and (now or datetime.now(timezone.utc)) < end
+
+
+def pricing_grace_end(user):
+    """When this user's free market-pricing grace ends, or None if not eligible."""
+    from datetime import timedelta, timezone
+    from app.config import settings
+    if not settings.PRICING_GRACE_CUTOFF or not getattr(user, "created_at", None):
+        return None
+    try:
+        cutoff = _aware_iso(settings.PRICING_GRACE_CUTOFF)
+        until = (_aware_iso(settings.PRICING_GRACE_UNTIL) if settings.PRICING_GRACE_UNTIL
+                 else cutoff + timedelta(days=settings.PRICING_GRACE_DAYS))
+    except ValueError:
+        return None
+    created = user.created_at if user.created_at.tzinfo else user.created_at.replace(tzinfo=timezone.utc)
+    return until if created < cutoff else None

@@ -4,6 +4,7 @@ import * as WebBrowser from "expo-web-browser";
 
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { useAuth } from "../../../context/auth";
+import { graceMessage } from "../../../components/ProUpsell";
 import * as api from "../../../services/api";
 import * as iap from "../../../services/purchases";
 import { COLORS, SPACING } from "../../../theme/tokens";
@@ -131,6 +132,26 @@ export default function SubscriptionScreen() {
         {useApple && status?.managed_billing && status?.provider !== "apple" ? <Text testID="billing-managed-elsewhere" style={styles.muted}>This subscription is not managed by the App Store, so it cannot be changed here.</Text> : null}
         {(!useApple && status?.managed_billing) || (useApple && status?.provider === "apple") ? <ActionButton label={working === "portal" ? "Opening..." : status?.provider === "apple" && useApple ? "Manage Subscription" : "Manage Billing"} onPress={manageBilling} disabled={!!working} tone="secondary" /> : null}
       </Card>
+      {status?.pricing_grace_until && status?.tier !== "pro" ? (
+        <Card style={styles.card}>
+          <View testID="grace-notice" />
+          <Text style={styles.copy}>{graceMessage(status.pricing_grace_until)}</Text>
+        </Card>
+      ) : null}
+      {status?.tier !== "pro" ? (
+        <Card style={styles.card}>
+          <View testID="pro-compare" />
+          <SectionLabel>What Pro unlocks</SectionLabel>
+          {PRO_COMPARE.map(([feature, free, pro]) => (
+            <View key={feature} style={styles.compareRow}>
+              <Text style={styles.compareFeature}>{feature}</Text>
+              <Text style={styles.compareFree}>{free}</Text>
+              <Text style={styles.comparePro}>{pro}</Text>
+            </View>
+          ))}
+          <Text style={styles.muted}>One extra sale a month at a show usually covers Pro.</Text>
+        </Card>
+      ) : null}
       {useApple ? (
         <>
           {plans.length === 0 ? <Card style={styles.card}><Text style={styles.copy}>Plans are unavailable right now. Please try again later.</Text></Card> : null}
@@ -142,8 +163,9 @@ export default function SubscriptionScreen() {
                 <SectionLabel>{`${partner ? "Pro + Partner" : "Pro"} · ${plan.price}/${plan.period}`}</SectionLabel>
                 <Text style={styles.copy}>{partner
                   ? "Everything in Pro, plus a public storefront, verified badge, and priority support."
-                  : "Unlimited inventory, invoices, barcode tools, exports, and advanced analytics."}</Text>
-                {active ? <Pill label="Active" tone="success" /> : <ActionButton label={working === plan.id ? "Waiting for Apple..." : `Subscribe ${plan.price}/${plan.period}`} onPress={() => buyApple(plan)} disabled={!!working} />}
+                  : "Unlimited inventory, price suggestions and eBay comps, spreadsheet exports, advanced analytics, and card payments."}</Text>
+                {plan.trial && !active ? <Text style={styles.muted}>{`${plan.trial}, then ${plan.price}/${plan.period}. Cancel before it ends and you won't be charged.`}</Text> : null}
+                {active ? <Pill label="Active" tone="success" /> : <ActionButton label={working === plan.id ? "Waiting for Apple..." : plan.trial ? `Start ${plan.trial}` : `Subscribe ${plan.price}/${plan.period}`} onPress={() => buyApple(plan)} disabled={!!working} />}
               </Card>
             );
           })}
@@ -158,7 +180,7 @@ export default function SubscriptionScreen() {
         <>
           <Card style={styles.card}>
             <SectionLabel>Pro · $20/month</SectionLabel>
-            <Text style={styles.copy}>Unlimited inventory, invoices, barcode tools, exports, Stripe payments, and advanced analytics.</Text>
+            <Text style={styles.copy}>Unlimited inventory, price suggestions and eBay comps, spreadsheet exports, advanced analytics, and Stripe card payments.</Text>
             {status?.tier !== "pro" ? <ActionButton label={working === "pro" ? "Opening checkout..." : "Upgrade to Pro"} onPress={() => openCheckout("pro")} disabled={!!working} /> : <Pill label="Active" tone="success" />}
           </Card>
           <Card style={styles.card}>
@@ -173,7 +195,19 @@ export default function SubscriptionScreen() {
   );
 }
 
+export const PRO_COMPARE: [string, string, string][] = [
+  ["Inventory items", "25", "Unlimited"],
+  ["CSV / spreadsheet exports", "—", "Included"],
+  ["Advanced analytics & trends", "—", "Included"],
+  ["Price suggestions & eBay comps", "—", "Included"],
+  ["Accept card payments", "—", "Included"],
+];
+
 const styles = StyleSheet.create({
+  compareRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },
+  compareFeature: { flex: 2, color: COLORS.textSoft, fontSize: 13 },
+  compareFree: { flex: 1, color: COLORS.textMuted, fontSize: 13, textAlign: "center" },
+  comparePro: { flex: 1, color: COLORS.primary, fontSize: 13, fontWeight: "600", textAlign: "center" },
   container: { flex: 1, backgroundColor: COLORS.bg }, content: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: 48 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg, padding: SPACING.lg, gap: SPACING.sm },
   errorTitle: { color: COLORS.text, fontSize: 18, fontWeight: "600" },
