@@ -622,6 +622,8 @@ export async function updateItemVariants(
 }
 
 export interface ImportPreviewRow {
+  /** Import row id; target of updateInventoryImportRow. */
+  id: string | null;
   row_number: number;
   action: string | null;
   inventory_item_id: string | null;
@@ -727,6 +729,22 @@ export async function importInventoryFile(
   );
 }
 
+export type ImportRowEditableField =
+  | "name" | "category" | "sku" | "upc" | "size" | "color" | "condition" | "quantity"
+  | "buy_price" | "expected_sell_price" | "notes";
+
+/** Edit (data) or discard/restore (skip) one previewed import row. Validated server-side. */
+export async function updateInventoryImportRow(
+  jobId: string,
+  rowId: string,
+  body: { data?: Partial<Record<ImportRowEditableField, string | number | null>>; skip?: boolean }
+): Promise<ImportPreviewRow> {
+  return request<ImportPreviewRow>(`/inventory/imports/${jobId}/rows/${rowId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function commitInventoryImport(
   jobId: string
 ): Promise<InventoryImportCommit> {
@@ -790,6 +808,8 @@ export interface CreateSaleOrderPayload {
   notes?: string;
   /** Offline outbox id; the server records a replayed order only once. */
   client_request_id?: string;
+  /** The buyer, picked at checkout. */
+  customer_id?: string;
 }
 
 export interface SaleOrder {
@@ -880,10 +900,6 @@ export async function listTransactions(
   return request<PaginatedTransactions>(`/transactions?${qs.toString()}`);
 }
 
-export async function getTransaction(id: string): Promise<Transaction> {
-  return request<Transaction>(`/transactions/${id}`);
-}
-
 export async function refundTransaction(
   id: string,
   reason?: string
@@ -955,6 +971,8 @@ export interface InvoiceData {
   invoice_number?: string;
   customer_name: string;
   customer_email: string | null;
+  customer_phone?: string | null;
+  customer_id?: string | null;
   status: string;
   subtotal: string;
   tax: string;
@@ -1012,6 +1030,9 @@ export interface PaginatedInvoices {
 export interface CreateInvoicePayload {
   customer_name: string;
   customer_email?: string;
+  customer_phone?: string;
+  /** Pick an existing customer; otherwise the server matches or creates one. */
+  customer_id?: string;
   items: {
     inventory_item_id?: string;
     size_label?: string;
@@ -1025,22 +1046,6 @@ export interface CreateInvoicePayload {
   notes?: string;
   /** Idempotency key; set automatically so a retried create never duplicates. */
   client_request_id?: string;
-}
-
-export interface UpdateInvoicePayload {
-  customer_name: string;
-  customer_email?: string;
-  items: {
-    inventory_item_id?: string;
-    size_label?: string;
-    description: string;
-    quantity: number;
-    unit_price: string;
-  }[];
-  tax?: string;
-  shipping?: string;
-  discount?: string;
-  notes?: string;
 }
 
 function requestKey(prefix: string): string {
@@ -1133,16 +1138,6 @@ export async function getInvoice(id: string): Promise<InvoiceData> {
   return request<InvoiceData>(`/invoices/${id}`);
 }
 
-export async function updateInvoice(
-  id: string,
-  payload: UpdateInvoicePayload
-): Promise<InvoiceData> {
-  return request<InvoiceData>(`/invoices/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
-
 export async function updateInvoiceStatus(
   id: string,
   status: string
@@ -1172,14 +1167,6 @@ export interface TiersResponse {
   partner_addon: { price: number; requires: string; features: string[] };
 }
 
-export async function getFeatureFlags(): Promise<FeatureFlags> {
-  return request<FeatureFlags>("/features");
-}
-
-export async function getTiers(): Promise<TiersResponse> {
-  return request<TiersResponse>("/features/tiers");
-}
-
 export interface SubscriptionStatus {
   tier: string;
   is_partner: boolean;
@@ -1187,17 +1174,30 @@ export interface SubscriptionStatus {
   current_period_end: string | null;
   managed_billing: boolean;
   provider?: "stripe" | "apple" | null;
+  /** Set while an early free user still has Pro price tools for free. */
+  pricing_grace_until?: string | null;
 }
 
 export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
   return request<SubscriptionStatus>("/subscriptions/me");
 }
 
+// App Store Guideline 3.1.1: the iOS app sells digital subscriptions only via
+// Apple in-app purchase. These Stripe entry points are web/Android only and
+// refuse to run on iOS even if some screen calls them by mistake.
+export const STRIPE_BLOCKED_ON_IOS = "Subscriptions on iPhone and iPad are handled through the App Store.";
+
+function assertNotIOS(): void {
+  if (Platform.OS === "ios") throw new Error(STRIPE_BLOCKED_ON_IOS);
+}
+
 export async function createSubscriptionCheckout(plan: "pro" | "partner"): Promise<{ checkout_url: string; session_id: string }> {
+  assertNotIOS();
   return request("/subscriptions/checkout", { method: "POST", body: JSON.stringify({ plan }) });
 }
 
 export async function createBillingPortal(): Promise<{ portal_url: string }> {
+  assertNotIOS();
   return request("/subscriptions/portal", { method: "POST" });
 }
 
@@ -1211,10 +1211,6 @@ export async function submitSupportRequest(subject: string, message: string): Pr
 }
 
 // ─── Export ──────────────────────────────────────────
-
-export async function exportInventoryCSV(): Promise<string> {
-  return request<string>("/export/inventory");
-}
 
 export async function exportInventoryWarehouseCSV(): Promise<string> {
   return request<string>("/export/inventory?template=warehouse");
@@ -1397,8 +1393,13 @@ export async function getLightspeedStatus(): Promise<LightspeedStatus> {
   return request<LightspeedStatus>("/integrations/lightspeed/status");
 }
 
+/** "?platform=web" on web so the OAuth callback answers with a popup page, not vendora://. */
+export function connectPlatformQuery(): string {
+  return Platform.OS === "web" ? "?platform=web" : "";
+}
+
 export async function getLightspeedConnectUrl(): Promise<{ authorization_url: string }> {
-  return request<{ authorization_url: string }>("/integrations/lightspeed/connect");
+  return request<{ authorization_url: string }>(`/integrations/lightspeed/connect${connectPlatformQuery()}`);
 }
 
 export async function triggerLightspeedSync(): Promise<{
@@ -1509,7 +1510,7 @@ export async function getEbayStatus(): Promise<EbayStatus> {
 }
 
 export async function getEbayConnectUrl(): Promise<{ authorization_url: string }> {
-  return request<{ authorization_url: string }>("/integrations/ebay/connect");
+  return request<{ authorization_url: string }>(`/integrations/ebay/connect${connectPlatformQuery()}`);
 }
 
 export async function triggerEbaySync(): Promise<{
@@ -1584,7 +1585,7 @@ export interface StockxMarket {
 const SX = "/integrations/stockx";
 
 export const getStockxStatus = () => request<StockxStatus>(`${SX}/status`);
-export const getStockxConnectUrl = () => request<{ authorization_url: string }>(`${SX}/connect`);
+export const getStockxConnectUrl = () => request<{ authorization_url: string }>(`${SX}/connect${connectPlatformQuery()}`);
 export const disconnectStockx = () => request<{ disconnected: boolean; links_retained: number }>(SX, { method: "DELETE" });
 export const syncStockx = () => request<{ transactions_imported: number; outbox_processed: number }>(`${SX}/sync`, { method: "POST" });
 export const getStockxItem = (itemId: string) => request<StockxItem>(`${SX}/items/${itemId}`);
@@ -1631,6 +1632,40 @@ export interface EbayListingInput {
 
 export async function getEbayListing(itemId: string): Promise<EbayListing> {
   return request<EbayListing>(`/integrations/ebay/listings/${encodeURIComponent(itemId)}`);
+}
+
+export type EbayPolicySummary = { id: string; name: string; label: string; created?: boolean };
+
+export interface EbayPolicyOverview {
+  opted_in: boolean;
+  marketplace_id: string;
+  policies: Record<"fulfillment" | "payment" | "return", EbayPolicySummary | null>;
+  missing: string[];
+  ready: boolean;
+}
+
+export interface EbayPolicySetupInput {
+  free_shipping?: boolean;
+  flat_shipping_cost?: string;
+  returns_accepted?: boolean;
+}
+
+export interface EbayPolicySetupResult {
+  opt_in: "already" | "opted_in";
+  marketplace_id: string;
+  policies: Record<string, EbayPolicySummary>;
+  ready: boolean;
+}
+
+export async function getEbayPolicies(): Promise<EbayPolicyOverview> {
+  return request<EbayPolicyOverview>("/integrations/ebay/policies");
+}
+
+export async function setupEbayPolicies(input: EbayPolicySetupInput = {}): Promise<EbayPolicySetupResult> {
+  return request<EbayPolicySetupResult>("/integrations/ebay/policies/setup", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function createEbayListing(input: EbayListingInput): Promise<EbayListing> {
@@ -1867,3 +1902,159 @@ export async function updateReconciliationIssue(
 export async function healthCheck(): Promise<{ status: string; version: string }> {
   return request("/health");
 }
+
+// ─── Customers ───────────────────────────────────────
+
+export interface Customer {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  tax_exempt: boolean;
+  notes: string | null;
+  order_count: number;
+  /** Decimal string: invoice payments + checkout totals, minus refunds. */
+  total_spent: string;
+  last_purchase_at: string | null;
+  created_at: string;
+}
+
+export interface CustomerInvoiceSummary {
+  id: string;
+  invoice_number: string;
+  status: string;
+  total: string;
+  amount_paid: string;
+  created_at: string;
+}
+
+export interface CustomerOrderSummary {
+  order_id: string | null;
+  transaction_id: string;
+  total: string;
+  item_count: number;
+  refunded: boolean;
+  created_at: string;
+}
+
+export interface CustomerDetail extends Customer {
+  invoices: CustomerInvoiceSummary[];
+  orders: CustomerOrderSummary[];
+}
+
+export interface CustomerInput {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  tax_exempt?: boolean;
+  notes?: string;
+}
+
+/** Customer list; falls back to the last list seen on this device when offline. */
+export async function listCustomers(q?: string): Promise<Customer[]> {
+  const term = q?.trim();
+  const path = term ? `/customers?q=${encodeURIComponent(term)}` : "/customers";
+  try {
+    const page = await request<{ items: Customer[]; total: number }>(path);
+    if (!term) await cacheCustomers(page.items);
+    return page.items;
+  } catch (e) {
+    if (isNetworkError(e) || !isOnline()) {
+      const cached = await readCachedCustomers();
+      if (cached) {
+        const needle = (term || "").toLowerCase();
+        return needle
+          ? cached.filter((c) => [c.name, c.email || "", c.phone || ""].some((v) => v.toLowerCase().includes(needle)))
+          : cached;
+      }
+    }
+    throw e;
+  }
+}
+
+export async function getCustomer(id: string): Promise<CustomerDetail> {
+  return request<CustomerDetail>(`/customers/${encodeURIComponent(id)}`);
+}
+
+export async function createCustomer(body: CustomerInput & { name: string }): Promise<Customer> {
+  return request<Customer>("/customers", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateCustomer(id: string, body: CustomerInput): Promise<Customer> {
+  return request<Customer>(`/customers/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+const CUSTOMERS_CACHE_KEY = "offline:customers";
+
+async function cacheCustomers(items: Customer[]): Promise<void> {
+  try { await AsyncStorage.setItem(CUSTOMERS_CACHE_KEY, JSON.stringify(items)); } catch { /* best effort */ }
+}
+
+async function readCachedCustomers(): Promise<Customer[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CUSTOMERS_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Customer[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function disconnectSquare(): Promise<{ disconnected: boolean; links_retained: number }> {
+  return request("/integrations/square", { method: "DELETE" });
+}
+
+export async function disconnectClover(): Promise<{ disconnected: boolean; links_retained: number }> {
+  return request("/integrations/clover", { method: "DELETE" });
+}
+
+// ─── Google Sheets sync ───────────────────────────────
+// The linked sheet is the source of truth; the app reads and writes it.
+
+export interface GoogleSheetLink {
+  spreadsheet_id: string;
+  title: string | null;
+  url: string | null;
+  tab: string;
+  source_of_truth: boolean;
+  archive_missing: boolean;
+  last_synced_at: string | null;
+  last_error: string | null;
+  mapped_columns: string[];
+}
+
+export interface GoogleSheetsStatus {
+  configured: boolean;
+  connected: boolean;
+  email: string | null;
+  sheet: GoogleSheetLink | null;
+  pending_pushes: number;
+  failed_pushes: number;
+}
+
+export interface GoogleSheetsSyncResult {
+  run_id: string | null;
+  created: number;
+  updated: number;
+  archived: number;
+  appended: number;
+  conflicts: number;
+  note: string | null;
+  pushes_processed: number;
+}
+
+const GS = "/integrations/google";
+
+export const getGoogleSheetsStatus = () => request<GoogleSheetsStatus>(`${GS}/status`);
+export const getGoogleConnectUrl = (platform: "web" | "native") =>
+  request<{ authorization_url: string }>(`${GS}/connect?platform=${platform}`);
+export const disconnectGoogle = () => request<{ disconnected: boolean }>(GS, { method: "DELETE" });
+export const createGoogleSheet = () =>
+  request<GoogleSheetsStatus>(`${GS}/sheet/create`, { method: "POST", body: JSON.stringify({}) });
+export const linkGoogleSheet = (url: string) =>
+  request<GoogleSheetsStatus>(`${GS}/sheet/link`, { method: "POST", body: JSON.stringify({ url }) });
+export const updateGoogleSheetSettings = (settings: { source_of_truth?: boolean; archive_missing?: boolean }) =>
+  request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "PATCH", body: JSON.stringify(settings) });
+export const unlinkGoogleSheet = () => request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "DELETE" });
+export const syncGoogleSheets = () => request<GoogleSheetsSyncResult>(`${GS}/sync`, { method: "POST" });

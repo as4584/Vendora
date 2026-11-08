@@ -1,9 +1,10 @@
 {
-  "item_id": "3a538078-feb4-481b-ad14-c54924a6c8c6",
-  "invoice_id": "9db49709-33f8-46a1-8f38-94184c623f1f",
+  "item_id": "a4ae29c3-b4f5-49ef-b662-5c531e04f43d",
+  "invoice_id": "ed9e5bac-3f2a-4bc8-939b-e30ef88034c1",
+  "customer_id": "729c637f-f985-4d8a-9576-08bb5a27257f",
   "me": {
-    "id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
-    "email": "test-3281e746@vendora.test",
+    "id": "72696639-c194-442f-9c4b-8c131ffa6763",
+    "email": "test-365c560c@vendora.test",
     "business_name": "Test Business",
     "profile_picture": null,
     "business_address": null,
@@ -13,8 +14,8 @@
     "show_started_at": null,
     "subscription_tier": "pro",
     "is_partner": false,
-    "created_at": "2026-11-03T02:43:37.395725Z",
-    "updated_at": "2026-11-03T02:43:37.394160Z"
+    "created_at": "2026-11-07T18:04:20.477599Z",
+    "updated_at": "2026-11-07T18:04:20.477207Z"
   },
   "dashboard": {
     "revenue_today": "465.00",
@@ -37,8 +38,8 @@
   "inventory": {
     "items": [
       {
-        "id": "f8a04b28-e7b9-4dc7-9c10-6d167821d1ee",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
+        "id": "2cfe6239-b627-49ce-956c-2cc7700a4451",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
         "name": "adidas Samba OG Cloud White",
         "category": "Sneakers",
         "sku": "B75806",
@@ -60,12 +61,12 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T02:43:37.402723Z",
-        "updated_at": "2026-11-03T02:43:37.394160Z"
+        "created_at": "2026-11-07T18:04:20.487272Z",
+        "updated_at": "2026-11-07T18:04:20.477207Z"
       },
       {
-        "id": "dc23f58c-55bb-4fe1-ad97-fa801162c927",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
+        "id": "b15fe04f-4a2a-4934-b37c-fb1717363c33",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
         "name": "Pokemon 151 Booster Bundle (Sealed)",
         "category": "Collectibles",
         "sku": "PKM-151-BB",
@@ -87,12 +88,12 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T02:43:37.402723Z",
-        "updated_at": "2026-11-03T02:43:37.394160Z"
+        "created_at": "2026-11-07T18:04:20.487272Z",
+        "updated_at": "2026-11-07T18:04:20.477207Z"
       },
       {
-        "id": "2e02c0fc-0727-4804-835d-a8824273ba5f",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
+        "id": "46d347b8-adc5-4f01-aa22-d7db2db63a9f",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
         "name": "Supreme Box Logo Hoodie FW23 Heather Grey With An Extra Long Name",
         "category": "Clothing",
         "sku": "SUP-BOGO-FW23",
@@ -114,12 +115,12 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T02:43:37.402723Z",
-        "updated_at": "2026-11-03T02:43:37.402723Z"
+        "created_at": "2026-11-07T18:04:20.487272Z",
+        "updated_at": "2026-11-07T18:04:20.487272Z"
       },
       {
-        "id": "9b1e1cef-962e-44a6-b33b-0678bb9f8bda",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
+        "id": "84fbd054-f393-47e0-a2b0-a2c6ab1a1224",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
         "name": "Air Jordan 4 Retro Bred Reimagined",
         "category": "Sneakers",
         "sku": "FV5029-006",
@@ -141,12 +142,12 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T02:43:37.402723Z",
-        "updated_at": "2026-11-03T02:43:37.394160Z"
+        "created_at": "2026-11-07T18:04:20.487272Z",
+        "updated_at": "2026-11-07T18:04:20.477207Z"
       },
       {
-        "id": "b27ccb9a-704e-44d1-9913-a373e5edc7e6",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
+        "id": "c92bb3c9-07a9-4e4f-881f-99e82d2a1a36",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
         "name": "New Balance 9060 Sea Salt",
         "category": "Sneakers",
         "sku": "U9060AAA",
@@ -168,12 +169,12 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T02:43:37.402723Z",
-        "updated_at": "2026-11-03T02:43:37.394160Z"
+        "created_at": "2026-11-07T18:04:20.487272Z",
+        "updated_at": "2026-11-07T18:04:20.477207Z"
       },
       {
-        "id": "3a538078-feb4-481b-ad14-c54924a6c8c6",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
+        "id": "a4ae29c3-b4f5-49ef-b662-5c531e04f43d",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
         "name": "Nike Dunk Low Retro White Black",
         "category": "Sneakers",
         "sku": "DD1391-100",
@@ -210,8 +211,8 @@
         "notes": null,
         "source": null,
         "external_id": null,
-        "created_at": "2026-11-03T02:43:37.401722Z",
-        "updated_at": "2026-11-03T02:43:37.394160Z"
+        "created_at": "2026-11-07T18:04:20.486274Z",
+        "updated_at": "2026-11-07T18:04:20.477207Z"
       }
     ],
     "total": 6,
@@ -222,10 +223,34 @@
   "transactions": {
     "items": [
       {
-        "id": "64cb2184-1724-4714-8cfe-ccc1ba22592d",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
-        "item_id": "f8a04b28-e7b9-4dc7-9c10-6d167821d1ee",
-        "invoice_id": "9db49709-33f8-46a1-8f38-94184c623f1f",
+        "id": "c9723af3-918b-4a10-877f-2e0c45b55634",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
+        "item_id": "c92bb3c9-07a9-4e4f-881f-99e82d2a1a36",
+        "invoice_id": null,
+        "method": "card",
+        "status": "completed",
+        "gross_amount": "185.00",
+        "fee_amount": "0.00",
+        "net_amount": "185.00",
+        "quantity": 1,
+        "external_reference_id": null,
+        "notes": null,
+        "is_refund": false,
+        "original_transaction_id": null,
+        "order_id": "af3730f2-4493-4209-853f-2f27efa220b3",
+        "discount_amount": "0.00",
+        "tax_amount": "0.00",
+        "variant_size": null,
+        "cost_amount": "140.00",
+        "customer_id": "729c637f-f985-4d8a-9576-08bb5a27257f",
+        "created_at": "2026-11-07T18:04:20.651223Z",
+        "updated_at": "2026-11-07T18:04:20.651223Z"
+      },
+      {
+        "id": "3f8239d1-d2d3-4f17-ac83-4770838e4e80",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
+        "item_id": "2cfe6239-b627-49ce-956c-2cc7700a4451",
+        "invoice_id": "ed9e5bac-3f2a-4bc8-939b-e30ef88034c1",
         "method": "cash",
         "status": "completed",
         "gross_amount": "50.00",
@@ -241,36 +266,14 @@
         "tax_amount": "0.00",
         "variant_size": null,
         "cost_amount": "34.62",
-        "created_at": "2026-11-03T02:43:37.504226Z",
-        "updated_at": "2026-11-03T02:43:37.504226Z"
+        "customer_id": null,
+        "created_at": "2026-11-07T18:04:20.640595Z",
+        "updated_at": "2026-11-07T18:04:20.640595Z"
       },
       {
-        "id": "d9a670c6-1626-43d3-9997-895cadba37e4",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
-        "item_id": "b27ccb9a-704e-44d1-9913-a373e5edc7e6",
-        "invoice_id": null,
-        "method": "card",
-        "status": "completed",
-        "gross_amount": "185.00",
-        "fee_amount": "0.00",
-        "net_amount": "185.00",
-        "quantity": 1,
-        "external_reference_id": null,
-        "notes": null,
-        "is_refund": false,
-        "original_transaction_id": null,
-        "order_id": "9c313449-7780-4e82-94fe-7e447b97e3bc",
-        "discount_amount": "0.00",
-        "tax_amount": "0.00",
-        "variant_size": null,
-        "cost_amount": "140.00",
-        "created_at": "2026-11-03T02:43:37.475030Z",
-        "updated_at": "2026-11-03T02:43:37.475030Z"
-      },
-      {
-        "id": "8ab38a4e-5369-46f9-aeac-0c4216fc8509",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
-        "item_id": "9b1e1cef-962e-44a6-b33b-0678bb9f8bda",
+        "id": "a38f9492-5516-4a3d-8686-7420c009cb30",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
+        "item_id": "84fbd054-f393-47e0-a2b0-a2c6ab1a1224",
         "invoice_id": null,
         "method": "zelle",
         "status": "completed",
@@ -281,19 +284,20 @@
         "external_reference_id": null,
         "notes": "Wrong size",
         "is_refund": true,
-        "original_transaction_id": "67c478c9-18b9-4dad-8c33-66bcc7757028",
-        "order_id": "938ea713-caf6-4f49-b771-25033540701d",
+        "original_transaction_id": "f9809e44-e06e-4b76-835c-8307a3817b41",
+        "order_id": "90e28730-e67c-4586-9b3e-0ae87e43ee57",
         "discount_amount": "0.00",
         "tax_amount": "0.00",
         "variant_size": null,
         "cost_amount": "-215.00",
-        "created_at": "2026-11-03T02:43:37.460539Z",
-        "updated_at": "2026-11-03T02:43:37.460539Z"
+        "customer_id": null,
+        "created_at": "2026-11-07T18:04:20.593950Z",
+        "updated_at": "2026-11-07T18:04:20.593950Z"
       },
       {
-        "id": "67c478c9-18b9-4dad-8c33-66bcc7757028",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
-        "item_id": "9b1e1cef-962e-44a6-b33b-0678bb9f8bda",
+        "id": "f9809e44-e06e-4b76-835c-8307a3817b41",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
+        "item_id": "84fbd054-f393-47e0-a2b0-a2c6ab1a1224",
         "invoice_id": null,
         "method": "zelle",
         "status": "refunded",
@@ -305,18 +309,19 @@
         "notes": null,
         "is_refund": false,
         "original_transaction_id": null,
-        "order_id": "938ea713-caf6-4f49-b771-25033540701d",
+        "order_id": "90e28730-e67c-4586-9b3e-0ae87e43ee57",
         "discount_amount": "0.00",
         "tax_amount": "0.00",
         "variant_size": null,
         "cost_amount": "215.00",
-        "created_at": "2026-11-03T02:43:37.450790Z",
-        "updated_at": "2026-11-03T02:43:37.394160Z"
+        "customer_id": null,
+        "created_at": "2026-11-07T18:04:20.579779Z",
+        "updated_at": "2026-11-07T18:04:20.477207Z"
       },
       {
-        "id": "1d71da92-4214-4567-bd14-9c91253a13b8",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
-        "item_id": "dc23f58c-55bb-4fe1-ad97-fa801162c927",
+        "id": "13ae2bb4-d231-4711-8801-da4871c627fe",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
+        "item_id": "b15fe04f-4a2a-4934-b37c-fb1717363c33",
         "invoice_id": null,
         "method": "split",
         "status": "completed",
@@ -328,18 +333,19 @@
         "notes": null,
         "is_refund": false,
         "original_transaction_id": null,
-        "order_id": "500595e4-a179-44e2-8f88-6c49c654d83c",
+        "order_id": "c0262811-54ae-48cd-912d-c783e6f94af0",
         "discount_amount": "4.82",
         "tax_amount": "5.25",
         "variant_size": null,
         "cost_amount": "56.00",
-        "created_at": "2026-11-03T02:43:37.435952Z",
-        "updated_at": "2026-11-03T02:43:37.435952Z"
+        "customer_id": null,
+        "created_at": "2026-11-07T18:04:20.560213Z",
+        "updated_at": "2026-11-07T18:04:20.560213Z"
       },
       {
-        "id": "9164f31a-4504-4000-bd19-db764f9ca817",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
-        "item_id": "3a538078-feb4-481b-ad14-c54924a6c8c6",
+        "id": "05a3bd61-9022-481e-bdc9-f8c621b7f4ac",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
+        "item_id": "a4ae29c3-b4f5-49ef-b662-5c531e04f43d",
         "invoice_id": null,
         "method": "split",
         "status": "completed",
@@ -351,13 +357,14 @@
         "notes": null,
         "is_refund": false,
         "original_transaction_id": null,
-        "order_id": "500595e4-a179-44e2-8f88-6c49c654d83c",
+        "order_id": "c0262811-54ae-48cd-912d-c783e6f94af0",
         "discount_amount": "9.18",
         "tax_amount": "9.99",
         "variant_size": "10",
         "cost_amount": "110.00",
-        "created_at": "2026-11-03T02:43:37.420908Z",
-        "updated_at": "2026-11-03T02:43:37.420908Z"
+        "customer_id": null,
+        "created_at": "2026-11-07T18:04:20.549935Z",
+        "updated_at": "2026-11-07T18:04:20.549935Z"
       }
     ],
     "total": 6,
@@ -368,12 +375,14 @@
   "invoices": {
     "items": [
       {
-        "id": "9db49709-33f8-46a1-8f38-94184c623f1f",
-        "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
+        "id": "ed9e5bac-3f2a-4bc8-939b-e30ef88034c1",
+        "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
         "number": 1,
         "invoice_number": "INV0001",
         "customer_name": "Marcus Reed",
         "customer_email": "marcus@example.com",
+        "customer_phone": "(201) 555-0148",
+        "customer_id": "729c637f-f985-4d8a-9576-08bb5a27257f",
         "status": "partially_paid",
         "subtotal": "130.00",
         "tax": "0.00",
@@ -384,9 +393,9 @@
         "notes": null,
         "items": [
           {
-            "id": "3f842462-ae2b-4562-b3a9-81b2a23fd66c",
-            "invoice_id": "9db49709-33f8-46a1-8f38-94184c623f1f",
-            "inventory_item_id": "f8a04b28-e7b9-4dc7-9c10-6d167821d1ee",
+            "id": "ee206ec6-3a46-4a5d-a9b6-5ed8ee25f206",
+            "invoice_id": "ed9e5bac-3f2a-4bc8-939b-e30ef88034c1",
+            "inventory_item_id": "2cfe6239-b627-49ce-956c-2cc7700a4451",
             "size_label": null,
             "description": "adidas Samba OG Cloud White",
             "quantity": 1,
@@ -398,16 +407,16 @@
         "balance_due": "80.00",
         "payments": [
           {
-            "id": "ca7b3e72-4771-4858-8a54-a2acf0c4feb5",
-            "invoice_id": "9db49709-33f8-46a1-8f38-94184c623f1f",
+            "id": "5516fd4b-14d7-4ac2-96a5-f73fb56b592c",
+            "invoice_id": "ed9e5bac-3f2a-4bc8-939b-e30ef88034c1",
             "amount": "50.00",
             "method": "cash",
             "note": "Deposit at the show",
-            "created_at": "2026-11-03T02:43:37.504226Z"
+            "created_at": "2026-11-07T18:04:20.639595Z"
           }
         ],
-        "created_at": "2026-11-03T02:43:37.494721Z",
-        "updated_at": "2026-11-03T02:43:37.394160Z"
+        "created_at": "2026-11-07T18:04:20.620044Z",
+        "updated_at": "2026-11-07T18:04:20.477207Z"
       }
     ],
     "total": 1,
@@ -522,30 +531,6 @@
     "average_order_value": "150.00",
     "sell_through_rate": "16.66666666666666666666666667",
     "daily": [
-      {
-        "date": "2026-10-05",
-        "revenue": "0",
-        "net": "0",
-        "transactions": 0
-      },
-      {
-        "date": "2026-10-06",
-        "revenue": "0",
-        "net": "0",
-        "transactions": 0
-      },
-      {
-        "date": "2026-10-07",
-        "revenue": "0",
-        "net": "0",
-        "transactions": 0
-      },
-      {
-        "date": "2026-10-08",
-        "revenue": "0",
-        "net": "0",
-        "transactions": 0
-      },
       {
         "date": "2026-10-09",
         "revenue": "0",
@@ -698,6 +683,30 @@
       },
       {
         "date": "2026-11-03",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-11-04",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-11-05",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-11-06",
+        "revenue": "0",
+        "net": "0",
+        "transactions": 0
+      },
+      {
+        "date": "2026-11-07",
         "revenue": "465.00",
         "net": "121.28",
         "transactions": 6
@@ -717,8 +726,8 @@
     ]
   },
   "show_summary": {
-    "since": "2026-11-03T00:00:00Z",
-    "until": "2026-11-03T02:43:37.644507Z",
+    "since": "2026-11-07T00:00:00Z",
+    "until": "2026-11-07T18:04:20.780215Z",
     "show_started_at": null,
     "orders": 4,
     "units_sold": 6,
@@ -760,31 +769,25 @@
     ],
     "top_items": [
       {
-        "item_id": "9b1e1cef-962e-44a6-b33b-0678bb9f8bda",
-        "name": "Air Jordan 4 Retro Bred Reimagined",
-        "units": 1,
-        "revenue": "285.00"
-      },
-      {
-        "item_id": "b27ccb9a-704e-44d1-9913-a373e5edc7e6",
+        "item_id": "c92bb3c9-07a9-4e4f-881f-99e82d2a1a36",
         "name": "New Balance 9060 Sea Salt",
         "units": 1,
         "revenue": "185.00"
       },
       {
-        "item_id": "3a538078-feb4-481b-ad14-c54924a6c8c6",
+        "item_id": "a4ae29c3-b4f5-49ef-b662-5c531e04f43d",
         "name": "Nike Dunk Low Retro White Black",
         "units": 1,
         "revenue": "150.82"
       },
       {
-        "item_id": "dc23f58c-55bb-4fe1-ad97-fa801162c927",
+        "item_id": "b15fe04f-4a2a-4934-b37c-fb1717363c33",
         "name": "Pokemon 151 Booster Bundle (Sealed)",
         "units": 2,
         "revenue": "79.18"
       },
       {
-        "item_id": "f8a04b28-e7b9-4dc7-9c10-6d167821d1ee",
+        "item_id": "2cfe6239-b627-49ce-956c-2cc7700a4451",
         "name": "adidas Samba OG Cloud White",
         "units": 1,
         "revenue": "50.00"
@@ -792,8 +795,8 @@
     ]
   },
   "item": {
-    "id": "3a538078-feb4-481b-ad14-c54924a6c8c6",
-    "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
+    "id": "a4ae29c3-b4f5-49ef-b662-5c531e04f43d",
+    "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
     "name": "Nike Dunk Low Retro White Black",
     "category": "Sneakers",
     "sku": "DD1391-100",
@@ -830,28 +833,30 @@
     "notes": null,
     "source": null,
     "external_id": null,
-    "created_at": "2026-11-03T02:43:37.401722Z",
-    "updated_at": "2026-11-03T02:43:37.394160Z"
+    "created_at": "2026-11-07T18:04:20.486274Z",
+    "updated_at": "2026-11-07T18:04:20.477207Z"
   },
   "item_activity": [
     {
-      "id": "1df929e9-7a2d-437d-a1d7-8d629e0cd906",
-      "inventory_item_id": "3a538078-feb4-481b-ad14-c54924a6c8c6",
+      "id": "8e5fd65a-2aa6-4a4e-a7b2-fa8183002a1e",
+      "inventory_item_id": "a4ae29c3-b4f5-49ef-b662-5c531e04f43d",
       "delta_quantity": -1,
       "quantity_after": 2,
       "event_type": "sale",
       "source_type": "transaction",
-      "source_id": "9164f31a-4504-4000-bd19-db764f9ca817",
-      "created_at": "2026-11-03T02:43:37.432071Z"
+      "source_id": "05a3bd61-9022-481e-bdc9-f8c621b7f4ac",
+      "created_at": "2026-11-07T18:04:20.555213Z"
     }
   ],
   "invoice": {
-    "id": "9db49709-33f8-46a1-8f38-94184c623f1f",
-    "user_id": "5099c51d-77c3-4aab-99aa-44d60dc74566",
+    "id": "ed9e5bac-3f2a-4bc8-939b-e30ef88034c1",
+    "user_id": "72696639-c194-442f-9c4b-8c131ffa6763",
     "number": 1,
     "invoice_number": "INV0001",
     "customer_name": "Marcus Reed",
     "customer_email": "marcus@example.com",
+    "customer_phone": "(201) 555-0148",
+    "customer_id": "729c637f-f985-4d8a-9576-08bb5a27257f",
     "status": "partially_paid",
     "subtotal": "130.00",
     "tax": "0.00",
@@ -862,9 +867,9 @@
     "notes": null,
     "items": [
       {
-        "id": "3f842462-ae2b-4562-b3a9-81b2a23fd66c",
-        "invoice_id": "9db49709-33f8-46a1-8f38-94184c623f1f",
-        "inventory_item_id": "f8a04b28-e7b9-4dc7-9c10-6d167821d1ee",
+        "id": "ee206ec6-3a46-4a5d-a9b6-5ed8ee25f206",
+        "invoice_id": "ed9e5bac-3f2a-4bc8-939b-e30ef88034c1",
+        "inventory_item_id": "2cfe6239-b627-49ce-956c-2cc7700a4451",
         "size_label": null,
         "description": "adidas Samba OG Cloud White",
         "quantity": 1,
@@ -876,15 +881,171 @@
     "balance_due": "80.00",
     "payments": [
       {
-        "id": "ca7b3e72-4771-4858-8a54-a2acf0c4feb5",
-        "invoice_id": "9db49709-33f8-46a1-8f38-94184c623f1f",
+        "id": "5516fd4b-14d7-4ac2-96a5-f73fb56b592c",
+        "invoice_id": "ed9e5bac-3f2a-4bc8-939b-e30ef88034c1",
         "amount": "50.00",
         "method": "cash",
         "note": "Deposit at the show",
-        "created_at": "2026-11-03T02:43:37.504226Z"
+        "created_at": "2026-11-07T18:04:20.639595Z"
       }
     ],
-    "created_at": "2026-11-03T02:43:37.494721Z",
-    "updated_at": "2026-11-03T02:43:37.394160Z"
+    "created_at": "2026-11-07T18:04:20.620044Z",
+    "updated_at": "2026-11-07T18:04:20.477207Z"
+  },
+  "customers": {
+    "items": [
+      {
+        "id": "e63e568f-c706-4f30-9a57-c82bc2516ac2",
+        "name": "Garden State Cards Wholesale With A Long Business Name",
+        "email": "orders@gardenstatecards.example",
+        "phone": "7325550190",
+        "address": "12 Route 9, Freehold NJ",
+        "tax_exempt": true,
+        "notes": null,
+        "order_count": 0,
+        "total_spent": "0.00",
+        "last_purchase_at": null,
+        "created_at": "2026-11-07T18:04:20.690624Z"
+      },
+      {
+        "id": "729c637f-f985-4d8a-9576-08bb5a27257f",
+        "name": "Marcus Reed",
+        "email": "marcus@example.com",
+        "phone": "2015550148",
+        "address": null,
+        "tax_exempt": false,
+        "notes": null,
+        "order_count": 2,
+        "total_spent": "235.00",
+        "last_purchase_at": "2026-11-07T18:04:20.651223Z",
+        "created_at": "2026-11-07T18:04:20.615989Z"
+      }
+    ],
+    "total": 2
+  },
+  "customer": {
+    "id": "729c637f-f985-4d8a-9576-08bb5a27257f",
+    "name": "Marcus Reed",
+    "email": "marcus@example.com",
+    "phone": "2015550148",
+    "address": null,
+    "tax_exempt": false,
+    "notes": null,
+    "order_count": 2,
+    "total_spent": "235.00",
+    "last_purchase_at": "2026-11-07T18:04:20.651223Z",
+    "created_at": "2026-11-07T18:04:20.615989Z",
+    "invoices": [
+      {
+        "id": "ed9e5bac-3f2a-4bc8-939b-e30ef88034c1",
+        "invoice_number": "INV0001",
+        "status": "partially_paid",
+        "total": "130.00",
+        "amount_paid": "50.00",
+        "created_at": "2026-11-07T18:04:20.620044Z"
+      }
+    ],
+    "orders": [
+      {
+        "order_id": "af3730f2-4493-4209-853f-2f27efa220b3",
+        "transaction_id": "c9723af3-918b-4a10-877f-2e0c45b55634",
+        "total": "185.00",
+        "item_count": 1,
+        "refunded": false,
+        "created_at": "2026-11-07T18:04:20.651223Z"
+      }
+    ]
+  },
+  "import_preview": {
+    "job_id": "9177f91c-282e-4d9f-9e3c-b88024befa6d",
+    "status": "previewed",
+    "filename": "show-pickups.csv",
+    "detected_mapping": {
+      "name": "name",
+      "category": "category",
+      "sku": "sku",
+      "size": "size",
+      "color": "color",
+      "condition": "condition",
+      "quantity": "quantity",
+      "cost": "buy_price",
+      "price": "expected_sell_price"
+    },
+    "rows": [
+      {
+        "id": "3c3d45e3-473e-4091-a100-e6e2a10483ff",
+        "row_number": 1,
+        "action": "create",
+        "inventory_item_id": null,
+        "mapped_data": {
+          "name": "Nike Air Max 1 '86 OG Big Bubble Lost Sketch",
+          "category": "Sneakers",
+          "sku": "DQ3989-100",
+          "size": "10.5",
+          "color": "White/Grey",
+          "condition": "New",
+          "quantity": 2,
+          "buy_price": 120.0,
+          "expected_sell_price": 175.0
+        },
+        "match_key": null,
+        "match_value": null,
+        "error_message": null
+      },
+      {
+        "id": "8265ec17-c554-44f7-9d0e-73a3d7eb5213",
+        "row_number": 2,
+        "action": "update",
+        "inventory_item_id": "a4ae29c3-b4f5-49ef-b662-5c531e04f43d",
+        "mapped_data": {
+          "name": "Nike Dunk Low Retro White Black",
+          "category": "Sneakers",
+          "sku": "DD1391-100",
+          "size": "10",
+          "color": "White/Black",
+          "condition": "New",
+          "quantity": 4,
+          "buy_price": 110.0,
+          "expected_sell_price": 165.0
+        },
+        "match_key": "sku",
+        "match_value": "DD1391-100",
+        "error_message": null
+      },
+      {
+        "id": "f4582e54-805e-41fe-a3f9-6f2e518dec7b",
+        "row_number": 3,
+        "action": "error",
+        "inventory_item_id": null,
+        "mapped_data": null,
+        "match_key": null,
+        "match_value": null,
+        "error_message": "Required field 'name' is missing or empty."
+      },
+      {
+        "id": "e3e0019c-c75b-4d33-a552-324f8a5e63f0",
+        "row_number": 4,
+        "action": "create",
+        "inventory_item_id": null,
+        "mapped_data": {
+          "name": "Stussy 8 Ball Fleece",
+          "category": "Clothing",
+          "size": "M",
+          "color": "Black",
+          "condition": "Used",
+          "quantity": 1,
+          "buy_price": 35.0,
+          "expected_sell_price": 70.0
+        },
+        "match_key": null,
+        "match_value": null,
+        "error_message": null
+      }
+    ],
+    "total_rows": 4,
+    "rows_to_create": 2,
+    "rows_to_update": 1,
+    "rows_to_skip": 0,
+    "rows_errored": 1
   }
 }

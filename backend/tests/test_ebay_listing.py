@@ -496,6 +496,11 @@ class TestEbayOrderStock:
 
 
 class TestComps:
+    @pytest.fixture(autouse=True)
+    def _pro(self, test_user, db):
+        test_user.subscription_tier = "pro"
+        db.flush()
+
     async def test_active_asks_labelled_honestly(self, client, auth_headers, item, fake):
         fake.on("POST", "/identity/v1/oauth2/token", (200, {"access_token": "app", "expires_in": 7200}))
         fake.on("GET", "/buy/browse/v1/item_summary/search", (200, {"itemSummaries": [

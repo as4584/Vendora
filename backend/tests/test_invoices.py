@@ -414,7 +414,7 @@ class TestInvoiceNumbers:
         assert resp.json()["filename"] == "invoice-INV0002.pdf"
 
     def test_numbers_are_independent_between_users(self, client, auth_headers, db):
-        from app.services.auth import create_access_token
+        from tests.conftest import session_token
         from app.models.user import User
 
         self._create(client, auth_headers)
@@ -422,5 +422,5 @@ class TestInvoiceNumbers:
         other = User(email="second-seller@example.com", password_hash="x")
         db.add(other)
         db.commit()
-        other_headers = {"Authorization": f"Bearer {create_access_token(data={'sub': str(other.id)})}"}
+        other_headers = {"Authorization": f"Bearer {session_token(db, other)}"}
         assert self._create(client, other_headers)["invoice_number"] == "INV0001"

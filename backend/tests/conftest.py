@@ -21,6 +21,7 @@ from app.main import app
 from app.database import get_db
 from app.models.base import Base
 from app.models.user import User
+from app.models.customer import Customer  # noqa: F401
 from app.models.transaction import Transaction  # noqa: F401
 from app.models.invoice import Invoice, InvoiceItem  # noqa: F401
 from app.models.subscription import Subscription, WebhookEvent  # noqa: F401
@@ -37,8 +38,15 @@ from app.models.clover import CloverCredential  # noqa: F401
 from app.models.provider import ProviderSyncRun, ReconciliationIssue, ProviderWebhookEvent  # noqa: F401
 from app.models.auth_session import AuthSession  # noqa: F401
 from app.models.scan_memory import ScanMemory  # noqa: F401
+from app.models.google_sheets import GoogleSheetLink, GoogleToken  # noqa: F401
 from app.models.ebay_insights import EbayListingTraffic, EbayOrderFees, EbayPayout  # noqa: F401
-from app.services.auth import hash_password, create_access_token
+from app.services.auth import hash_password, issue_session
+
+
+def session_token(db, user) -> str:
+    """Access token bound to a real AuthSession, exactly as /auth/login issues."""
+    access_token, _, _ = issue_session(db, user.id)
+    return access_token
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
 
@@ -135,9 +143,9 @@ def test_user(db: Session) -> User:
 
 
 @pytest.fixture()
-def auth_headers(test_user: User) -> dict:
+def auth_headers(db: Session, test_user: User) -> dict:
     """Return Authorization headers with a valid JWT for test_user."""
-    token = create_access_token(data={"sub": str(test_user.id)})
+    token = session_token(db, test_user)
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -155,7 +163,7 @@ def second_user(db: Session) -> User:
 
 
 @pytest.fixture()
-def second_auth_headers(second_user: User) -> dict:
+def second_auth_headers(db: Session, second_user: User) -> dict:
     """Return Authorization headers for the second user."""
-    token = create_access_token(data={"sub": str(second_user.id)})
+    token = session_token(db, second_user)
     return {"Authorization": f"Bearer {token}"}

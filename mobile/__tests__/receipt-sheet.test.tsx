@@ -1,8 +1,11 @@
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Modal } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { ReceiptSheet } from '../components/ReceiptSheet';
 import { downloadAndShareRemote } from '../utils/fileActions';
+import { useReducedMotion } from '../components/useReducedMotion';
+
+jest.mock('../components/useReducedMotion', () => ({ useReducedMotion: jest.fn(() => true) }));
 
 jest.mock('../services/api', () => ({
   getToken: jest.fn().mockResolvedValue('tok'),
@@ -23,6 +26,7 @@ const RECEIPT = {
 describe('ReceiptSheet', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (useReducedMotion as jest.Mock).mockReturnValue(true);
     jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   });
   afterEach(() => jest.restoreAllMocks());
@@ -59,5 +63,19 @@ describe('ReceiptSheet', () => {
     );
     expect(screen.queryByText('Share PDF')).toBeNull();
     expect(screen.getByText('Share receipt')).toBeTruthy();
+    expect(screen.queryByText('SOLD')).toBeNull();
+  });
+
+  it('shows SOLD for confirmed sales without motion when requested', () => {
+    const screen = render(<ReceiptSheet receipt={RECEIPT} onNewSale={jest.fn()} onDone={jest.fn()} />);
+    expect(screen.getByText('SOLD')).toBeTruthy();
+    expect(screen.UNSAFE_getByType(Modal).props.animationType).toBe('none');
+  });
+
+  it('allows the receipt entrance when motion is enabled', () => {
+    (useReducedMotion as jest.Mock).mockReturnValue(false);
+    const screen = render(<ReceiptSheet receipt={RECEIPT} onNewSale={jest.fn()} onDone={jest.fn()} />);
+    expect(screen.UNSAFE_getByType(Modal).props.animationType).toBe('slide');
+    screen.unmount();
   });
 });

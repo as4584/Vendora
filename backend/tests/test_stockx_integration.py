@@ -240,11 +240,15 @@ class TestOAuth:
         resp = client.get(f"/api/v1/integrations/stockx/callback?error=access_denied&state={state}", follow_redirects=False)
         assert resp.headers["location"].endswith("status=denied")
 
-    def test_callback_exchange_failure(self, client, test_user, fake):
-        fake.on("POST", "/oauth/token", (400, {"error": "invalid_grant"}))
+    def test_callback_exchange_failure(self, client, test_user, fake, caplog):
+        fake.on("POST", "/oauth/token", (400, {"error": "invalid_grant", "error_description": "bad redirect_uri"}))
         state = stockx_service.build_state(test_user.id)
-        resp = client.get(f"/api/v1/integrations/stockx/callback?code=bad&state={state}", follow_redirects=False)
-        assert resp.status_code == 502
+        with caplog.at_level("ERROR"):
+            resp = client.get(f"/api/v1/integrations/stockx/callback?code=bad&state={state}", follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers["location"].endswith("status=error")
+        assert "invalid_grant: bad redirect_uri" in caplog.text
+        assert "client_secret" not in caplog.text
 
     def test_status_and_disconnect(self, client, auth_headers, db, test_user, token):
         _link(db, _item(db, test_user))

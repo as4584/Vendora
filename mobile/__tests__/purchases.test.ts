@@ -39,6 +39,14 @@ afterAll(() => {
   delete process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
 });
 
+describe("isAppleStorefront", () => {
+  it("is true only on iOS, with or without a RevenueCat key", () => {
+    expect(load("ios", "").isAppleStorefront()).toBe(true);
+    expect(load("web").isAppleStorefront()).toBe(false);
+    expect(load("android").isAppleStorefront()).toBe(false);
+  });
+});
+
 describe("iapEnabled", () => {
   it("is on only for iOS with a key", () => {
     expect(load("ios").iapEnabled()).toBe(true);

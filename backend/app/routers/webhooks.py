@@ -29,6 +29,8 @@ from app.services.revenuecat_service import handle_revenuecat_event, HANDLED as 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
+UNSIGNED_WEBHOOK_ENVIRONMENTS = frozenset({"development", "testing"})
+
 HANDLED_EVENTS = {
     "payment_intent.succeeded",
     "customer.subscription.created",
@@ -52,7 +54,9 @@ async def stripe_webhook(
     body = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
 
-    if settings.ENVIRONMENT == "production" and (
+    # Fail closed: unsigned events are only ever accepted in local dev/tests,
+    # never in production, staging, or a mistyped ENVIRONMENT value.
+    if settings.ENVIRONMENT not in UNSIGNED_WEBHOOK_ENVIRONMENTS and (
         not STRIPE_AVAILABLE or not settings.STRIPE_WEBHOOK_SECRET
     ):
         raise HTTPException(
@@ -66,8 +70,11 @@ async def stripe_webhook(
             event = stripe.Webhook.construct_event(
                 body, sig_header, settings.STRIPE_WEBHOOK_SECRET
             )
-        except stripe.error.SignatureVerificationError:
+        except stripe.SignatureVerificationError:
             raise HTTPException(status_code=400, detail="Invalid signature")
+        except ValueError:
+            # Missing/garbled signature header or a body that is not JSON.
+            raise HTTPException(status_code=400, detail="Invalid webhook payload")
     else:
         # In test/dev mode without Stripe, parse the JSON directly
         import json

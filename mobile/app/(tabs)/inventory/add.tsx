@@ -451,7 +451,14 @@ export default function AddItemScreen() {
             );
         } catch (err: any) {
             if (err.detail?.error === "tier_limit_reached") {
-                Alert.alert("Tier Limit", err.detail.message || "Upgrade to Pro for unlimited inventory.");
+                Alert.alert(
+                    "You've hit the free limit",
+                    err.detail.message || "Upgrade to Pro for unlimited inventory.",
+                    [
+                        { text: "Not now", style: "cancel" },
+                        { text: "See Pro", onPress: () => router.push("/(tabs)/settings/subscription") },
+                    ],
+                );
             } else {
                 Alert.alert("Error", err.message || "Failed to create item.");
             }

@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     ALGORITHM: str = "HS256"
     ENVIRONMENT: str = "development"
+    # Grandfather early free users into Pro market pricing for a while.
+    # Users created before CUTOFF (the release date, ISO) keep it for
+    # PRICING_GRACE_DAYS after it, or until PRICING_GRACE_UNTIL if set. Unset CUTOFF = off.
+    PRICING_GRACE_CUTOFF: str = ""
+    PRICING_GRACE_DAYS: int = 7
+    PRICING_GRACE_UNTIL: str = ""
     ALLOWED_ORIGIN: str = "http://localhost:3000,http://localhost:8081"
     PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"
     TESTER_EMAIL_ALLOWLIST: str = "management.donxera@gmail.com"
@@ -36,6 +42,8 @@ class Settings(BaseSettings):
     # lets iOS open reset links straight in the app (Universal Links).
     APPLE_TEAM_ID: str = ""
     IOS_BUNDLE_ID: str = "com.vendora.app"
+    # Hosted web app origin: OAuth popups started on web report back here.
+    WEB_APP_URL: str = "https://vendora.lexmakesit.com"
     INTEGRATION_SUCCESS_URL: str = "vendora://settings?integration=lightspeed&status=connected"
     # Stripe
     STRIPE_SECRET_KEY: str = ""
@@ -45,6 +53,9 @@ class Settings(BaseSettings):
     # RevenueCat (iOS in-app purchases). The webhook sends this exact value in
     # the Authorization header; set the same string in the RevenueCat dashboard.
     REVENUECAT_WEBHOOK_AUTH: str = ""
+    # RevenueCat secret (sk_...) API key. Optional: when set, deleting a Resqlo
+    # account also deletes the RevenueCat customer record (privacy erasure).
+    REVENUECAT_SECRET_KEY: str = ""
     # Directory holding the Expo web export (mobile `expo export --platform web`).
     # When it exists, the backend serves the web app at "/" (SPA fallback).
     WEB_DIST_DIR: str = ""
@@ -77,6 +88,13 @@ class Settings(BaseSettings):
     STOCKX_CLIENT_ID: str = ""
     STOCKX_CLIENT_SECRET: str = ""
     STOCKX_REDIRECT_URI: str = "https://vendora.lexmakesit.com/api/v1/integrations/stockx/callback"
+    # Google Sheets sync (OAuth web client). Scopes: drive.file + openid email.
+    # See docs/features/GOOGLE_SHEETS_SYNC.md for the Google Cloud setup.
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "https://vendora.lexmakesit.com/api/v1/integrations/google/callback"
+    # Optional browser API key for the Google Picker on web ("Use an existing sheet").
+    GOOGLE_PICKER_API_KEY: str = ""
     # Provider token encryption key (Fernet — 32-byte URL-safe base64).
     # Generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # If empty, a key is derived from SECRET_KEY via SHA-256 (acceptable for dev/test).

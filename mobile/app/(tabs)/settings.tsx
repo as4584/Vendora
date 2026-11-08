@@ -11,14 +11,15 @@ import {
   Image,
   Modal,
 } from "react-native";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
+import { openProviderConnect } from "../../utils/oauthConnect";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/auth";
 import * as api from "../../services/api";
+import { isAppleStorefront } from "../../services/purchases";
 import { StockxSettingsCard } from "../../components/Stockx";
+import { GoogleSheetsSettingsCard } from "../../components/GoogleSheets";
 import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/backgroundSync";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../components/ui";
 import { COLORS, SPACING } from "../../theme/tokens";
@@ -158,7 +159,7 @@ export default function SettingsScreen() {
   const handleConnectLightspeed = async () => {
     try {
       const { authorization_url } = await api.getLightspeedConnectUrl();
-      await WebBrowser.openAuthSessionAsync(authorization_url, Linking.createURL("settings"));
+      await openProviderConnect(authorization_url);
       await registerBackgroundSync().catch(() => {});
       await fetchAll();
     } catch (err: any) {
@@ -230,7 +231,7 @@ export default function SettingsScreen() {
   const handleConnectEbay = async () => {
     try {
       const { authorization_url } = await api.getEbayConnectUrl();
-      await WebBrowser.openAuthSessionAsync(authorization_url, Linking.createURL("settings"));
+      await openProviderConnect(authorization_url);
       await fetchAll();
     } catch (err: any) {
       Alert.alert("eBay unavailable", err?.message || "Could not open the eBay connect flow.");
@@ -261,6 +262,23 @@ export default function SettingsScreen() {
       } },
     ],
   );
+
+  const handleDisconnectPos = (provider: "square" | "clover") => {
+    const label = provider === "square" ? "Square" : "Clover";
+    Alert.alert(
+      `Disconnect ${label}?`,
+      "Your Resqlo inventory stays. Item links are kept so reconnecting matches them again.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Disconnect", style: "destructive", onPress: async () => {
+          try {
+            await (provider === "square" ? api.disconnectSquare() : api.disconnectClover());
+            await fetchAll();
+          } catch (err: any) { Alert.alert("Disconnect failed", err?.message || `Could not disconnect ${label}.`); }
+        } },
+      ],
+    );
+  };
 
   const openProviderConnection = (provider: "square" | "clover") => {
     setConnectionProvider(provider);
@@ -412,6 +430,7 @@ export default function SettingsScreen() {
         syncing={sqSyncing}
         onConnect={handleConnectSquare}
         onSync={handleSyncSquare}
+        onDisconnect={() => handleDisconnectPos("square")}
       />
       <ProviderCard
         name="Clover"
@@ -422,6 +441,7 @@ export default function SettingsScreen() {
         syncing={cvSyncing}
         onConnect={handleConnectClover}
         onSync={handleSyncClover}
+        onDisconnect={() => handleDisconnectPos("clover")}
       />
       <ProviderCard
         name="eBay"
@@ -435,6 +455,7 @@ export default function SettingsScreen() {
         onDisconnect={handleDisconnectEbay}
       />
       <StockxSettingsCard />
+      <GoogleSheetsSettingsCard />
 
       <Modal
         visible={connectionProvider !== null}
@@ -523,8 +544,13 @@ export default function SettingsScreen() {
           <Card style={styles.modalCard}>
             <SectionLabel>Delete Account Permanently</SectionLabel>
             <Text accessibilityRole="alert" style={styles.dangerText}>
-              This cannot be undone. Inventory, transactions, invoices, and integrations will be deleted.
+              This cannot be undone. Inventory, transactions, invoices, and integrations will be deleted, and access to connected eBay, StockX, and Google accounts is removed.
             </Text>
+            {isAppleStorefront() ? (
+              <Text testID="delete-apple-subscription-note" style={styles.inputLabel}>
+                If you subscribed with your Apple ID, cancel it in Settings &gt; Apple ID &gt; Subscriptions so you aren&apos;t billed again.
+              </Text>
+            ) : null}
             <Text style={styles.inputLabel}>Password</Text>
             <TextInput
               accessibilityLabel="Account password"

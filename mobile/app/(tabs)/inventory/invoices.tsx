@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as api from "../../../services/api";
 import { invoiceLabel, invoiceBalance } from "../../../utils/invoices";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
@@ -18,6 +18,8 @@ import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, sizeBreakdown } from "../../../utils/inventory";
 import { downloadPdfFile } from "../../../utils/fileActions";
 import { InvoicePayments, invoiceStatusLabel, invoiceStatusTone } from "../../../components/InvoicePayments";
+import { CustomerPicker } from "../../../components/CustomerPicker";
+import { Button } from "../../../components/Button";
 
 interface DraftLineItem {
   description: string;
@@ -48,6 +50,10 @@ export default function InvoicesScreen() {
   const [loading, setLoading] = useState(true);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customer, setCustomer] = useState<api.Customer | null>(null);
+  const [voiding, setVoiding] = useState(false);
+  const { customer: customerParam } = useLocalSearchParams<{ customer?: string }>();
   const [tax, setTax] = useState("0.00");
   const [shipping, setShipping] = useState("0.00");
   const [discount, setDiscount] = useState("0.00");
@@ -76,6 +82,12 @@ export default function InvoicesScreen() {
       .catch(() => Alert.alert("Invoices unavailable", "Could not load invoices or inventory."))
       .finally(() => setLoading(false));
   }, []);
+
+  // Opened from a customer's page: start the invoice for them.
+  useEffect(() => {
+    if (!customerParam) return;
+    api.getCustomer(customerParam).then(pickCustomer).catch(() => undefined);
+  }, [customerParam]);
 
   useEffect(() => {
     const trimmed = inventoryQuery.trim();
@@ -149,6 +161,41 @@ export default function InvoicesScreen() {
     }, 50);
   };
 
+  function pickCustomer(next: api.Customer | null) {
+    setCustomer(next);
+    if (next) {
+      setCustomerName(next.name);
+      setCustomerEmail(next.email || "");
+      setCustomerPhone(next.phone || "");
+      setView("create");
+    }
+  }
+
+  const replaceInvoice = (updated: api.InvoiceData) => {
+    setSelectedInvoice(updated);
+    setInvoices((previous) => previous.map((i) => (i.id === updated.id ? updated : i)));
+  };
+
+  const setStatus = async (invoice: api.InvoiceData, status: "sent" | "cancelled") => {
+    setVoiding(true);
+    try {
+      replaceInvoice(await api.updateInvoiceStatus(invoice.id, status));
+    } catch (err: any) {
+      Alert.alert(status === "cancelled" ? "Void failed" : "Update failed", err?.detail?.message || err?.message || "Could not update the invoice.");
+    } finally {
+      setVoiding(false);
+    }
+  };
+
+  const confirmVoid = (invoice: api.InvoiceData) => Alert.alert(
+    "Void this invoice?",
+    "It stays in your history as Void and can't be paid. Nothing has left your stock yet.",
+    [
+      { text: "Keep", style: "cancel" },
+      { text: "Void invoice", style: "destructive", onPress: () => void setStatus(invoice, "cancelled") },
+    ],
+  );
+
   const handleClose = () => {
     router.replace("/dashboard" as any);
   };
@@ -180,6 +227,8 @@ export default function InvoicesScreen() {
       const invoice = await api.createInvoice({
         customer_name: customerName.trim(),
         customer_email: customerEmail.trim() || undefined,
+        customer_phone: customerPhone.trim() || undefined,
+        customer_id: customer && customer.name === customerName.trim() ? customer.id : undefined,
         tax,
         shipping,
         discount,
@@ -196,6 +245,8 @@ export default function InvoicesScreen() {
       setInvoices((previous) => [invoice, ...previous.filter((existing) => existing.id !== invoice.id)]);
       setCustomerName("");
       setCustomerEmail("");
+      setCustomerPhone("");
+      setCustomer(null);
       setTax("0.00");
       setShipping("0.00");
       setDiscount("0.00");
@@ -246,6 +297,7 @@ export default function InvoicesScreen() {
         <>
           <Card style={{ gap: SPACING.md }}>
             <SectionLabel>Customer</SectionLabel>
+            <CustomerPicker selected={customer} onChange={pickCustomer} />
             <TextInput
               accessibilityLabel="Customer Name"
               style={styles.input}
@@ -262,6 +314,15 @@ export default function InvoicesScreen() {
               value={customerEmail}
               onChangeText={setCustomerEmail}
               autoCapitalize="none"
+            />
+            <TextInput
+              accessibilityLabel="Customer Phone"
+              style={styles.input}
+              placeholder="Phone (optional)"
+              placeholderTextColor={COLORS.textSoft}
+              value={customerPhone}
+              onChangeText={setCustomerPhone}
+              keyboardType="phone-pad"
             />
           </Card>
 
@@ -499,13 +560,16 @@ export default function InvoicesScreen() {
 
               {selectedInvoice.notes ? <Text style={styles.helperText}>{selectedInvoice.notes}</Text> : null}
 
-              <InvoicePayments
-                invoice={selectedInvoice}
-                onRecorded={(updated) => {
-                  setSelectedInvoice(updated);
-                  setInvoices((previous) => previous.map((i) => (i.id === updated.id ? updated : i)));
-                }}
-              />
+              <InvoicePayments invoice={selectedInvoice} onRecorded={replaceInvoice} />
+
+              {!selectedInvoice._pending && (selectedInvoice.status === "draft" || selectedInvoice.status === "sent") ? (
+                <View style={styles.statusActions}>
+                  {selectedInvoice.status === "draft" ? (
+                    <Button label="Mark as sent" size="sm" variant="secondary" leadingIcon="send-outline" onPress={() => void setStatus(selectedInvoice, "sent")} disabled={voiding} />
+                  ) : null}
+                  <Button label="Void invoice" size="sm" variant="destructive" onPress={() => confirmVoid(selectedInvoice)} loading={voiding} />
+                </View>
+              ) : null}
 
               <ActionButton
                 label="Preview"
@@ -580,6 +644,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  statusActions: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs },
   segmentRow: { flexDirection: "row", gap: SPACING.sm, flexWrap: "wrap" },
   input: {
     backgroundColor: COLORS.bgElevated,
@@ -612,11 +677,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: COLORS.info,
-    backgroundColor: "#182744",
+    backgroundColor: COLORS.primarySoft,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  inlineActionText: { color: "#AFCEFF", fontSize: 12, fontWeight: "600" },
+  inlineActionText: { color: COLORS.info, fontSize: 12, fontWeight: "600" },
   sizeChoiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
   sizeChoice: {
     minWidth: 58,

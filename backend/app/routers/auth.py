@@ -21,6 +21,7 @@ from app.schemas.user import (
     UserProfileUpdate,
     UserResponse,
 )
+from app.services.account_deletion import revoke_third_party_access
 from app.services.auth import (
     create_password_reset_token,
     hash_password,
@@ -49,7 +50,8 @@ RESET_REQUEST_MESSAGE = (
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def register(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
     """Register a new user account."""
     # Check duplicate email
     existing = (
@@ -168,7 +170,8 @@ def forgot_password(
 
 
 @router.post("/reset-password", response_model=MessageResponse)
-def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def reset_password(payload: PasswordResetConfirm, request: Request, db: Session = Depends(get_db)):
     """Consume a valid one-time token and replace the user's password."""
     token_hash = hash_password_reset_token(payload.token)
     user = (
@@ -239,6 +242,7 @@ def delete_account(
     if not verify_password(payload.password, current_user.password_hash):
         raise HTTPException(status_code=401, detail="Password is incorrect.")
     cancel_user_subscriptions(db, current_user)
+    revoke_third_party_access(db, current_user)
     db.delete(current_user)
     db.commit()
     return MessageResponse(message="Account permanently deleted.")
