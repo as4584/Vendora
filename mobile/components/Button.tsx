@@ -40,12 +40,12 @@ const PALETTE: Record<ButtonVariant, { bg: string; pressed: string; border: stri
   destructive: { bg: COLORS.danger, pressed: BRAND.dangerPressed, border: COLORS.danger, text: BRAND.onPrimary },
 };
 
-export function triggerHaptic(kind: HapticKind) {
+export async function triggerHaptic(kind: HapticKind): Promise<void> {
   if (kind === "none" || Platform.OS === "web") return;
   try {
-    if (kind === "success") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    else if (kind === "warning") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    else void Haptics.impactAsync(kind === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+    if (kind === "success") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    else if (kind === "warning") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    else await Haptics.impactAsync(kind === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
   } catch {
     // Haptics are a nicety; never let them break a tap.
   }
