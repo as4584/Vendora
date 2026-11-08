@@ -15,7 +15,11 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function SubscriptionScreen() {
   const { refreshUser, user } = useAuth();
-  const useApple = iap.iapEnabled();
+  // On iOS every upgrade goes through Apple (Guideline 3.1.1). This must not
+  // depend on the RevenueCat key: a build without it shows "unavailable",
+  // never the Stripe checkout.
+  const useApple = iap.isAppleStorefront();
+  const storeReady = useApple && iap.iapEnabled();
   const [plans, setPlans] = useState<iap.StorePlan[]>([]);
   const [status, setStatus] = useState<api.SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,7 +31,7 @@ export default function SubscriptionScreen() {
     setLoadError(null);
     try {
       setStatus(await api.getSubscriptionStatus());
-      if (useApple && user) {
+      if (storeReady && user) {
         try { setPlans(await iap.loadPlans(user.id)); }
         catch { setPlans([]); }
       }
@@ -44,6 +48,7 @@ export default function SubscriptionScreen() {
   }, []);
 
   const openCheckout = async (plan: "pro" | "partner") => {
+    if (useApple) return;
     setWorking(plan);
     try {
       const { checkout_url } = await api.createSubscriptionCheckout(plan);
@@ -77,6 +82,10 @@ export default function SubscriptionScreen() {
 
   const restoreApple = async () => {
     if (!user) return;
+    if (!storeReady) {
+      Alert.alert("Restore unavailable", "The App Store can't be reached right now. Please try again later.");
+      return;
+    }
     setWorking("restore");
     try {
       const found = await iap.restore(user.id);
@@ -88,7 +97,8 @@ export default function SubscriptionScreen() {
   };
 
   const manageBilling = async () => {
-    if (status?.provider === "apple" && useApple) {
+    if (useApple) {
+      // Apple-managed only; the Stripe billing portal is never opened on iOS.
       try { await iap.manageSubscriptions(); } catch { await Linking.openURL("https://apps.apple.com/account/subscriptions"); }
       return;
     }
@@ -118,7 +128,8 @@ export default function SubscriptionScreen() {
         <View style={styles.row}><SectionLabel>Current access</SectionLabel><Pill label={status?.is_partner ? "PARTNER" : (status?.tier ?? "free").toUpperCase()} tone="primary" /></View>
         <Text style={styles.muted}>Billing status: {status?.status || "none"}</Text>
         {status?.current_period_end ? <Text style={styles.muted}>Current period ends {new Date(status.current_period_end).toLocaleDateString()}</Text> : null}
-        {status?.managed_billing || (useApple && status?.provider === "apple") ? <ActionButton label={working === "portal" ? "Opening..." : status?.provider === "apple" && useApple ? "Manage Subscription" : "Manage Billing"} onPress={manageBilling} disabled={!!working} tone="secondary" /> : null}
+        {useApple && status?.managed_billing && status?.provider !== "apple" ? <Text testID="billing-managed-elsewhere" style={styles.muted}>This subscription is not managed by the App Store, so it cannot be changed here.</Text> : null}
+        {(!useApple && status?.managed_billing) || (useApple && status?.provider === "apple") ? <ActionButton label={working === "portal" ? "Opening..." : status?.provider === "apple" && useApple ? "Manage Subscription" : "Manage Billing"} onPress={manageBilling} disabled={!!working} tone="secondary" /> : null}
       </Card>
       {useApple ? (
         <>
@@ -131,7 +142,7 @@ export default function SubscriptionScreen() {
                 <SectionLabel>{`${partner ? "Pro + Partner" : "Pro"} · ${plan.price}/${plan.period}`}</SectionLabel>
                 <Text style={styles.copy}>{partner
                   ? "Everything in Pro, plus a public storefront, verified badge, and priority support."
-                  : "Unlimited inventory, invoices, barcode tools, exports, Stripe payments, and advanced analytics."}</Text>
+                  : "Unlimited inventory, invoices, barcode tools, exports, and advanced analytics."}</Text>
                 {active ? <Pill label="Active" tone="success" /> : <ActionButton label={working === plan.id ? "Waiting for Apple..." : `Subscribe ${plan.price}/${plan.period}`} onPress={() => buyApple(plan)} disabled={!!working} />}
               </Card>
             );
