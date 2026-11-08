@@ -48,6 +48,8 @@ describe('subscription product (web: Stripe)', () => {
     expect(screen.getByTestId('subscription-loading')).toBeTruthy();
     resolveStatus(subscription);
     await screen.findByTestId('subscription-content');
+    expect(screen.getByTestId('pro-compare')).toBeTruthy();
+    expect(screen.getByText('Unlimited')).toBeTruthy();
     (api.createSubscriptionCheckout as jest.Mock).mockResolvedValue({ checkout_url: 'https://checkout', session_id: 'cs' });
     fireEvent.press(screen.getByText('Upgrade to Pro'));
     await waitFor(() => expect(api.createSubscriptionCheckout).toHaveBeenCalledWith('pro'));
@@ -61,6 +63,7 @@ describe('subscription product (web: Stripe)', () => {
     (api.createBillingPortal as jest.Mock).mockResolvedValue({ portal_url: 'https://portal' });
     const screen = render(<SubscriptionScreen />);
     await screen.findByText('PARTNER');
+    expect(screen.queryByTestId('pro-compare')).toBeNull();
     expect(screen.getAllByText('Active')).toHaveLength(2);
     fireEvent.press(screen.getByText('Manage Billing'));
     await waitFor(() => expect(WebBrowser.openBrowserAsync).toHaveBeenCalledWith('https://portal'));
