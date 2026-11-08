@@ -119,6 +119,8 @@ describe('LiveBoxScanner', () => {
       <LiveBoxScanner onFinish={onFinish} onCancel={jest.fn()} onUnavailable={jest.fn()} />,
     );
     expect(mockNativeProps.active).toBe(true);
+    expect(screen.getByText('Reading your box')).toBeTruthy();
+    expect(screen.getByLabelText('Box label progress').props.accessibilityValue).toEqual({ min: 0, max: 3, now: 0 });
     expect(screen.getByTestId('live-check-name')).toHaveTextContent(/Looking/);
     expect(screen.getByTestId('live-check-color')).toHaveTextContent(/If shown/);
 
@@ -136,6 +138,8 @@ describe('LiveBoxScanner', () => {
     expect(onFinish.mock.calls[0][0].name).toMatch(/Jordan 4 Retro/i);
     expect(mockHaptic).toHaveBeenCalledWith('success');
     expect(screen.getByTestId('live-check-size')).toHaveTextContent('Size10');
+    expect(screen.getByText('Label ready')).toBeTruthy();
+    expect(screen.getByLabelText('Box label progress').props.accessibilityValue).toEqual({ min: 0, max: 4, now: 4 });
 
     // Late frames after finishing are ignored.
     send(JORDAN_LINES, ['197862948123']);
@@ -144,10 +148,11 @@ describe('LiveBoxScanner', () => {
 
   it('waits for the style code once the label shows one', () => {
     const onFinish = jest.fn();
-    render(<LiveBoxScanner onFinish={onFinish} onCancel={jest.fn()} onUnavailable={jest.fn()} stableFrames={2} />);
+    const screen = render(<LiveBoxScanner onFinish={onFinish} onCancel={jest.fn()} onUnavailable={jest.fn()} stableFrames={2} />);
     send(['AIR JORDAN 4 RETRO', 'US 10', 'FV5029-006'], ['1']);
     send(['AIR JORDAN 4 RETRO', 'US 10', 'FV5029-008'], ['1']); // style jitters
     expect(onFinish).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Box label progress').props.accessibilityValue).toEqual({ min: 0, max: 4, now: 3 });
     send(['AIR JORDAN 4 RETRO', 'US 10', 'FV5029-008'], ['1']);
     expect(onFinish).toHaveBeenCalled();
   });
@@ -163,6 +168,16 @@ describe('LiveBoxScanner', () => {
     fireEvent.press(screen.getByText('Done'));
     expect(onFinish).toHaveBeenCalledTimes(1);
     expect(onFinish).toHaveBeenCalledWith({ size: '9.5' });
+  });
+
+  it('shows completion without optional color or an unseen style code', () => {
+    const onFinish = jest.fn();
+    const screen = render(<LiveBoxScanner onFinish={onFinish} onCancel={jest.fn()} onUnavailable={jest.fn()} stableFrames={1} />);
+    send(['AIR JORDAN 4 RETRO', 'US 10'], ['197862948123']);
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Label ready')).toBeTruthy();
+    expect(screen.getByLabelText('Box label progress').props.accessibilityValue).toEqual({ min: 0, max: 3, now: 3 });
+    expect(screen.getByTestId('live-check-color')).toHaveTextContent(/If shown/);
   });
 
   it('cancels, and reports native errors as unavailable', () => {
