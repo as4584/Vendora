@@ -502,14 +502,14 @@ export async function flushOutbox(): Promise<void> {
       } catch (err) {
         if (isTransient(err)) {
           q[0].attempts += 1;
-          q[0].lastError = String((err as any)?.message ?? err);
+          q[0].lastError = String((err as { message?: unknown } | null)?.message ?? err);
           await writeJSON(KEYS.outbox, q);
           break; // stop and retry on the next reconnect
         }
         // Rejected for good (4xx). Don't lose it silently: record it for the
         // user, undo its optimistic change, and pull out anything queued
         // after it that depends on an item that will now never exist.
-        const message = String((err as any)?.message ?? err);
+        const message = String((err as { message?: unknown } | null)?.message ?? err);
         const rejected = [q[0], ...dependentsOf(q[0], q.slice(1))];
         const rejectedIds = new Set(rejected.map((e) => e.id));
         q = q.filter((e) => !rejectedIds.has(e.id));

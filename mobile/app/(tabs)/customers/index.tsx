@@ -69,7 +69,7 @@ export default function CustomersScreen() {
           activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel={`Open ${c.name}`}
-          onPress={() => router.push(`/customers/${c.id}` as any)}
+          onPress={() => router.push(`/customers/${c.id}`)}
         >
           <IconCircle name="person-outline" />
           <View style={styles.rowText}>

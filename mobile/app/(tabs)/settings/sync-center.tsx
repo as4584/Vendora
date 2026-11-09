@@ -89,7 +89,7 @@ export default function SyncCenterScreen() {
   const syncOne = async (key: ProviderKey) => {
     const provider = PROVIDERS.find((p) => p.key === key)!;
     if (!statuses[key]?.connected) {
-      router.push("/settings" as any);
+      router.push("/settings");
       return;
     }
     setSyncing(key);

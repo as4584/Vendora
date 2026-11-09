@@ -232,7 +232,7 @@ export default function ItemDetailScreen() {
       <HeaderTitle
         title={item.name}
         subtitle={`${item.category || "Inventory item"} • ${item.sku || "No SKU yet"}`}
-        right={<ActionButton label="Edit" onPress={() => push({ pathname: "/(tabs)/inventory/edit", params: { id: item.id } } as any)} tone="secondary" compact />}
+        right={<ActionButton label="Edit" onPress={() => push({ pathname: "/(tabs)/inventory/edit", params: { id: item.id } })} tone="secondary" compact />}
       />
 
       <Card>

@@ -152,7 +152,7 @@ export default function CustomerDetailScreen() {
       <Button
         label="New invoice for this customer"
         leadingIcon="receipt-outline"
-        onPress={() => router.push({ pathname: "/inventory/invoices" as any, params: { customer: customer.id } })}
+        onPress={() => router.push({ pathname: "/inventory/invoices", params: { customer: customer.id } })}
         fullWidth
       />
     </ScrollView>

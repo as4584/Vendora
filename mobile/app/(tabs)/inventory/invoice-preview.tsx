@@ -19,7 +19,7 @@ export default function InvoicePreviewScreen() {
   const [invoice, setInvoice] = useState<api.InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const accent = (user as any)?.invoice_accent_color || DEFAULT_ACCENT;
+  const accent = user?.invoice_accent_color || DEFAULT_ACCENT;
   const bizName = user?.business_name || user?.email?.split("@")[0] || "Your Business";
 
   useEffect(() => {
@@ -66,8 +66,8 @@ export default function InvoicePreviewScreen() {
                 </Text>
               </View>
               <Text style={styles.bizName}>{bizName}</Text>
-              {!!(user as any)?.business_address && <Text style={styles.small}>{(user as any).business_address}</Text>}
-              {!!(user as any)?.business_phone && <Text style={styles.small}>{(user as any).business_phone}</Text>}
+              {!!user?.business_address && <Text style={styles.small}>{user?.business_address}</Text>}
+              {!!user?.business_phone && <Text style={styles.small}>{user?.business_phone}</Text>}
               {!!user?.email && <Text style={styles.small}>{user.email}</Text>}
             </View>
             <Text style={styles.invoiceWord}>INVOICE</Text>

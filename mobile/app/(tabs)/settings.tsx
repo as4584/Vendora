@@ -173,7 +173,7 @@ export default function SettingsScreen() {
     try {
       await api.triggerLightspeedSync();
       await fetchAll();
-      router.push("/settings/sync-center" as any);
+      router.push("/settings/sync-center");
     } catch (err) {
       Alert.alert("Lightspeed sync failed", errorMessage(err, "Could not complete the Lightspeed sync."));
     } finally {
@@ -208,7 +208,7 @@ export default function SettingsScreen() {
     try {
       await api.triggerSquareSync();
       await fetchAll();
-      router.push("/settings/sync-center" as any);
+      router.push("/settings/sync-center");
     } catch (err) {
       Alert.alert("Square sync failed", errorMessage(err, "Could not complete the Square sync."));
     } finally {
@@ -221,7 +221,7 @@ export default function SettingsScreen() {
     try {
       await api.triggerCloverSync();
       await fetchAll();
-      router.push("/settings/sync-center" as any);
+      router.push("/settings/sync-center");
     } catch (err) {
       Alert.alert("Clover sync failed", errorMessage(err, "Could not complete the Clover sync."));
     } finally {
@@ -244,7 +244,7 @@ export default function SettingsScreen() {
     try {
       await api.triggerEbaySync();
       await fetchAll();
-      router.push("/settings/sync-center" as any);
+      router.push("/settings/sync-center");
     } catch (err) {
       Alert.alert("eBay sync failed", errorMessage(err, "Could not complete the eBay sync."));
     } finally {
@@ -383,10 +383,10 @@ export default function SettingsScreen() {
         <SectionLabel>Resqlo Plus</SectionLabel>
         <Text style={styles.helperText}>Billing, analytics, storefront, and support are now available in the app.</Text>
         <View style={styles.productActions}>
-          <ActionButton label="Plans & Billing" onPress={() => router.push("/settings/subscription" as any)} tone="secondary" compact />
-          <ActionButton label="Advanced Analytics" onPress={() => router.push("/settings/analytics" as any)} tone="secondary" compact />
-          <ActionButton label="Support" onPress={() => router.push("/settings/support" as any)} tone="secondary" compact />
-          {user?.is_partner ? <ActionButton label="View Public Storefront" onPress={() => router.push(`/seller/${user.id}` as any)} tone="secondary" compact /> : null}
+          <ActionButton label="Plans & Billing" onPress={() => router.push("/settings/subscription")} tone="secondary" compact />
+          <ActionButton label="Advanced Analytics" onPress={() => router.push("/settings/analytics")} tone="secondary" compact />
+          <ActionButton label="Support" onPress={() => router.push("/settings/support")} tone="secondary" compact />
+          {user?.is_partner ? <ActionButton label="View Public Storefront" onPress={() => router.push(`/seller/${user.id}`)} tone="secondary" compact /> : null}
         </View>
       </Card>
 
@@ -406,7 +406,7 @@ export default function SettingsScreen() {
             <Text style={styles.syncStatLabel}>Tracked providers</Text>
           </View>
         </View>
-        <ActionButton label="Open Sync Center" onPress={() => router.push("/settings/sync-center" as any)} tone="secondary" />
+        <ActionButton label="Open Sync Center" onPress={() => router.push("/settings/sync-center")} tone="secondary" />
       </Card>
 
       <SectionLabel>Integrations</SectionLabel>

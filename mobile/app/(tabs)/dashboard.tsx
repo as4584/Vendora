@@ -165,7 +165,7 @@ export default function DashboardScreen() {
         <StatCard label="Total items" value={String(data.total_items)} delta={`${data.items_listed} listed`} deltaTone="muted" />
       </View>
       <View style={styles.grid}>
-        <StatCard label="Low stock" value={String(lowStock)} delta="View items" deltaTone={lowStock > 0 ? "down" : "muted"} onPress={() => router.push("/inventory" as any)} />
+        <StatCard label="Low stock" value={String(lowStock)} delta="View items" deltaTone={lowStock > 0 ? "down" : "muted"} onPress={() => router.push("/inventory")} />
         <StatCard label="Refunds" value={String(data.total_refunds)} delta="All time" deltaTone="muted" />
       </View>
 

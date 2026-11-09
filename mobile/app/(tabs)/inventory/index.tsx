@@ -269,7 +269,7 @@ export default function InventoryListScreen() {
         renderItem={({ item }) => (
           <InventoryCard
             item={item}
-            onPress={() => router.push(`/inventory/${item.id}` as any)}
+            onPress={() => router.push(`/inventory/${item.id}`)}
             selectMode={selectMode}
             selected={selectedIds.has(item.id)}
             onToggleSelect={() => toggleSelect(item.id)}
@@ -299,9 +299,9 @@ export default function InventoryListScreen() {
               ) : (
                 <ActionButton label="Select" onPress={() => setSelectMode(true)} tone="secondary" compact />
               )}
-              <ActionButton label="Import" onPress={() => router.push("/inventory/import" as any)} tone="secondary" compact />
+              <ActionButton label="Import" onPress={() => router.push("/inventory/import")} tone="secondary" compact />
               <ActionButton label="Export" onPress={onExport} tone="secondary" compact />
-              <ActionButton label="Add Stock" onPress={() => router.push("/inventory/add" as any)} compact />
+              <ActionButton label="Add Stock" onPress={() => router.push("/inventory/add")} compact />
             </View>
 
             <Card>
@@ -346,9 +346,9 @@ export default function InventoryListScreen() {
               <Text style={styles.emptyTitle}>No inventory matches this view.</Text>
               <Text style={styles.emptyText}>Change the filters or add a new stock item to continue.</Text>
               <View style={styles.emptyCta}>
-                <ActionButton label="Add an item" onPress={() => router.push("/inventory/add" as any)} />
+                <ActionButton label="Add an item" onPress={() => router.push("/inventory/add")} />
               </View>
-              {!searchQuery && !statusFilter && !sourceFilter ? <GoogleSheetsPrompt onPress={() => router.push("/settings" as any)} /> : null}
+              {!searchQuery && !statusFilter && !sourceFilter ? <GoogleSheetsPrompt onPress={() => router.push("/settings")} /> : null}
             </View>
           </Card>
         }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Platform } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import AddItemScreen from '../app/(tabs)/inventory/add';
 import * as ImagePicker from 'expo-image-picker';
@@ -314,15 +314,25 @@ describe('add inventory screen', () => {
     expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Type the details once/);
 
     mockCameraPermission = null;
-    mockRequestCameraPermission.mockResolvedValueOnce({ granted: false });
+    mockRequestCameraPermission.mockResolvedValueOnce({ granted: false, canAskAgain: true });
     const deniedScreen = render(<AddItemScreen />);
     fireEvent.press(deniedScreen.getByLabelText('Scan barcode'));
     await waitFor(() =>
       expect(alertSpy).toHaveBeenLastCalledWith(
-        'Permission Required',
-        'Allow camera access to scan barcodes.',
+        'Camera access needed',
+        'Allow camera access to scan barcodes and box labels.',
+        [{ text: 'OK' }],
       ),
     );
+
+    // Permanently denied: offer a way to Settings.
+    const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+    mockRequestCameraPermission.mockResolvedValueOnce({ granted: false, canAskAgain: false });
+    fireEvent.press(deniedScreen.getByLabelText('Scan barcode'));
+    await waitFor(() => expect(alertSpy.mock.calls.at(-1)?.[2]).toHaveLength(2));
+    const buttons = alertSpy.mock.calls.at(-1)?.[2];
+    buttons.find((b: { text: string }) => b.text === 'Open Settings').onPress();
+    expect(openSettings).toHaveBeenCalled();
   });
 
   it('fills the form from scan memory and remembers the save', async () => {

@@ -198,7 +198,7 @@ export default function InvoicesScreen() {
   );
 
   const handleClose = () => {
-    router.replace("/dashboard" as any);
+    router.replace("/dashboard");
   };
 
   const handleOpenInvoice = async (invoiceId: string) => {
@@ -576,7 +576,7 @@ export default function InvoicesScreen() {
                 label="Preview"
                 onPress={() =>
                   router.push({
-                    pathname: "/inventory/invoice-preview" as any,
+                    pathname: "/inventory/invoice-preview",
                     params: { id: selectedInvoice.id },
                   })
                 }
