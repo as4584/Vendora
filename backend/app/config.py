@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     ANALYTICS_ADMIN_TOKEN: str = ""
     # Crash/error reporting. Empty = Sentry off.
     SENTRY_DSN: str = ""
+    # Expo push for eBay sale alerts.
+    PUSH_ENABLED: bool = True
     # Grandfather early free users into Pro market pricing for a while.
     # Users created before CUTOFF (the release date, ISO) keep it for
     # PRICING_GRACE_DAYS after it, or until PRICING_GRACE_UNTIL if set. Unset CUTOFF = off.

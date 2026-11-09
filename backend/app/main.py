@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from app.routers import auth, inventory, transactions, dashboard, invoices, webhooks
 from app.routers import export, features, sellers, integrations
 from app.routers import subscriptions, support, reset_bridge, legal_pages, scan, stockx, customers
-from app.routers import google_sheets, events
+from app.routers import google_sheets, events, devices
 from app.config import settings
 from app.observability import init_sentry
 from app.rate_limit import limiter
@@ -137,6 +137,7 @@ app.include_router(support.router, prefix="/api/v1")
 app.include_router(scan.router, prefix="/api/v1")
 app.include_router(customers.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
+app.include_router(devices.router, prefix="/api/v1")
 # The password-reset email bridge page lives at the site root, outside /api/v1.
 app.include_router(reset_bridge.router)
 app.include_router(legal_pages.router)

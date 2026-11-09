@@ -24,6 +24,7 @@ from typing import Any, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.services.push import notify_ebay_sales
 from app.config import settings
 from app.models.ebay_insights import EbayListingTraffic, EbayOrderFees, EbayPayout
 from app.models.integration import EbayToken
@@ -392,10 +393,12 @@ async def import_order_now(db: Session, user_id: uuid.UUID, order_id: str) -> bo
     order = await seller.call("GET", f"/sell/fulfillment/v1/order/{order_id}")
     if not order:
         return False
-    ebay_service._upsert_transaction(db, user_id, order)
+    _, created = ebay_service._upsert_transaction(db, user_id, order)
     db.flush()
     ebay_service._apply_order_stock(db, user_id, order)
     db.commit()
+    if created:
+        await notify_ebay_sales(db, user_id, [order])
     return True
 
 

@@ -175,6 +175,7 @@
       "expo-status-bar",
       "expo-web-browser",
       "expo-font",
+      "expo-notifications",
       "@sentry/react-native"
     ],
     "extra": {
