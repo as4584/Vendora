@@ -11,6 +11,9 @@ import { View, ActivityIndicator, Platform, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { COLORS } from "../theme/tokens";
+import { identify, initCrashReporting, track } from "../services/telemetry";
+
+initCrashReporting();
 // Navigation theme: dark everywhere, so wide screens (iPad) and screen
 // transitions never show the default light background behind content.
 // (react-navigation is vendored inside expo-router in SDK 57.)
@@ -28,9 +31,15 @@ const NAV_THEME = {
     },
 };
 function RootLayoutNav() {
-    const { isAuthenticated, isLoading } = useAuth();
+    const { isAuthenticated, isLoading, user } = useAuth();
     const segments = useSegments();
     const { replace } = useRouter();
+    const userId = user?.id ? String(user.id) : null;
+
+    useEffect(() => {
+        identify(userId);
+        if (userId) track("app_open");
+    }, [userId]);
 
     useEffect(() => {
         if (isLoading) return;
