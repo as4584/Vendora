@@ -20,6 +20,8 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('../__mocks__/async-storage'),
 );
 
+jest.mock('../components/GetStarted', () => ({ GetStarted: () => null }));
+
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 

@@ -11,6 +11,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../services/api";
 import { useAuth } from "../../context/auth";
+import { GetStarted } from "../../components/GetStarted";
 import {
   ActionButton,
   Card,
@@ -146,6 +147,10 @@ export default function DashboardScreen() {
           <Text style={styles.greetingSub}>{todayLabel()}</Text>
         </View>
       </View>
+
+      {user && view.data ? (
+        <GetStarted userId={String(user.id)} totalItems={view.data.total_items} itemsSold={view.data.items_sold} />
+      ) : null}
 
       {/* Hero: today's profit, the one figure that matters */}
       <GradientCard colors={GRADIENTS.hero}>
