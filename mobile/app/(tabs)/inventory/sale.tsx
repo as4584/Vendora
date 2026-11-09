@@ -19,6 +19,7 @@ import { Card, Icon, Pill, SectionLabel } from "../../../components/ui";
 import { Button, IconButton, triggerHaptic } from "../../../components/Button";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 import { ReceiptSheet } from "../../../components/ReceiptSheet";
+import { maybeAskForRating, recordSale } from "../../../services/rating";
 import { BRAND, COLORS, FONT_SCALE, RADII, SPACING, TYPE } from "../../../theme/tokens";
 import { formatCurrency, resolveQty } from "../../../utils/inventory";
 import {
@@ -313,6 +314,7 @@ export default function QuickSaleScreen() {
       const order = await api.createSaleOrder(payload);
       const offline = !!order.pending || !isOnline();
       triggerHaptic("success");
+      if (!offline) void recordSale();
       setReceipt({
         businessName,
         date: new Date(),
@@ -663,10 +665,14 @@ export default function QuickSaleScreen() {
 
       <ReceiptSheet
         receipt={receipt}
-        onNewSale={resetSale}
+        onNewSale={() => {
+          resetSale();
+          void maybeAskForRating();
+        }}
         onDone={() => {
           resetSale();
           router.replace("/(tabs)/dashboard");
+          void maybeAskForRating();
         }}
       />
     </View>
