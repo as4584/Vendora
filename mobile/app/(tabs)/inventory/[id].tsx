@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { itemProfit } from "../../../services/profit";
 import * as api from "../../../services/api";
 import { StockxItemCard } from "../../../components/Stockx";
 import { Ionicons } from "@expo/vector-icons";
@@ -273,35 +274,34 @@ export default function ItemDetailScreen() {
       </Card>
 
       {(() => {
-        const cost = Number(item.buy_price ?? 0);
-        const list = Number(item.expected_sell_price ?? 0);
-        const profit = list - cost;
-        const roi = cost > 0 ? Math.round((profit / cost) * 100) : null;
+        const p = itemProfit(item, transactions);
+        const sold = p.kind === "realized";
         return (
           <Card>
-            <View style={styles.metricStrip}>
+            <View style={styles.metricStrip} testID="item-profit">
               <View style={styles.metricCell}>
-                <Text style={styles.metricCellValue}>{formatCurrency(item.buy_price)}</Text>
+                <Text style={styles.metricCellValue}>{`$${p.cost.toFixed(0)}`}</Text>
                 <Text style={styles.metricCellLabel}>Cost</Text>
               </View>
               <View style={styles.metricCellDivider} />
               <View style={styles.metricCell}>
-                <Text style={styles.metricCellValue}>{formatCurrency(item.expected_sell_price)}</Text>
-                <Text style={styles.metricCellLabel}>List</Text>
+                <Text style={styles.metricCellValue}>{sold ? `$${p.revenue.toFixed(0)}` : formatCurrency(item.expected_sell_price)}</Text>
+                <Text style={styles.metricCellLabel}>{sold ? "Sold" : "List"}</Text>
               </View>
               <View style={styles.metricCellDivider} />
               <View style={styles.metricCell}>
-                <Text style={[styles.metricCellValue, { color: profit >= 0 ? COLORS.success : COLORS.danger }]}>
-                  {`${profit >= 0 ? "+" : "-"}$${Math.abs(profit).toFixed(0)}`}
+                <Text style={[styles.metricCellValue, { color: p.profit >= 0 ? COLORS.success : COLORS.danger }]}>
+                  {`${p.profit >= 0 ? "+" : "-"}$${Math.abs(p.profit).toFixed(0)}`}
                 </Text>
-                <Text style={styles.metricCellLabel}>Profit</Text>
+                <Text style={styles.metricCellLabel}>{sold ? "Profit" : "Est. profit"}</Text>
               </View>
               <View style={styles.metricCellDivider} />
               <View style={styles.metricCell}>
-                <Text style={[styles.metricCellValue, { color: COLORS.primaryBright }]}>{roi == null ? "—" : `${roi}%`}</Text>
+                <Text style={[styles.metricCellValue, { color: COLORS.primaryBright }]}>{p.roi == null ? "—" : `${p.roi}%`}</Text>
                 <Text style={styles.metricCellLabel}>ROI</Text>
               </View>
             </View>
+            <Text testID="item-profit-note" style={styles.profitNote}>{p.note}</Text>
           </Card>
         );
       })()}
@@ -490,6 +490,7 @@ const styles = StyleSheet.create({
   photoThumbRow: { flexDirection: "row", gap: SPACING.sm, marginTop: SPACING.sm },
   thumbPhoto: { width: 64, height: 64, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardAlt },
   thumbPhotoActive: { borderColor: COLORS.primary, borderWidth: 2 },
+  profitNote: { color: COLORS.textMuted, fontSize: 12, textAlign: "center", marginTop: SPACING.xs },
   metricStrip: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   metricCell: { flex: 1, alignItems: "center", gap: 3 },
   metricCellValue: { color: COLORS.text, fontSize: 16, fontWeight: "600" },
