@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     ALGORITHM: str = "HS256"
     ENVIRONMENT: str = "development"
+    # Background marketplace/POS sync (no sync buttons in the app).
+    AUTO_SYNC_ENABLED: bool = True
+    AUTO_SYNC_MINUTES: int = 10
+    AUTO_SYNC_BATCH: int = 50
     # Grandfather early free users into Pro market pricing for a while.
     # Users created before CUTOFF (the release date, ISO) keep it for
     # PRICING_GRACE_DAYS after it, or until PRICING_GRACE_UNTIL if set. Unset CUTOFF = off.

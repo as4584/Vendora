@@ -23,7 +23,7 @@ import { GoogleSheetsSettingsCard } from "../../components/GoogleSheets";
 import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/backgroundSync";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../components/ui";
 import { COLORS, SPACING } from "../../theme/tokens";
-import { formatCompactDate } from "../../utils/inventory";
+import { syncFreshness } from "../../utils/inventory";
 
 function ProviderCard({
   name,
@@ -31,9 +31,7 @@ function ProviderCard({
   lastSynced,
   helper,
   loading,
-  syncing,
   onConnect,
-  onSync,
   onPush,
   onDisconnect,
 }: {
@@ -42,9 +40,7 @@ function ProviderCard({
   lastSynced?: string | null;
   helper: string;
   loading: boolean;
-  syncing: boolean;
   onConnect: () => void;
-  onSync: () => void;
   onPush?: () => void;
   onDisconnect?: () => void;
 }) {
@@ -59,9 +55,9 @@ function ProviderCard({
         )}
       </View>
       <Text style={styles.helperText}>{helper}</Text>
-      <Text style={styles.helperText}>Last sync: {formatCompactDate(lastSynced)}</Text>
+      {connected ? <Text testID={`${name}-freshness`} style={styles.helperText}>{syncFreshness(lastSynced)}</Text> : null}
       <View style={styles.providerActions}>
-        <ActionButton label={connected ? (syncing ? "Syncing..." : "Sync Now") : `Connect ${name}`} onPress={connected ? onSync : onConnect} tone={connected ? "primary" : "secondary"} compact />
+        {!connected ? <ActionButton label={`Connect ${name}`} onPress={onConnect} tone="secondary" compact /> : null}
         {connected && onPush ? <ActionButton label="Push to POS" onPress={onPush} tone="secondary" compact /> : null}
         {connected && onDisconnect ? <ActionButton label="Disconnect" onPress={onDisconnect} tone="ghost" compact /> : null}
       </View>
@@ -82,10 +78,6 @@ export default function SettingsScreen() {
   const [cvLoading, setCvLoading] = useState(true);
   const [ebStatus, setEbStatus] = useState<api.EbayStatus | null>(null);
   const [ebLoading, setEbLoading] = useState(true);
-  const [lsSyncing, setLsSyncing] = useState(false);
-  const [sqSyncing, setSqSyncing] = useState(false);
-  const [cvSyncing, setCvSyncing] = useState(false);
-  const [ebSyncing, setEbSyncing] = useState(false);
   const [photoSaving, setPhotoSaving] = useState(false);
   const [connectionProvider, setConnectionProvider] = useState<"square" | "clover" | null>(null);
   const [accessToken, setAccessToken] = useState("");
@@ -167,27 +159,12 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleSyncLightspeed = async () => {
-    setLsSyncing(true);
-    try {
-      await api.triggerLightspeedSync();
-      await fetchAll();
-      router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("Lightspeed sync failed", err?.message || "Could not complete the Lightspeed sync.");
-    } finally {
-      setLsSyncing(false);
-    }
-  };
-
   const handlePushLightspeed = async () => {
-    setLsSyncing(true);
     try {
       const result = await api.pushLightspeedInventory();
       Alert.alert("Lightspeed updated", `${result.items_updated} linked item${result.items_updated === 1 ? "" : "s"} pushed to the POS.${result.errors_count ? ` ${result.errors_count} failed.` : ""}`);
       await fetchAll();
     } catch (err: any) { Alert.alert("Lightspeed push failed", err?.message || "Could not publish inventory updates."); }
-    finally { setLsSyncing(false); }
   };
 
   const handleDisconnectLightspeed = () => Alert.alert(
@@ -202,32 +179,6 @@ export default function SettingsScreen() {
     ],
   );
 
-  const handleSyncSquare = async () => {
-    setSqSyncing(true);
-    try {
-      await api.triggerSquareSync();
-      await fetchAll();
-      router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("Square sync failed", err?.message || "Could not complete the Square sync.");
-    } finally {
-      setSqSyncing(false);
-    }
-  };
-
-  const handleSyncClover = async () => {
-    setCvSyncing(true);
-    try {
-      await api.triggerCloverSync();
-      await fetchAll();
-      router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("Clover sync failed", err?.message || "Could not complete the Clover sync.");
-    } finally {
-      setCvSyncing(false);
-    }
-  };
-
   const handleConnectEbay = async () => {
     try {
       const { authorization_url } = await api.getEbayConnectUrl();
@@ -235,19 +186,6 @@ export default function SettingsScreen() {
       await fetchAll();
     } catch (err: any) {
       Alert.alert("eBay unavailable", err?.message || "Could not open the eBay connect flow.");
-    }
-  };
-
-  const handleSyncEbay = async () => {
-    setEbSyncing(true);
-    try {
-      await api.triggerEbaySync();
-      await fetchAll();
-      router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("eBay sync failed", err?.message || "Could not complete the eBay sync.");
-    } finally {
-      setEbSyncing(false);
     }
   };
 
@@ -415,9 +353,7 @@ export default function SettingsScreen() {
         lastSynced={lsStatus?.last_synced_at}
         helper="POS inventory source with recurring sync support."
         loading={lsLoading}
-        syncing={lsSyncing}
         onConnect={handleConnectLightspeed}
-        onSync={handleSyncLightspeed}
         onPush={handlePushLightspeed}
         onDisconnect={handleDisconnectLightspeed}
       />
@@ -427,9 +363,7 @@ export default function SettingsScreen() {
         lastSynced={sqStatus?.last_synced_at}
         helper="Connect Square to compare local inventory against your provider catalog."
         loading={sqLoading}
-        syncing={sqSyncing}
         onConnect={handleConnectSquare}
-        onSync={handleSyncSquare}
         onDisconnect={() => handleDisconnectPos("square")}
       />
       <ProviderCard
@@ -438,9 +372,7 @@ export default function SettingsScreen() {
         lastSynced={cvStatus?.last_synced_at}
         helper="Pull Clover inventory updates into the same stock dashboard."
         loading={cvLoading}
-        syncing={cvSyncing}
         onConnect={handleConnectClover}
-        onSync={handleSyncClover}
         onDisconnect={() => handleDisconnectPos("clover")}
       />
       <ProviderCard
@@ -449,9 +381,7 @@ export default function SettingsScreen() {
         lastSynced={ebStatus?.last_synced_at}
         helper="Import your eBay listings and orders into Resqlo (read-only)."
         loading={ebLoading}
-        syncing={ebSyncing}
         onConnect={handleConnectEbay}
-        onSync={handleSyncEbay}
         onDisconnect={handleDisconnectEbay}
       />
       <StockxSettingsCard />

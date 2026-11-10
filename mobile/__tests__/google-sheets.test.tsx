@@ -113,7 +113,7 @@ describe('GoogleSheetsSettingsCard', () => {
     fireEvent.press(screen.getByText('Use this sheet'));
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Could not use that sheet', "Resqlo can't open that sheet."));
     fireEvent.press(screen.getByText('Use this sheet'));
-    expect(await screen.findByText('Sync now')).toBeTruthy();
+    expect(await screen.findByText('Open in Sheets')).toBeTruthy();
     expect(m.linkGoogleSheet).toHaveBeenLastCalledWith('https://docs.google.com/spreadsheets/d/sid/edit');
   });
 
@@ -125,8 +125,7 @@ describe('GoogleSheetsSettingsCard', () => {
     expect(screen.queryByLabelText('Google Sheets link')).toBeNull();
   });
 
-  it('shows the linked sheet, opens it, and syncs now', async () => {
-    m.syncGoogleSheets.mockResolvedValueOnce({ run_id: 'r', created: 1, updated: 0, archived: 0, appended: 0, conflicts: 0, note: null, pushes_processed: 0 });
+  it('shows the linked sheet, opens it, and has no sync button', async () => {
     render(<GoogleSheetsSettingsCard />);
     expect(await screen.findByText('Resqlo Inventory · Inventory')).toBeTruthy();
     expect(screen.getByText(/2 change\(s\) waiting/)).toBeTruthy();
@@ -134,11 +133,7 @@ describe('GoogleSheetsSettingsCard', () => {
     expect(screen.getByText(SOURCE_OF_TRUTH_HELP)).toBeTruthy();
     fireEvent.press(screen.getByText('Open in Sheets'));
     expect(Linking.openURL).toHaveBeenCalledWith(SHEET.url);
-    fireEvent.press(screen.getByText('Sync now'));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Google Sheet synced', '1 new'));
-    m.syncGoogleSheets.mockRejectedValueOnce({});
-    fireEvent.press(screen.getByText('Sync now'));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Sync failed', 'Try again in a moment.'));
+    expect(screen.queryByText('Sync now')).toBeNull();
   });
 
   it('shows the last sync problem', async () => {

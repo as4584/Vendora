@@ -3,9 +3,8 @@
  * per-order fee breakdown (final value, ads, shipping label, other).
  */
 import { useCallback, useEffect, useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import * as api from "../services/api";
-import { Button } from "./Button";
 import { Card, Pill, SectionLabel } from "./ui";
 import { COLORS, SPACING, TYPE } from "../theme/tokens";
 
@@ -23,7 +22,6 @@ export function feeParts(f: api.EbayOrderFees): string {
 export function EbayPayouts({ connected }: { connected: boolean }) {
   const [payouts, setPayouts] = useState<api.EbayPayout[]>([]);
   const [fees, setFees] = useState<api.EbayOrderFees[]>([]);
-  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(async () => {
     const [p, f] = await Promise.all([
@@ -42,24 +40,12 @@ export function EbayPayouts({ connected }: { connected: boolean }) {
 
   if (!connected) return null;
 
-  const sync = async () => {
-    setSyncing(true);
-    try {
-      await api.syncEbayFinances();
-      await load();
-    } catch (err: any) {
-      Alert.alert("eBay fees unavailable", err?.detail?.message || err?.message || "Try again later.");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   return (
     <>
       <SectionLabel>eBay Payouts</SectionLabel>
       <Card style={styles.stack}>
         {payouts.length === 0 ? (
-          <Text style={styles.muted}>Sync eBay fees to see payouts and the real profit on each order.</Text>
+          <Text style={styles.muted}>Payouts and the real profit on each order show up here automatically.</Text>
         ) : (
           payouts.slice(0, 5).map((p) => (
             <View key={p.payout_id} style={styles.row}>
@@ -83,7 +69,6 @@ export function EbayPayouts({ connected }: { connected: boolean }) {
             <Text style={styles.muted}>{feeParts(f)}</Text>
           </View>
         ))}
-        <Button testID="ebay-fees-sync" label="Sync eBay fees" size="sm" variant="secondary" onPress={sync} loading={syncing} />
       </Card>
     </>
   );

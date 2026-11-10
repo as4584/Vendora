@@ -104,13 +104,6 @@ export function GoogleSheetsSettingsCard() {
       setUrl("");
     }, "Could not use that sheet");
 
-  const sync = () =>
-    run("sync", async () => {
-      const result = await api.syncGoogleSheets();
-      Alert.alert("Google Sheet synced", syncSummary(result));
-      await reload();
-    }, "Sync failed");
-
   const toggle = (key: "source_of_truth" | "archive_missing", value: boolean) =>
     run(key, async () => {
       setStatus(await api.updateGoogleSheetSettings({ [key]: value }));
@@ -182,7 +175,6 @@ export function GoogleSheetsSettingsCard() {
           </Text>
           {sheet.last_error ? <Text style={styles.error}>Last sync problem: {sheet.last_error}</Text> : null}
           <View style={styles.actions}>
-            <Button label="Sync now" onPress={sync} loading={busy === "sync"} size="sm" />
             {sheet.url ? (
               <Button label="Open in Sheets" onPress={() => void Linking.openURL(sheet.url!)} variant="secondary" size="sm" trailingIcon="open-outline" />
             ) : null}
