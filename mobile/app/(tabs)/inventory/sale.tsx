@@ -25,6 +25,8 @@ import {
   centsToString,
   computeCheckout,
   formatCents,
+  haggle,
+  HAGGLE_STEPS,
   paymentLabel,
   sameBarcode,
   sizeOptions,
@@ -328,11 +330,24 @@ export default function QuickSaleScreen() {
         })),
         pending: offline,
         orderId: offline ? undefined : order.order_id,
+        transactionIds: offline ? undefined : (order.transactions ?? []).map((t) => t.id),
       });
     } catch (err: any) {
       Alert.alert("Sale failed", err?.message || "Could not log this sale.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const undoSale = async () => {
+    const ids = receipt?.transactionIds ?? [];
+    try {
+      for (const id of ids) await api.refundTransaction(id, "Undone at checkout");
+      triggerHaptic("success");
+      resetSale();
+      Alert.alert("Sale undone", "Items are back in stock.");
+    } catch (err) {
+      Alert.alert("Couldn't undo", (err as Error)?.message || "Try again, or refund it from the item.");
     }
   };
 
@@ -438,6 +453,20 @@ export default function QuickSaleScreen() {
                       })}
                     </View>
                   ) : null}
+                  <View style={styles.haggleRow}>
+                    {HAGGLE_STEPS.map(({ step, label }) => (
+                      <TouchableOpacity
+                        key={step}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${label} on ${line.item.name}`}
+                        onPress={() => changePrice(line.item.id, haggle(line.price, listPrice(line.item), step))}
+                        style={styles.haggleChip}
+                        hitSlop={4}
+                      >
+                        <Text style={styles.haggleText}>{label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                   <View style={styles.cartControls}>
                     <View style={styles.priceField}>
                       <Text style={styles.currency}>$</Text>
@@ -663,6 +692,7 @@ export default function QuickSaleScreen() {
 
       <ReceiptSheet
         receipt={receipt}
+        onUndo={undoSale}
         onNewSale={resetSale}
         onDone={() => {
           resetSale();
@@ -780,6 +810,9 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   cartTop: { flexDirection: "row", alignItems: "flex-start", gap: SPACING.sm },
+  haggleRow: { flexDirection: "row", gap: SPACING.xs, flexWrap: "wrap" },
+  haggleChip: { minHeight: 32, paddingHorizontal: SPACING.sm, justifyContent: "center", borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
+  haggleText: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
   cartControls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: SPACING.sm },
   qtyStepper: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
   qtyValue: { color: COLORS.text, fontSize: 16, fontWeight: "600", minWidth: 24, textAlign: "center" },

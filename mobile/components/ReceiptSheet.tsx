@@ -6,7 +6,7 @@ import { Button } from "./Button";
 import { useReducedMotion } from "./useReducedMotion";
 import { Icon } from "./ui";
 import { COLORS, RADII, SPACING, TYPE } from "../theme/tokens";
-import { buildReceiptText, formatCents, paymentLabel, type ReceiptData } from "../utils/checkout";
+import { buildReceiptText, canUndoSale, formatCents, paymentLabel, type ReceiptData } from "../utils/checkout";
 
 /**
  * Post-sale receipt: what was sold, totals, how it was paid, and a Share
@@ -16,12 +16,32 @@ export function ReceiptSheet({
   receipt,
   onNewSale,
   onDone,
+  onUndo,
 }: {
   receipt: ReceiptData | null;
   onNewSale: () => void;
   onDone: () => void;
+  /** Reverse a just-made cash sale (refund lines, restock). */
+  onUndo?: () => Promise<void>;
 }) {
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [undoing, setUndoing] = useState(false);
+  const confirmUndo = () =>
+    Alert.alert("Undo this sale?", "The items go back in stock and the sale is removed from your totals.", [
+      { text: "Keep sale", style: "cancel" },
+      {
+        text: "Undo sale",
+        style: "destructive",
+        onPress: async () => {
+          setUndoing(true);
+          try {
+            await onUndo?.();
+          } finally {
+            setUndoing(false);
+          }
+        },
+      },
+    ]);
   const reducedMotion = useReducedMotion();
   const share = async () => {
     if (!receipt) return;
@@ -115,6 +135,9 @@ export function ReceiptSheet({
                 ) : null}
                 <Button label="New sale" variant="secondary" leadingIcon="add" onPress={onNewSale} fullWidth />
                 <Button label="Done" variant="ghost" onPress={onDone} fullWidth />
+                {onUndo && canUndoSale(receipt) ? (
+                  <Button testID="undo-sale" label="Undo sale" variant="ghost" leadingIcon="arrow-undo-outline" onPress={confirmUndo} loading={undoing} fullWidth />
+                ) : null}
               </View>
             </ScrollView>
           ) : null}
