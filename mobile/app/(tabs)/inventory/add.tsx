@@ -492,6 +492,15 @@ export default function AddItemScreen() {
                     testID="smart-scan-button"
                     style={styles.smartScanButton}
                 />
+                <Button
+                    label="Scan many boxes"
+                    leadingIcon="layers-outline"
+                    variant="ghost"
+                    fullWidth
+                    onPress={() => router.push("/inventory/batch-scan")}
+                    accessibilityLabel="Batch scan many boxes, then review and save them together"
+                    testID="batch-scan-button"
+                />
                 {scanNote ? (
                     <View style={styles.scanNote} accessibilityLiveRegion="polite" testID="smart-scan-note">
                         <Text style={styles.scanNoteText}>{scanNote}</Text>
