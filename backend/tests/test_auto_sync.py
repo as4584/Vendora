@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.models.integration import EbayToken
-from app.models.provider import ProviderSyncRun
 from app.services import auto_sync
 from app.services.providers.base import SyncRunManager
 from app.security.token_encryption import encrypt_token
