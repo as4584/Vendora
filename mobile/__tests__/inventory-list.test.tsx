@@ -14,7 +14,7 @@ import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as apiMock from '../services/api';
 import * as fileActions from '../utils/fileActions';
-import InventoryListScreen, { fuzzyMatch } from '../app/(tabs)/inventory/index';
+import InventoryListScreen from '../app/(tabs)/inventory/index';
 
 const mockPush = jest.fn();
 
@@ -27,6 +27,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('../__mocks__/async-storage'),
 );
 let mockTier = 'pro';
+const mockRecent = { list: [] as string[] };
+jest.mock('../services/recentSearches', () => ({
+  getRecentSearches: jest.fn(async () => mockRecent.list),
+  addRecentSearch: jest.fn(async (q: string) => { mockRecent.list = [q, ...mockRecent.list.filter((x) => x !== q)]; return mockRecent.list; }),
+  clearRecentSearches: jest.fn(async () => { mockRecent.list = []; }),
+}));
 jest.mock('../context/auth', () => ({
   useAuth: () => ({ user: { subscription_tier: mockTier } }),
 }));
@@ -93,18 +99,6 @@ beforeEach(() => {
 
 afterEach(() => jest.restoreAllMocks());
 
-describe('fuzzyMatch', () => {
-  it('matches out-of-order subsequences, case-insensitively, ignoring spaces', () => {
-    expect(fuzzyMatch('bla', 'Nike Black')).toBe(true);
-    expect(fuzzyMatch('coc', 'Croc Classic')).toBe(true);
-    expect(fuzzyMatch('BLA', 'nike black')).toBe(true);
-    expect(fuzzyMatch('nk bl', 'Nike Black')).toBe(true);
-    expect(fuzzyMatch('', 'anything')).toBe(true);
-    expect(fuzzyMatch('zzz', 'Nike Black')).toBe(false);
-    expect(fuzzyMatch('bal', 'Nike Black')).toBe(false); // wrong order → no match
-  });
-});
-
 describe('InventoryListScreen', () => {
   it('filters the list reactively as characters are typed (subsequence)', async () => {
     (apiMock.listItems as jest.Mock).mockResolvedValue({
@@ -117,10 +111,36 @@ describe('InventoryListScreen', () => {
     });
     const screen = render(<InventoryListScreen />);
     await screen.findByText('Nike Black');
-    fireEvent.changeText(screen.getByLabelText('Search inventory'), 'bla');
-    // "bla" is a subsequence of "Nike Black" but not "Adidas White".
+    fireEvent.changeText(screen.getByLabelText('Search inventory'), 'blk');
+    // Seller shorthand: "blk" means black.
     expect(screen.getByText('Nike Black')).toBeTruthy();
     expect(screen.queryByText('Adidas White')).toBeNull();
+    // Typos still find it.
+    fireEvent.changeText(screen.getByLabelText('Search inventory'), 'adidsa');
+    expect(screen.getByText('Adidas White')).toBeTruthy();
+    expect(screen.queryByText('Nike Black')).toBeNull();
+  });
+
+  it('shows recent searches on focus, applies and clears them', async () => {
+    mockRecent.list = ['jordan sz 10', 'wemby psa 10'];
+    (apiMock.listItems as jest.Mock).mockResolvedValue({
+      items: [makeItem({ id: 'a', name: 'Air Jordan 4', sku: 'J4', size: '10' })],
+      total: 1, page: 1, per_page: 24, pages: 1,
+    });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Air Jordan 4');
+    const input = screen.getByLabelText('Search inventory');
+    await act(async () => { fireEvent(input, 'focus'); });
+    expect(await screen.findByTestId('recent-searches')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Search jordan sz 10'));
+    expect(input.props.value).toBe('jordan sz 10');
+    expect(screen.queryByTestId('recent-searches')).toBeNull();
+
+    fireEvent.changeText(input, '');
+    await act(async () => { fireEvent(input, 'focus'); });
+    fireEvent.press(await screen.findByLabelText('Clear recent searches'));
+    expect(screen.queryByTestId('recent-searches')).toBeNull();
+    await act(async () => { fireEvent(input, 'blur'); });
   });
 
   it('shows loading indicator on mount', () => {

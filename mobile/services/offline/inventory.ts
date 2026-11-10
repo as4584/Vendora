@@ -13,6 +13,7 @@
  *  - On reconnect, flushOutbox() replays the outbox FIFO, remapping the temp
  *    ids of offline-created items to their real server ids as it goes.
  */
+import { smartSearch } from "../smartSearch";
 import type {
   InventoryItem,
   PaginatedItems,
@@ -98,22 +99,14 @@ export async function offlineListItems(
   const m = await readMirror();
   let items = Object.values(m);
 
-  if (params.q) {
-    const q = params.q.toLowerCase();
-    items = items.filter(
-      (i) =>
-        i.name?.toLowerCase().includes(q) ||
-        i.sku?.toLowerCase().includes(q) ||
-        i.category?.toLowerCase().includes(q),
-    );
-  }
   if (params.status) items = items.filter((i) => i.status === params.status);
   if (params.source) items = items.filter((i) => i.source === params.source);
   if (params.availableOnly) items = items.filter((i) => i.quantity > 0);
   if (params.upc) items = items.filter((i) => sameBarcode(i.upc, params.upc));
 
-  // Newest first, matching the server's default ordering.
+  // Newest first, matching the server's default ordering; a search then ranks best match first.
   items.sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
+  if (params.q) items = smartSearch(items, params.q);
 
   const page = params.page ?? 1;
   const perPage = params.perPage ?? 20;
