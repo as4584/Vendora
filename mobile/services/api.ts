@@ -517,6 +517,24 @@ export async function getItem(id: string): Promise<InventoryItem> {
   }
 }
 
+export interface LastSale {
+  unit_price: string;
+  sold_at: string;
+  quantity: number;
+  /** this_item, or the same product sold as another item (SKU, then name). */
+  match: "this_item" | "same_sku" | "same_name";
+}
+
+/** What this product last sold for (your own sales). null if never, or offline. */
+export async function getLastSale(id: string): Promise<LastSale | null> {
+  if (!isOnline() || isTempId(id)) return null;
+  try {
+    return await request<LastSale | null>(`/inventory/${id}/last-sale`);
+  } catch {
+    return null;
+  }
+}
+
 export async function getItemActivity(
   id: string,
   limit = 25

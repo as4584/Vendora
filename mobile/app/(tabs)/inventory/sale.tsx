@@ -86,6 +86,8 @@ export default function QuickSaleScreen() {
   const scanLock = useRef(false);
   // Scan-to-cart stays open: remember the last code so one box isn't added twice.
   const lastScan = useRef<{ code: string; at: number } | null>(null);
+  // Last sold price per cart item, fetched once per item.
+  const [lastSales, setLastSales] = useState<Record<string, api.LastSale | null>>({});
   const [scanNote, setScanNote] = useState<{ text: string; ok: boolean } | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefilled = useRef(false);
@@ -147,6 +149,18 @@ export default function QuickSaleScreen() {
   }, [items, query]);
 
   const cartLines = Object.values(cart);
+  const cartIds = cartLines.map((l) => l.item.id).join(",");
+  useEffect(() => {
+    const missing = cartIds.split(",").filter((id) => id && !(id in lastSales));
+    if (!missing.length) return;
+    let live = true;
+    void Promise.all(missing.map(async (id) => [id, await api.getLastSale(id)] as const)).then((pairs) => {
+      if (live) setLastSales((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [cartIds, lastSales]);
   const totals = computeCheckout({
     lines: cartLines.map((l) => ({ priceCents: toCents(l.price), qty: l.qty })),
     discountMode,
@@ -477,6 +491,13 @@ export default function QuickSaleScreen() {
                       })}
                     </View>
                   ) : null}
+                  {lastSales[line.item.id] ? (
+                    <LastSoldHint
+                      sale={lastSales[line.item.id]!}
+                      active={toCents(line.price) === toCents(lastSales[line.item.id]!.unit_price)}
+                      onUse={() => changePrice(line.item.id, centsToString(toCents(lastSales[line.item.id]!.unit_price)))}
+                    />
+                  ) : null}
                   <View style={styles.haggleRow}>
                     {HAGGLE_STEPS.map(({ step, label }) => (
                       <TouchableOpacity
@@ -745,6 +766,34 @@ export default function QuickSaleScreen() {
   );
 }
 
+function daysAgoLabel(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days}d ago`;
+}
+
+/** "Last sold $240 · 12d ago": tap to charge that price. */
+function LastSoldHint({ sale, active, onUse }: { sale: api.LastSale; active: boolean; onUse: () => void }) {
+  const price = formatCents(toCents(sale.unit_price));
+  const source = sale.match === "this_item" ? "" : " (same product)";
+  return (
+    <TouchableOpacity
+      testID="last-sold"
+      accessibilityRole="button"
+      accessibilityLabel={`Last sold for ${price} ${daysAgoLabel(sale.sold_at)}${source}. Use this price`}
+      onPress={onUse}
+      disabled={active}
+      style={styles.lastSold}
+      hitSlop={6}
+    >
+      <Icon name="time-outline" size={14} color={COLORS.textMuted} />
+      <Text style={styles.lastSoldText}>
+        Last sold <Text style={styles.lastSoldPrice}>{price}</Text> · {daysAgoLabel(sale.sold_at)}{source}
+      </Text>
+      {!active ? <Text style={styles.lastSoldUse}>Use</Text> : null}
+    </TouchableOpacity>
+  );
+}
+
 function Chip({
   label,
   active,
@@ -852,6 +901,10 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   cartTop: { flexDirection: "row", alignItems: "flex-start", gap: SPACING.sm },
+  lastSold: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32 },
+  lastSoldText: { ...TYPE.footnote, color: COLORS.textMuted, flex: 1 },
+  lastSoldPrice: { color: COLORS.text, fontWeight: "600" },
+  lastSoldUse: { ...TYPE.footnote, color: COLORS.primaryBright, fontWeight: "600" },
   haggleRow: { flexDirection: "row", gap: SPACING.xs, flexWrap: "wrap" },
   haggleChip: { minHeight: 32, paddingHorizontal: SPACING.sm, justifyContent: "center", borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
   haggleText: { color: COLORS.text, fontSize: 13, fontWeight: "600" },

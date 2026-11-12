@@ -44,6 +44,7 @@ jest.mock('../services/api', () => ({
   refundTransaction: jest.fn(),
   getMe: jest.fn(),
   updateProfile: jest.fn(),
+  getLastSale: jest.fn(),
 }));
 
 const ITEM = {
@@ -82,6 +83,7 @@ describe('QuickSaleScreen (checkout)', () => {
     (apiMock.createSaleOrder as jest.Mock).mockResolvedValue(ORDER);
     (apiMock.getMe as jest.Mock).mockResolvedValue({ business_name: 'Kicks Co', sales_tax_rate: null });
     (apiMock.updateProfile as jest.Mock).mockResolvedValue({});
+    (apiMock.getLastSale as jest.Mock).mockResolvedValue(null);
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -257,6 +259,19 @@ describe('QuickSaleScreen (checkout)', () => {
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Couldn't save", 'offline'));
     fireEvent.press(screen.getByLabelText('Charge sales tax'));
     expect(screen.getByText(/Log Sale · \$340\.00/)).toBeTruthy();
+  });
+
+  it('shows what the item last sold for and charges that price on tap', async () => {
+    (apiMock.getLastSale as jest.Mock).mockResolvedValue({
+      unit_price: '310.00', sold_at: new Date(Date.now() - 12 * 86_400_000).toISOString(), quantity: 1, match: 'same_sku',
+    });
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    await screen.findByTestId('last-sold');
+    expect(screen.getByText(/12d ago \(same product\)/)).toBeTruthy();
+    fireEvent.press(screen.getByTestId('last-sold'));
+    expect(screen.getByText(/Log Sale · \$310\.00/)).toBeTruthy();
+    expect(apiMock.getLastSale).toHaveBeenCalledTimes(1);
   });
 
   it('cash + card: typing the cash fills the card with the rest', async () => {
