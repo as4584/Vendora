@@ -414,11 +414,12 @@ export default function InventoryListScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Sort: ${sortLabel(sort)}. Change sort`}
                   onPress={() => setFilterOpen(true)}
+                  hitSlop={10}
                 >
                   <Pill label={`Sort: ${sortLabel(sort)}`} tone={sort === "newest" ? "neutral" : "primary"} />
                 </TouchableOpacity>
                 {!staleOnly ? (
-                  <TouchableOpacity testID="stale-chip" accessibilityRole="button" accessibilityLabel={`Show items in stock ${STALE_DAYS} days or more`} onPress={() => applyStale(true)}>
+                  <TouchableOpacity testID="stale-chip" accessibilityRole="button" accessibilityLabel={`Show items in stock ${STALE_DAYS} days or more`} onPress={() => applyStale(true)} hitSlop={10}>
                     <Pill label={`Sitting ${STALE_DAYS}d+`} tone="neutral" />
                   </TouchableOpacity>
                 ) : null}

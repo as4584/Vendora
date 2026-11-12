@@ -38,6 +38,7 @@ import {
 } from "../../../utils/checkout";
 import { errorMessage } from "../../../services/errors";
 import { playSound } from "../../../services/sounds";
+import { ItemThumb } from "../../../components/ItemThumb";
 import { REPEAT_COOLDOWN_MS } from "../../../services/batchScan";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -436,6 +437,7 @@ export default function QuickSaleScreen() {
                       <View style={[styles.check, added && styles.checkOn]}>
                         {added ? <Icon name="checkmark" size={15} color={BRAND.onPrimary} /> : null}
                       </View>
+                      <ItemThumb item={item} size={40} />
                       <View style={styles.flex}>
                         <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                         <Text style={styles.itemMeta}>Stock {resolveQty(item)} · {formatCurrency(item.expected_sell_price)}</Text>
@@ -467,6 +469,7 @@ export default function QuickSaleScreen() {
               return (
                 <View key={line.item.id} style={styles.cartLine}>
                   <View style={styles.cartTop}>
+                    <ItemThumb item={line.item} size={48} />
                     <View style={styles.flex}>
                       <Text style={styles.itemName} numberOfLines={2}>{line.item.name}</Text>
                       <Text style={styles.itemMeta}>List {formatCurrency(line.item.expected_sell_price)}</Text>
@@ -506,7 +509,7 @@ export default function QuickSaleScreen() {
                         accessibilityLabel={`${label} on ${line.item.name}`}
                         onPress={() => changePrice(line.item.id, haggle(line.price, listPrice(line.item), step))}
                         style={styles.haggleChip}
-                        hitSlop={4}
+                        hitSlop={6}
                       >
                         <Text style={styles.haggleText}>{label}</Text>
                       </TouchableOpacity>
@@ -906,7 +909,7 @@ const styles = StyleSheet.create({
   lastSoldPrice: { color: COLORS.text, fontWeight: "600" },
   lastSoldUse: { ...TYPE.footnote, color: COLORS.primaryBright, fontWeight: "600" },
   haggleRow: { flexDirection: "row", gap: SPACING.xs, flexWrap: "wrap" },
-  haggleChip: { minHeight: 32, paddingHorizontal: SPACING.sm, justifyContent: "center", borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
+  haggleChip: { minHeight: 36, paddingHorizontal: SPACING.sm, justifyContent: "center", borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
   haggleText: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
   cartControls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: SPACING.sm },
   qtyStepper: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
