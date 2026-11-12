@@ -145,6 +145,23 @@ describe("offline sale orders", () => {
     expect(res.items.map((i: any) => i.id)).toEqual(["a"]);
   });
 
+  it("filters, sorts and finds stale stock offline like the server", async () => {
+    const ago = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    await AsyncStorage.setItem(MIRROR, JSON.stringify({
+      a: { id: "a", name: "A", quantity: 1, status: "in_stock", source: "manual", expected_sell_price: "100", buy_price: "50", created_at: ago(40) },
+      b: { id: "b", name: "B", quantity: 0, status: "sold", source: "ebay", expected_sell_price: "300", buy_price: "10", created_at: ago(60) },
+      c: { id: "c", name: "C", quantity: 2, status: "listed", source: "ebay", expected_sell_price: "200", buy_price: "20", created_at: ago(5) },
+    }));
+    const offline = require("../services/offline/inventory");
+    const ids = async (p: object) => (await offline.offlineListItems(p)).items.map((i: any) => i.id);
+    expect(await ids({})).toEqual(["c", "a", "b"]);
+    expect(await ids({ sort: "price_high" })).toEqual(["b", "c", "a"]);
+    expect(await ids({ status: "listed" })).toEqual(["c"]);
+    expect(await ids({ source: "ebay", sort: "oldest" })).toEqual(["b", "c"]);
+    expect(await ids({ availableOnly: true })).toEqual(["c", "a"]);
+    expect(await ids({ minAgeDays: 30 })).toEqual(["a"]);
+  });
+
   it("pulls an order that depends on a rejected offline-created item", async () => {
     await AsyncStorage.setItem(OUTBOX, JSON.stringify([
       { id: "ob_c", kind: "create_item", path: "/inventory", method: "POST",

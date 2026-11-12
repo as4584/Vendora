@@ -54,9 +54,11 @@ jest.mock('../services/api', () => ({
   listItems: jest.fn(),
   exportInventoryWarehouseCSV: jest.fn(),
   bulkDeleteItems: jest.fn(),
+  deleteItem: jest.fn(async () => undefined),
   getToken: jest.fn(async () => 'tok-123'),
   exportInventoryXlsxUrl: jest.fn(() => 'https://api.test/export/inventory?format=xlsx'),
 }));
+jest.mock('../components/Backdrop', () => ({ GlassBlur: () => null }));
 jest.mock('../utils/fileActions', () => ({
   downloadTextFile: jest.fn(),
   downloadAndShareRemote: jest.fn(),
@@ -271,6 +273,39 @@ describe('InventoryListScreen', () => {
     list = screen.UNSAFE_getByType(FlatList);
     await act(async () => list.props.refreshControl.props.onRefresh());
     await waitFor(() => expect(apiMock.listItems).toHaveBeenCalledTimes(3));
+  });
+
+  it('swipe delete hides the row at once, undo brings it back with no server call', async () => {
+    jest.useFakeTimers();
+    try {
+      const a = makeItem({ id: 'a', name: 'Keep Me' });
+      const b = makeItem({ id: 'b', name: 'Swipe Me' });
+      (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [a, b], total: 2 });
+      const screen = render(<InventoryListScreen />);
+      await screen.findByText('Swipe Me');
+
+      fireEvent.press(screen.getAllByTestId('swipe-delete')[1]);
+      expect(screen.queryByText('Swipe Me')).toBeNull();
+      expect(screen.getByText('Deleted Swipe Me')).toBeTruthy();
+      fireEvent.press(screen.getByTestId('undo-button'));
+      expect(screen.getByText('Swipe Me')).toBeTruthy();
+      await act(async () => { jest.advanceTimersByTime(6000); });
+      expect(apiMock.deleteItem).not.toHaveBeenCalled();
+
+      // Not undone: it is deleted on the server when the bar times out.
+      fireEvent.press(screen.getAllByTestId('swipe-delete')[1]);
+      await act(async () => { jest.advanceTimersByTime(6000); });
+      expect(apiMock.deleteItem).toHaveBeenCalledWith('b');
+      expect(screen.queryByText('Swipe Me')).toBeNull();
+
+      // Swipe right sells; swipe left edits.
+      fireEvent.press(screen.getByTestId('swipe-sell'));
+      expect(mockPush).toHaveBeenCalledWith('/inventory/sale?add=a');
+      fireEvent.press(screen.getByTestId('swipe-edit'));
+      expect(mockPush).toHaveBeenCalledWith('/inventory/edit?id=a');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('sorts from the sort chip and shows stale stock from the chip or a card badge', async () => {

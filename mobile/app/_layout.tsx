@@ -13,6 +13,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { COLORS, IS_LIGHT } from "../theme/tokens";
 import { useSchemeReload } from "../theme/useSchemeReload";
 import { Backdrop } from "../components/Backdrop";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { identify, initCrashReporting, track } from "../services/telemetry";
 import { maybePromptSaleAlerts, syncPushToken } from "../services/pushAlerts";
 import { allowedDuringOnboarding, checkOnboarding, subscribeOnboarding, type OnboardingState } from "../services/onboarding";
@@ -97,6 +98,7 @@ export default function RootLayout() {
         }
     }, []);
     return (
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <Backdrop>
             <AuthProvider>
@@ -110,6 +112,7 @@ export default function RootLayout() {
             </AuthProvider>
           </Backdrop>
         </SafeAreaProvider>
+        </GestureHandlerRootView>
     );
 }
 

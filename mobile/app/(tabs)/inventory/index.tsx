@@ -28,6 +28,8 @@ import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileAct
 import { errorMessage } from "../../../services/errors";
 import { peekSnapshot, saveSnapshot } from "../../../services/offline/snapshot";
 import { SkeletonList } from "../../../components/Skeleton";
+import { SwipeRow, SWIPE_COLORS } from "../../../components/SwipeRow";
+import { UndoBar, useUndo } from "../../../components/UndoBar";
 import { SORT_OPTIONS, STALE_DAYS, sortLabel, type SortKey } from "../../../utils/inventorySort";
 
 type ListSnapshot = { items: api.InventoryItem[]; total: number; pages: number; sort: SortKey };
@@ -59,6 +61,33 @@ export default function InventoryListScreen() {
   const [loading, setLoading] = useState(!snap);
   const [sort, setSort] = useState<SortKey>(snap?.sort ?? "newest");
   const [staleOnly, setStaleOnly] = useState(false);
+  const undo = useUndo();
+
+  // Swipe delete: gone at once, sent to the server only if not undone.
+  const deleteWithUndo = (item: api.InventoryItem) => {
+    let index = -1;
+    undo.run({
+      message: `Deleted ${item.name}`,
+      apply: () => {
+        setItems((prev) => {
+          index = prev.findIndex((i) => i.id === item.id);
+          return prev.filter((i) => i.id !== item.id);
+        });
+        setTotal((t) => Math.max(0, t - 1));
+      },
+      revert: () => {
+        setItems((prev) => {
+          if (prev.some((i) => i.id === item.id)) return prev;
+          const next = [...prev];
+          next.splice(index < 0 ? 0 : Math.min(index, next.length), 0, item);
+          return next;
+        });
+        setTotal((t) => t + 1);
+      },
+      commit: () => api.deleteItem(item.id),
+      onCommitError: (err) => Alert.alert("Couldn't delete", errorMessage(err, `${item.name} is back in your list.`)),
+    });
+  };
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -290,14 +319,23 @@ export default function InventoryListScreen() {
         data={displayedItems}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <InventoryCard
-            item={item}
-            onPress={() => router.push(`/inventory/${item.id}`)}
-            selectMode={selectMode}
-            selected={selectedIds.has(item.id)}
-            onToggleSelect={() => toggleSelect(item.id)}
-            onStalePress={staleOnly ? undefined : () => applyStale(true)}
-          />
+          <SwipeRow
+            enabled={!selectMode}
+            left={(item.quantity ?? 0) > 0 ? [{ key: "sell", label: "Sell", icon: "cash-outline", color: SWIPE_COLORS.sell, onPress: () => router.push(`/inventory/sale?add=${item.id}`) }] : []}
+            right={[
+              { key: "edit", label: "Edit", icon: "create-outline", color: SWIPE_COLORS.edit, onPress: () => router.push(`/inventory/edit?id=${item.id}`) },
+              { key: "delete", label: "Delete", icon: "trash-outline", color: SWIPE_COLORS.delete, onPress: () => deleteWithUndo(item) },
+            ]}
+          >
+            <InventoryCard
+              item={item}
+              onPress={() => router.push(`/inventory/${item.id}`)}
+              selectMode={selectMode}
+              selected={selectedIds.has(item.id)}
+              onToggleSelect={() => toggleSelect(item.id)}
+              onStalePress={staleOnly ? undefined : () => applyStale(true)}
+            />
+          </SwipeRow>
         )}
         contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.sm }]}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
@@ -409,6 +447,7 @@ export default function InventoryListScreen() {
           </Card>
         }
       />
+      <UndoBar state={undo} />
       {selectMode && selectedIds.size > 0 ? (
         <View style={styles.bulkBar}>
           <Text style={styles.bulkCount}>{selectedIds.size} selected</Text>
