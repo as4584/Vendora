@@ -86,15 +86,10 @@ describe('StockxSettingsCard', () => {
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('StockX unavailable', 'StockX not configured'));
   });
 
-  it('syncs and disconnects when connected', async () => {
-    m.syncStockx.mockResolvedValueOnce({ transactions_imported: 2, outbox_processed: 0 });
+  it('has no sync button and disconnects when connected', async () => {
     render(<StockxSettingsCard />);
     expect(await screen.findByText('2 matched item(s), 1 open ask(s), 1 sync error(s)')).toBeTruthy();
-    fireEvent.press(screen.getByText('Sync StockX'));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('StockX synced', '2 new sale(s) imported.'));
-    m.syncStockx.mockRejectedValueOnce(new Error('rate limited'));
-    fireEvent.press(screen.getByText('Sync StockX'));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('StockX sync failed', 'rate limited'));
+    expect(screen.queryByText('Sync StockX')).toBeNull();
 
     fireEvent.press(screen.getByText('Disconnect'));
     m.disconnectStockx.mockResolvedValueOnce({ disconnected: true, links_retained: 1 });

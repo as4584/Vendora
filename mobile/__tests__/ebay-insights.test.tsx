@@ -115,7 +115,7 @@ describe('EbayPayouts', () => {
     expect(s.toJSON()).toBeNull();
   });
 
-  it('shows reconciled and mismatched payouts with fee breakdown, and syncs', async () => {
+  it('shows reconciled and mismatched payouts with fee breakdown, no sync button', async () => {
     m.listEbayPayouts.mockResolvedValue([
       PAYOUT,
       { ...PAYOUT, payout_id: 'P2', reconciled: false, orders_missing: 2 },
@@ -123,26 +123,21 @@ describe('EbayPayouts', () => {
       { ...PAYOUT, payout_id: 'P4', reconciled: true, orders_matched: 2 },
     ]);
     m.listEbayFees.mockResolvedValue([FEE]);
-    m.syncEbayFinances.mockResolvedValueOnce({ orders_with_fees: 1, transactions_updated: 1, payouts: 1 })
-      .mockRejectedValueOnce(new Error('scope'));
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const s = render(<EbayPayouts connected />);
     expect(await s.findByText('Matches 1 order')).toBeTruthy();
     expect(s.getByText('2 orders not imported yet')).toBeTruthy();
     expect(s.getByText('Off by $1.50')).toBeTruthy();
     expect(s.getByText('Matches 2 orders')).toBeTruthy();
     expect(s.getByText('Order O1: $250.00 sold, $202.15 net')).toBeTruthy();
-    await act(async () => { fireEvent.press(s.getByTestId('ebay-fees-sync')); });
-    expect(m.syncEbayFinances).toHaveBeenCalled();
-    await act(async () => { fireEvent.press(s.getByTestId('ebay-fees-sync')); });
-    expect(alert).toHaveBeenCalledWith('eBay fees unavailable', 'scope');
+    // Fees sync in the background; there is no button.
+    expect(s.queryByTestId('ebay-fees-sync')).toBeNull();
   });
 
   it('handles empty and failing loads', async () => {
     m.listEbayPayouts.mockRejectedValue(new Error('x'));
     m.listEbayFees.mockRejectedValue(new Error('x'));
     const s = render(<EbayPayouts connected />);
-    expect(await s.findByText(/Sync eBay fees to see payouts/)).toBeTruthy();
+    expect(await s.findByText(/show up here automatically/)).toBeTruthy();
   });
 
   it('formats fee parts', () => {
