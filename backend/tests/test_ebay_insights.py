@@ -183,6 +183,26 @@ class TestNotifications:
         assert db.query(InventoryStockLedger).filter_by(idempotency_key="ebay:order:O-9:L-9").count() == 1
         assert db.query(Transaction).filter_by(external_reference_id="O-9").count() == 1
 
+    def test_new_order_sends_one_sale_alert(self, client, db, token, item, fake, monkeypatch):
+        from app.services import push
+
+        sent = []
+
+        async def fake_send(db_, user_id, title, body, data=None):
+            sent.append((user_id, title, body, data))
+            return 1
+
+        monkeypatch.setattr(push, "send_push", fake_send)
+        _listed(db, item, qty=2)
+        order = self._order(item)
+        order["lineItems"][0]["title"] = "Jordan 1 Chicago"
+        fake.on("GET", "/sell/fulfillment/v1/order/O-9", (200, order))
+        assert self._post(client, self._payload()).json()["status"] == "imported"
+        # Same order again (new notification id): already imported, no second alert.
+        assert self._post(client, self._payload(nid="N-2")).json()["status"] == "imported"
+        assert sent == [(token.user_id, "Sold on eBay", "Jordan 1 Chicago sold for $250.00.",
+                         {"type": "ebay_sale", "orderId": "O-9"})]
+
     def test_bad_signature_412(self, client, token):
         assert self._post(client, self._payload(), header="bm9wZQ==").status_code == 412
 

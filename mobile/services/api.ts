@@ -1505,6 +1505,15 @@ export interface EbayStatus {
   environment?: string;
 }
 
+/** Register this device for eBay sale alerts. */
+export async function registerPushToken(token: string, platform: string): Promise<void> {
+  await request<void>("/devices/push-token", { method: "POST", body: JSON.stringify({ token, platform }) });
+}
+
+export async function unregisterPushToken(token: string): Promise<void> {
+  await request<void>("/devices/push-token/remove", { method: "POST", body: JSON.stringify({ token }) });
+}
+
 export async function getEbayStatus(): Promise<EbayStatus> {
   return request<EbayStatus>("/integrations/ebay/status");
 }

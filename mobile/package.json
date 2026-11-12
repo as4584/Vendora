@@ -33,6 +33,7 @@
     "expo-image-picker": "~57.0.21",
     "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.13",
+    "expo-notifications": "~57.0.25",
     "expo-router": "~57.0.30",
     "expo-secure-store": "~57.0.4",
     "expo-sharing": "~57.0.25",
@@ -91,7 +92,8 @@
       "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/async-storage.js",
       "^@react-native-community/netinfo$": "<rootDir>/__mocks__/netinfo.js",
       "^expo-secure-store$": "<rootDir>/__mocks__/secure-store.js",
-      "^@sentry/react-native$": "<rootDir>/__mocks__/sentry.js"
+      "^@sentry/react-native$": "<rootDir>/__mocks__/sentry.js",
+      "^expo-notifications$": "<rootDir>/__mocks__/expo-notifications.js"
     },
     "coverageThreshold": {
       "global": {

@@ -5,6 +5,7 @@ import { resetPurchases } from "../services/purchases";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import * as api from "../services/api";
 import { clearOfflineData } from "../services/offline";
+import { unregisterPushToken } from "../services/pushAlerts";
 
 interface AuthState {
     user: api.User | null;
@@ -81,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signOut = async () => {
+        await unregisterPushToken();
         await api.logoutSession();
         await clearOfflineData();
         await resetPurchases();

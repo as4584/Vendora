@@ -36,6 +36,10 @@ jest.mock('../context/auth', () => {
   };
 });
 
+jest.mock('../services/pushAlerts', () => ({
+  syncPushToken: jest.fn(async () => false),
+  maybePromptSaleAlerts: jest.fn(async () => undefined),
+}));
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 jest.mock('react-native-safe-area-context', () => {
   const ReactModule = require('react');

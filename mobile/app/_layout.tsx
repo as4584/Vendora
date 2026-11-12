@@ -12,6 +12,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { COLORS } from "../theme/tokens";
 import { identify, initCrashReporting, track } from "../services/telemetry";
+import { maybePromptSaleAlerts, syncPushToken } from "../services/pushAlerts";
 
 initCrashReporting();
 // Navigation theme: dark everywhere, so wide screens (iPad) and screen
@@ -38,7 +39,9 @@ function RootLayoutNav() {
 
     useEffect(() => {
         identify(userId);
-        if (userId) track("app_open");
+        if (!userId) return;
+        track("app_open");
+        void syncPushToken().then((on) => (on ? undefined : maybePromptSaleAlerts(userId)));
     }, [userId]);
 
     useEffect(() => {

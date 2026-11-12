@@ -26,6 +26,7 @@ import jwt
 from jwt.exceptions import InvalidTokenError as JWTError
 from sqlalchemy.orm import Session
 
+from app.services.push import notify_ebay_sales
 from app.config import settings
 from app.models.integration import EbayToken
 from app.models.inventory import InventoryItem, InventoryExternalLink, InventoryStockLedger
@@ -620,14 +621,18 @@ class EbayService(ProviderAdapter):
         # reconciled, so an eBay sale is never counted twice.
         # --- Orders / transactions ---
         eb_orders = await self._get_orders(access_token)
+        new_orders: list[dict] = []
         for eb_order in eb_orders:
             _, created = self._upsert_transaction(db, user_id, eb_order)
             self._apply_order_stock(db, user_id, eb_order, run)
             if created:
                 result.transactions_imported += 1
+                new_orders.append(eb_order)
             else:
                 result.transactions_updated += 1
         db.commit()
+        if new_orders:
+            await notify_ebay_sales(db, user_id, new_orders)
         logger.info(
             "eBay order sync: %d imported, %d updated for user %s",
             result.transactions_imported, result.transactions_updated, user_id,
