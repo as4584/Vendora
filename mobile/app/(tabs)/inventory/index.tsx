@@ -15,6 +15,8 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
+import { smartSearch } from "../../../services/smartSearch";
+import { addRecentSearch, clearRecentSearches, getRecentSearches } from "../../../services/recentSearches";
 import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
 import { ProUpsell, graceMessage } from "../../../components/ProUpsell";
 import { useAuth } from "../../../context/auth";
@@ -23,22 +25,6 @@ import { SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import InventoryCard, { STATUS_TONES } from "../../../components/InventoryCard";
 import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
 import { errorMessage } from "../../../services/errors";
-
-/**
- * Case-insensitive subsequence match: every character of `query` must appear in
- * `text` in the same order, but not necessarily adjacent or at a word boundary.
- * e.g. "bla" → "Nike Black", "coc" → "Croc". Whitespace in the query is ignored.
- */
-export function fuzzyMatch(query: string, text: string): boolean {
-  const q = query.toLowerCase().replace(/\s+/g, "");
-  if (!q) return true;
-  const t = text.toLowerCase();
-  let qi = 0;
-  for (let ti = 0; ti < t.length && qi < q.length; ti += 1) {
-    if (t[ti] === q[qi]) qi += 1;
-  }
-  return qi === q.length;
-}
 
 /** Mirrors backend TIER_LIMITS['free'] in app/dependencies/tier_limiter.py. */
 export const FREE_ITEM_LIMIT = 25;
@@ -65,6 +51,8 @@ export default function InventoryListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [recent, setRecent] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
@@ -123,6 +111,7 @@ export default function InventoryListScreen() {
     // spinner, so the instant client-side filter stays visible while typing.
     searchTimer.current = setTimeout(() => {
       fetchItems({ page: 1, refresh: true, query: text });
+      if (text.trim().length >= 2) void addRecentSearch(text).then(setRecent);
     }, 250);
   };
 
@@ -243,15 +232,9 @@ export default function InventoryListScreen() {
     return Array.from(seen);
   }, [items]);
 
-  // Instant, reactive client-side subsequence filter over the loaded items. The
-  // debounced server search still runs to pull additional matches from the DB.
-  const displayedItems = useMemo(() => {
-    const q = searchQuery.trim();
-    if (!q) return items;
-    return items.filter((item) =>
-      fuzzyMatch(q, `${item.name} ${item.sku || ""} ${item.category || ""} ${item.color || ""}`)
-    );
-  }, [items, searchQuery]);
+  // Instant on-device ranking over loaded items (same rules as the server), while the
+  // debounced server search pulls in matches that aren't loaded yet.
+  const displayedItems = useMemo(() => smartSearch(items, searchQuery.trim()), [items, searchQuery]);
 
   if (loading) {
     return (
@@ -311,7 +294,11 @@ export default function InventoryListScreen() {
                   <TextInput
                     accessibilityLabel="Search inventory"
                     style={styles.searchInputFlex}
-                    placeholder="Search name or SKU"
+                    placeholder="Search name, SKU, size, card…"
+                    onFocus={() => { setSearchFocused(true); void getRecentSearches().then(setRecent); }}
+                    onBlur={() => setSearchFocused(false)}
+                    returnKeyType="search"
+                    clearButtonMode="while-editing"
                     placeholderTextColor={COLORS.textSoft}
                     value={searchQuery}
                     onChangeText={onSearchChange}
@@ -322,6 +309,18 @@ export default function InventoryListScreen() {
                   {activeFilterCount ? <View style={styles.filterBadge}><Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.filterBadgeText}>{activeFilterCount}</Text></View> : null}
                 </TouchableOpacity>
               </View>
+              {searchFocused && !searchQuery && recent.length ? (
+                <View testID="recent-searches" style={styles.activeFilters}>
+                  {recent.map((r) => (
+                    <TouchableOpacity key={r} accessibilityRole="button" accessibilityLabel={`Search ${r}`} onPress={() => onSearchChange(r)}>
+                      <Pill label={r} tone="neutral" />
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity accessibilityLabel="Clear recent searches" onPress={() => { void clearRecentSearches(); setRecent([]); }}>
+                    <Pill label="Clear" tone="neutral" />
+                  </TouchableOpacity>
+                </View>
+              ) : null}
               {activeFilterCount ? (
                 <View style={styles.activeFilters}>
                   {statusFilter ? <Pill label={STATUS_LABELS[statusFilter] || statusFilter} tone={STATUS_TONES[statusFilter] || "primary"} /> : null}
