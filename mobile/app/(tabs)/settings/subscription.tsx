@@ -7,6 +7,7 @@ import { useAuth } from "../../../context/auth";
 import { graceMessage } from "../../../components/ProUpsell";
 import * as api from "../../../services/api";
 import * as iap from "../../../services/purchases";
+import { track } from "../../../services/telemetry";
 import { COLORS, SPACING } from "../../../theme/tokens";
 
 const TERMS_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
@@ -42,6 +43,7 @@ export default function SubscriptionScreen() {
   };
 
   useEffect(() => {
+    if (user?.subscription_tier !== "pro") track("paywall_view");
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);
     // Load once on mount; load() reads the latest user via closure.
@@ -74,9 +76,14 @@ export default function SubscriptionScreen() {
 
   const buyApple = async (plan: iap.StorePlan) => {
     setWorking(plan.id);
+    track("purchase_start", { plan: plan.id, trial: !!plan.trial });
     try {
-      if (await iap.buy(plan)) await waitForUpgrade();
+      if (await iap.buy(plan)) {
+        track(plan.trial ? "trial_start" : "purchase_success", { plan: plan.id });
+        await waitForUpgrade();
+      } else track("purchase_cancel", { plan: plan.id });
     } catch (error: any) {
+      track("purchase_error", { plan: plan.id });
       Alert.alert("Purchase failed", error?.message || "Apple could not complete the purchase.");
     } finally { setWorking(null); }
   };

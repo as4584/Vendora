@@ -23,6 +23,7 @@ from pydantic import BaseModel as _PydBase
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.services import analytics
 from app.database import get_db
 from app.models.user import User
 from app.models.inventory import (
@@ -414,6 +415,8 @@ def create_item(
     db.add(item)
     db.flush()
     _sheet_push(db, item)
+    db.commit()
+    analytics.track_first(db, current_user.id, "item_created")
     db.commit()
     db.refresh(item)
     return item

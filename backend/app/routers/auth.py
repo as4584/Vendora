@@ -1,4 +1,5 @@
 """Auth router — /api/v1/auth endpoints."""
+from app.services import analytics
 import logging
 from datetime import datetime, timezone
 
@@ -74,6 +75,8 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
     db.add(user)
     db.commit()
     db.refresh(user)
+    analytics.track(db, user.id, "signup")
+    db.commit()
     return user
 
 

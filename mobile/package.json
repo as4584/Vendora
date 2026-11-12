@@ -21,6 +21,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "12.0.1",
+    "@sentry/react-native": "~7.11.0",
     "expo": "~57.0.32",
     "expo-background-fetch": "~57.0.22",
     "expo-camera": "~57.0.6",
@@ -89,7 +90,8 @@
     "moduleNameMapper": {
       "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/async-storage.js",
       "^@react-native-community/netinfo$": "<rootDir>/__mocks__/netinfo.js",
-      "^expo-secure-store$": "<rootDir>/__mocks__/secure-store.js"
+      "^expo-secure-store$": "<rootDir>/__mocks__/secure-store.js",
+      "^@sentry/react-native$": "<rootDir>/__mocks__/sentry.js"
     },
     "coverageThreshold": {
       "global": {

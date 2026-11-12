@@ -174,7 +174,8 @@
       "expo-sharing",
       "expo-status-bar",
       "expo-web-browser",
-      "expo-font"
+      "expo-font",
+      "@sentry/react-native"
     ],
     "extra": {
       "router": {},
