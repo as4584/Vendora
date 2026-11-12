@@ -1,9 +1,9 @@
-fastapi==0.162.0
+fastapi==0.162.2
 uvicorn[standard]==0.54.0
-sqlalchemy==2.0.55
+sqlalchemy==2.0.57
 alembic==1.20.1
 psycopg2-binary==2.9.13
-pydantic==2.14.2
+pydantic==2.14.3
 pydantic-settings==2.16.2
 PyJWT[crypto]==2.15.1
 passlib[bcrypt]==1.7.4
@@ -15,4 +15,4 @@ python-multipart==0.0.33
 fpdf2>=2.8.9,<3.0.0
 slowapi==0.1.10
 stripe>=11.1.0,<14.0.0
-sentry-sdk[fastapi]==2.73.0
+sentry-sdk[fastapi]==2.74.0
