@@ -482,6 +482,10 @@ describe('API endpoint contracts', () => {
     fetchMock.mockResolvedValueOnce(response({ detail: 'boom' }, 500));
     await expect(api.getLastSale('item-1')).resolves.toBeNull();
     await expect(api.getLastSale('local_abc')).resolves.toBeNull();
+    fetchMock.mockResolvedValueOnce(response([]));
+    await expect(api.getLastSale('item-1')).resolves.toBeNull();
+    fetchMock.mockResolvedValueOnce(response({ unit_price: '0.00', sold_at: 'nope' }));
+    await expect(api.getLastSale('item-1')).resolves.toBeNull();
 
     await api.listTransactions(2, 40);
     expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/transactions?page=2&per_page=40');

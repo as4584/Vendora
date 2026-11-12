@@ -529,7 +529,12 @@ export interface LastSale {
 export async function getLastSale(id: string): Promise<LastSale | null> {
   if (!isOnline() || isTempId(id)) return null;
   try {
-    return await request<LastSale | null>(`/inventory/${id}/last-sale`);
+    const sale = await request<LastSale | null>(`/inventory/${id}/last-sale`);
+    // Only trust a real price and date; anything else (old server, proxy page) means "unknown".
+    const valid =
+      !!sale && typeof sale === "object" && !Number.isNaN(Number(sale.unit_price)) && Number(sale.unit_price) > 0 &&
+      !Number.isNaN(new Date(sale.sold_at).getTime());
+    return valid ? sale : null;
   } catch {
     return null;
   }

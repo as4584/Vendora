@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
   undoText: { flex: 1, color: COLORS.text, fontSize: 14 },
   backdrop: { flex: 1, backgroundColor: COLORS.overlay, justifyContent: "flex-end" },
   sheet: {
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.bgElevated,
     borderTopLeftRadius: RADII.xl,
     borderTopRightRadius: RADII.xl,
     borderWidth: 1,

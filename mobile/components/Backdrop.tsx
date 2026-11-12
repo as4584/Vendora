@@ -31,5 +31,6 @@ export function GlassBlur({ style }: { style?: ViewStyle }) {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: COLORS.canvas },
+  // Clip to the screen: the photo must never make the page itself scrollable.
+  fill: { flex: 1, backgroundColor: COLORS.canvas, overflow: "hidden" },
 });

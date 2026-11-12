@@ -6,6 +6,8 @@
  * Sounds are synthesized in-house (assets/sounds/*.wav), so no licensing.
  * Everything fails quietly: a sound must never break a sale.
  */
+import { Platform } from "react-native";
+
 type SoundName = "scan" | "sale";
 
 const SOURCES: Record<SoundName, number> = {
@@ -37,6 +39,8 @@ function player(name: SoundName): Player | null {
 }
 
 export function playSound(name: SoundName): void {
+  // The web build is a preview/test harness; sounds are for the phone.
+  if (Platform.OS === "web") return;
   try {
     const p = player(name);
     if (!p) return;
