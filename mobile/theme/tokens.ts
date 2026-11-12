@@ -18,41 +18,50 @@ export type Scheme = "light" | "dark";
 export const SCHEME: Scheme = Appearance.getColorScheme() === "light" ? "light" : "dark";
 export const IS_LIGHT = SCHEME === "light";
 
+/*
+ * Glass direction: every screen sits on a blurred sneaker-wall photo
+ * (assets/images/bg-*.jpg, see <Backdrop/>). Screens are transparent (`bg`),
+ * cards are frosted panes (`card`), and hairline light edges catch the glass.
+ * `canvas` is the solid fallback color under the photo.
+ */
 const DARK = {
-  // Graphite ramp, very slightly cool so it sits next to the purple accent.
-  bg: "#0E0E11",
-  bgElevated: "#141418",
-  card: "#18181D",
-  cardAlt: "#212127",
-  border: "rgba(237,237,242,0.09)",
-  borderStrong: "rgba(237,237,242,0.16)",
+  canvas: "#0E0E11",
+  bg: "transparent",
+  // Sheets, headers and menus: near-opaque so long content stays readable.
+  bgElevated: "rgba(24,24,30,0.92)",
+  card: "rgba(255,255,255,0.075)",
+  // Inputs and chips are recessed into the glass (a darker well).
+  cardAlt: "rgba(0,0,0,0.20)",
+  border: "rgba(255,255,255,0.12)",
+  borderStrong: "rgba(255,255,255,0.22)",
   // Three text roles. textSoft stays >= 4.5:1 on card for captions/meta.
   text: "#EDEDF2",
-  textMuted: "#A6A6B0",
-  textSoft: "#8C8C96",
+  textMuted: "#C2C2CB",
+  textSoft: "#BBBBC5",
   // Brand accent (real brand color, kept). White text on it is 4.35:1.
   primary: "#7C5CFF",
-  primaryBright: "#A08BFF",
+  primaryBright: "#B3A2FF",
   primarySoft: "#24203A",
   // Semantic, toned down to sit inside the ramp.
-  success: "#4CC38A",
-  warning: "#E5B04A",
-  danger: "#E5584D",
-  info: "#6EA8F5",
+  success: "#5FD69C",
+  warning: "#EDBF62",
+  danger: "#F27B71",
+  info: "#8BBAF8",
   overlay: "rgba(0,0,0,0.55)",
 };
 
 // Same roles on a cool paper ramp. Every text role keeps >= 4.5:1 on card.
 const LIGHT: typeof DARK = {
-  bg: "#F4F4F7",
-  bgElevated: "#FFFFFF",
-  card: "#FFFFFF",
-  cardAlt: "#ECECF1",
+  canvas: "#F4F4F7",
+  bg: "transparent",
+  bgElevated: "rgba(250,250,252,0.94)",
+  card: "rgba(255,255,255,0.62)",
+  cardAlt: "rgba(14,14,17,0.06)",
   border: "rgba(14,14,17,0.08)",
   borderStrong: "rgba(14,14,17,0.16)",
   text: "#141418",
-  textMuted: "#4F4F59",
-  textSoft: "#686872",
+  textMuted: "#3F3F48",
+  textSoft: "#45454E",
   primary: "#6A49F0",
   // On light, "bright" accent is used for text/icons, so it goes deeper.
   primaryBright: "#5A3BE0",
@@ -90,7 +99,10 @@ export const TONES = IS_LIGHT
 // any caller that still imports them.
 export const GRADIENTS = {
   primary: ["#7C5CFF", "#7C5CFF"] as const,
-  hero: (IS_LIGHT ? ["#FFFFFF", "#FFFFFF"] : ["#1C1C22", "#18181D"]) as readonly [string, string],
+  // Glass hero: a slightly brighter frosted pane fading into the normal card.
+  hero: (IS_LIGHT
+    ? ["rgba(255,255,255,0.80)", "rgba(255,255,255,0.55)"]
+    : ["rgba(255,255,255,0.13)", "rgba(255,255,255,0.06)"]) as readonly [string, string],
 };
 
 // 4pt grid.
@@ -107,8 +119,8 @@ export const SPACING = {
 export const RADII = {
   sm: 10,
   md: 12,
-  lg: 16,
-  xl: 20,
+  lg: 20,
+  xl: 26,
   pill: 999,
 };
 

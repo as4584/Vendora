@@ -12,6 +12,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { COLORS, IS_LIGHT } from "../theme/tokens";
 import { useSchemeReload } from "../theme/useSchemeReload";
+import { Backdrop } from "../components/Backdrop";
 import { identify, initCrashReporting, track } from "../services/telemetry";
 import { maybePromptSaleAlerts, syncPushToken } from "../services/pushAlerts";
 import { allowedDuringOnboarding, checkOnboarding, subscribeOnboarding, type OnboardingState } from "../services/onboarding";
@@ -91,12 +92,13 @@ export default function RootLayout() {
     // content on wide screens matches the app instead of showing white.
     useEffect(() => {
         if (Platform.OS === "web" && typeof document !== "undefined") {
-            document.documentElement.style.backgroundColor = COLORS.bg;
-            document.body.style.backgroundColor = COLORS.bg;
+            document.documentElement.style.backgroundColor = COLORS.canvas;
+            document.body.style.backgroundColor = COLORS.canvas;
         }
     }, []);
     return (
         <SafeAreaProvider>
+          <Backdrop>
             <AuthProvider>
                 <NetworkProvider>
                     <ThemeProvider value={NAV_THEME}>
@@ -106,6 +108,7 @@ export default function RootLayout() {
                     </ThemeProvider>
                 </NetworkProvider>
             </AuthProvider>
+          </Backdrop>
         </SafeAreaProvider>
     );
 }

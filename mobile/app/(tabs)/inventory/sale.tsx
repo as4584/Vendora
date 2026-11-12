@@ -886,5 +886,5 @@ const styles = StyleSheet.create({
   splitFooter: { gap: SPACING.sm },
   splitActions: { flexDirection: "row", gap: SPACING.sm },
   notesInput: { minHeight: 72, textAlignVertical: "top" },
-  scanner: { flex: 1, backgroundColor: COLORS.bg },
+  scanner: { flex: 1, backgroundColor: COLORS.canvas },
 });
