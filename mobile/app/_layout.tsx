@@ -1,7 +1,7 @@
 /**
  * Root layout — wraps entire app with AuthProvider and sets up routing.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "../context/auth";
@@ -14,6 +14,7 @@ import { COLORS, IS_LIGHT } from "../theme/tokens";
 import { useSchemeReload } from "../theme/useSchemeReload";
 import { identify, initCrashReporting, track } from "../services/telemetry";
 import { maybePromptSaleAlerts, syncPushToken } from "../services/pushAlerts";
+import { allowedDuringOnboarding, checkOnboarding, subscribeOnboarding, type OnboardingState } from "../services/onboarding";
 // react-navigation is vendored inside expo-router in SDK 57.
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
 
@@ -37,6 +38,17 @@ function RootLayoutNav() {
     const segments = useSegments();
     const { replace } = useRouter();
     const userId = user?.id ? String(user.id) : null;
+    const [onboarding, setOnboarding] = useState<OnboardingState>("unknown");
+
+    useEffect(() => subscribeOnboarding(setOnboarding), []);
+    useEffect(() => {
+        let live = true;
+        if (!userId) return;
+        void checkOnboarding(userId).then((s) => live && setOnboarding(s));
+        return () => {
+            live = false;
+        };
+    }, [userId]);
 
     useEffect(() => {
         identify(userId);
@@ -53,11 +65,14 @@ function RootLayoutNav() {
 
         if (!isAuthenticated && !inAuthGroup && !inPublicSeller) {
             replace("/(auth)/login");
+        } else if (isAuthenticated && onboarding === "needed" && !allowedDuringOnboarding(segments as string[])) {
+            // New seller: setup (get inventory in) comes before the rest of the app.
+            replace("/onboarding");
         } else if (isAuthenticated && inAuthGroup && (segments as string[])[1] !== "reset-password") {
             // A reset link must open the reset screen even while signed in.
-            replace("/(tabs)/dashboard");
+            replace(onboarding === "needed" ? "/onboarding" : "/(tabs)/dashboard");
         }
-    }, [isAuthenticated, isLoading, replace, segments]);
+    }, [isAuthenticated, isLoading, onboarding, replace, segments]);
 
     if (isLoading) {
         return (

@@ -9,6 +9,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import fixtures from './fixtures.json';
 
+// The app follows the phone's light/dark setting; this gate pins dark (the
+// original look). Light mode is checked with colorScheme: 'light'.
+test.use({ colorScheme: 'dark' });
+
 const SIZES = [
   { name: 'iphone-se', width: 375, height: 667 },
   { name: 'iphone-15', width: 393, height: 852 },
@@ -31,6 +35,7 @@ const SCREENS: {
   { name: 'register', path: '/register', authed: false },
   { name: 'forgot-password', path: '/forgot-password', authed: false },
   { name: 'dashboard', path: '/dashboard' },
+  { name: 'onboarding', path: '/onboarding', ready: "You're set up" },
   { name: 'inventory', path: '/inventory', ready: 'Nike Dunk Low' },
   { name: 'item-detail', path: `/inventory/${fixtures.item_id}`, ready: 'Nike Dunk Low' },
   { name: 'add', path: '/inventory/add', ready: 'Scan a box' },
