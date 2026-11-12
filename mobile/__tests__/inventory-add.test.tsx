@@ -376,6 +376,31 @@ describe('add inventory screen', () => {
     expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Read from the box label/);
   });
 
+  it('scans a card or slab straight to reading it, with no barcode step', async () => {
+    mockReadLabel.mockResolvedValueOnce({ name: '2023 Pokemon Charizard ex #199', condition: 'PSA 10', sku: 'PSA-87654321', category: 'collectibles' });
+    const screen = render(<AddItemScreen />);
+    fireEvent.press(screen.getByTestId('card-scan-button'));
+    expect(await screen.findByText('Scan a card')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByText('Read card'));
+    });
+    await waitFor(() => expect(mockReadLabel).toHaveBeenCalledWith('file:///label.jpg'));
+    expect(mockResolveScan).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Item Name').props.value).toBe('2023 Pokemon Charizard ex #199');
+    expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Read from the card/);
+  });
+
+  it('explains when a card could not be read', async () => {
+    mockReadLabel.mockResolvedValueOnce({ category: 'collectibles' });
+    const screen = render(<AddItemScreen />);
+    fireEvent.press(screen.getByTestId('card-scan-button'));
+    await screen.findByText('Read card');
+    await act(async () => {
+      fireEvent.press(screen.getByText('Read card'));
+    });
+    await waitFor(() => expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Couldn't read that card/));
+  });
+
   it('lets the seller skip the label and type it', async () => {
     const screen = render(<AddItemScreen />);
     fireEvent.press(screen.getByTestId('smart-scan-button'));

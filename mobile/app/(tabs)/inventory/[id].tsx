@@ -16,9 +16,12 @@ import { itemProfit } from "../../../services/profit";
 import * as api from "../../../services/api";
 import { StockxItemCard } from "../../../components/Stockx";
 import { Ionicons } from "@expo/vector-icons";
-import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
+import { ActionButton, Card, HeaderTitle, Icon, Pill, SectionLabel } from "../../../components/ui";
+import * as Clipboard from "expo-clipboard";
+import { SkeletonDetail } from "../../../components/Skeleton";
+import { peekSnapshot } from "../../../services/offline/snapshot";
 import { EbayListingCard } from "../../../components/EbayListingCard";
-import { Button } from "../../../components/Button";
+import { Button, triggerHaptic } from "../../../components/Button";
 import { EbayCompsCard } from "../../../components/EbayCompsCard";
 import { ProUpsell, isProRequired } from "../../../components/ProUpsell";
 import { COLORS, SPACING } from "../../../theme/tokens";
@@ -37,11 +40,14 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { push, replace } = useRouter();
-  const [item, setItem] = useState<api.InventoryItem | null>(null);
+  // Paint at once from the inventory list this item was tapped in, then refresh.
+  const [item, setItem] = useState<api.InventoryItem | null>(
+    () => peekSnapshot<{ items: api.InventoryItem[] }>("inventory:list")?.items.find((i) => i.id === id) ?? null,
+  );
   const [activity, setActivity] = useState<api.InventoryActivityEntry[]>([]);
   const [transactions, setTransactions] = useState<api.Transaction[]>([]);
   const [invoices, setInvoices] = useState<api.InvoiceData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !item);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activePhoto, setActivePhoto] = useState<"front" | "back">("front");
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -53,7 +59,6 @@ export default function ItemDetailScreen() {
   const [refunding, setRefunding] = useState<string | null>(null);
 
   const loadItem = useCallback(async () => {
-    setLoading(true);
     setLoadError(null);
     if (!id) {
       setLoadError("This item link is missing an inventory ID.");
@@ -200,12 +205,8 @@ export default function ItemDetailScreen() {
     return Array.isArray(raw) ? raw : [];
   }, [item]);
 
-  if (loading) {
-    return (
-      <View testID="item-detail-loading" style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
+  if (loading && !item) {
+    return <SkeletonDetail testID="item-detail-loading" />;
   }
 
   if (loadError || !item) {
@@ -354,10 +355,11 @@ export default function ItemDetailScreen() {
 
       <Card>
         <SectionLabel>Details</SectionLabel>
+        <DetailRow label="SKU" value={item.sku || "Not set"} copy={!!item.sku} />
         <DetailRow label="Vendor" value={item.vendor_name || "Unassigned"} />
         <DetailRow label="Condition" value={item.condition || "Unknown"} />
         <DetailRow label="Color" value={item.color || "Not set"} />
-        <DetailRow label="UPC" value={item.upc || "Not set"} />
+        <DetailRow label="UPC" value={item.upc || "Not set"} copy={!!item.upc} />
         <DetailRow label="Notes" value={item.notes || "No notes"} />
       </Card>
 
@@ -455,16 +457,48 @@ export default function ItemDetailScreen() {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value, copy = false }: { label: string; value: string; copy?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  if (!copy) {
+    return (
+      <View style={styles.detailRow}>
+        <Text style={styles.detailLabel}>{label}</Text>
+        <Text style={styles.detailValue}>{value}</Text>
+      </View>
+    );
+  }
+  const onCopy = async () => {
+    try {
+      await Clipboard.setStringAsync(value);
+      triggerHaptic("light");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard unavailable: nothing to do.
+    }
+  };
   return (
-    <View style={styles.detailRow}>
+    <TouchableOpacity
+      testID={`copy-${label.toLowerCase()}`}
+      accessibilityRole="button"
+      accessibilityLabel={`${label} ${value}. Copy`}
+      accessibilityHint="Copies to the clipboard"
+      onPress={onCopy}
+      style={styles.detailRow}
+    >
       <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
+      <View style={styles.copyValue}>
+        <Text selectable style={styles.detailValue}>{value}</Text>
+        <Icon name={copied ? "checkmark" : "copy-outline"} size={15} color={copied ? COLORS.success : COLORS.textSoft} />
+        {copied ? <Text accessibilityLiveRegion="polite" style={styles.copiedText}>Copied</Text> : null}
+      </View>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
+  copyValue: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
+  copiedText: { color: COLORS.success, fontSize: 12, fontWeight: "600" },
   saleRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
   saleText: { flex: 1, minWidth: 0 },
   container: { flex: 1, backgroundColor: COLORS.bg },

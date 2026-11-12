@@ -113,7 +113,7 @@ export default function AddItemScreen() {
     const scanLock = useRef(false);
     // Smart scan: barcode memory first, then the box label (read on device)
     const cameraRef = useRef<CameraView>(null);
-    const [scanStep, setScanStep] = useState<"barcode" | "label">("barcode");
+    const [scanStep, setScanStep] = useState<"barcode" | "label" | "card">("barcode");
     const [readingLabel, setReadingLabel] = useState(false);
     const [scanNote, setScanNote] = useState<string | null>(null);
     const pendingBarcode = useRef<string>("");
@@ -204,6 +204,33 @@ export default function AddItemScreen() {
     };
 
     // ── Barcode scanner ──────────────────────────────────────────────────────
+    const ensureCamera = async (): Promise<boolean> => {
+        if (cameraPermission?.granted) return true;
+        const { granted, canAskAgain } = await requestCameraPermission();
+        if (granted) return true;
+        Alert.alert(
+            "Camera access needed",
+            "Allow camera access to scan barcodes, box labels and cards.",
+            canAskAgain
+                ? [{ text: "OK" }]
+                : [
+                      { text: "Not now", style: "cancel" },
+                      { text: "Open Settings", onPress: () => void Linking.openSettings() },
+                  ],
+        );
+        return false;
+    };
+
+    /** Cards and slabs have no barcode to start from: go straight to reading the label. */
+    const openCardScanner = async () => {
+        if (!(await ensureCamera())) return;
+        scanLock.current = true;
+        setScanned(true);
+        pendingBarcode.current = "";
+        setScanStep("card");
+        setScannerOpen(true);
+    };
+
     const openScanner = async () => {
         if (!cameraPermission?.granted) {
             const { granted, canAskAgain } = await requestCameraPermission();
@@ -339,17 +366,24 @@ export default function AddItemScreen() {
         setReadingLabel(true);
         try {
             const photo = await cameraRef.current.takePictureAsync({ quality: 0.7 });
+            const isCard = scanStep === "card";
             let fields = await readLabel(photo.uri);
-            if (fields.style_code) {
+            if (isCard && !fields.category) fields = { ...fields, category: "collectibles" };
+            if (!isCard && fields.style_code) {
                 // A different size of a shoe you already have fills in the rest.
                 const family = await resolveScan(pendingBarcode.current, fields.style_code);
                 if (family.match) fields = { ...fields, ...family.fields, size: fields.size ?? family.fields.size };
             }
             applyScanFields(fields);
+            const read = Object.keys(fields).filter((k) => k !== "category").length > 0;
             setScanNote(
-                Object.keys(fields).length
-                    ? "Read from the box label on your phone. Check it, fix anything, and save. Resqlo will remember it."
-                    : "Couldn't read that label. Type the details once and Resqlo will remember this barcode.",
+                isCard
+                    ? read
+                        ? "Read from the card on your phone. Check the name, grade and number, then save."
+                        : "Couldn't read that card. Try again in better light, or type the details."
+                    : read
+                        ? "Read from the box label on your phone. Check it, fix anything, and save. Resqlo will remember it."
+                        : "Couldn't read that label. Type the details once and Resqlo will remember this barcode.",
             );
         } catch {
             setScanNote("Couldn't read that label. Type the details once and Resqlo will remember this barcode.");
@@ -506,6 +540,17 @@ export default function AddItemScreen() {
                     testID="smart-scan-button"
                     style={styles.smartScanButton}
                 />
+                {isLabelReaderAvailable() ? (
+                    <Button
+                        label="Scan a card"
+                        leadingIcon="albums-outline"
+                        variant="secondary"
+                        fullWidth
+                        onPress={openCardScanner}
+                        accessibilityLabel="Scan a trading card or graded slab and read its name, number and grade"
+                        testID="card-scan-button"
+                    />
+                ) : null}
                 <Button
                     label="Scan many boxes"
                     leadingIcon="layers-outline"
@@ -792,12 +837,14 @@ export default function AddItemScreen() {
                         <ScannerOverlay hint="Point at the barcode on the box" onCancel={closeScanner} />
                     ) : (
                         <View style={styles.labelStep} testID="smart-scan-label-step">
-                            <Text style={styles.labelStepTitle}>New barcode</Text>
+                            <Text style={styles.labelStepTitle}>{scanStep === "card" ? "Scan a card" : "New barcode"}</Text>
                             <Text style={styles.labelStepHint}>
-                                Fit the box label in view and tap Read label. It is read on your phone.
+                                {scanStep === "card"
+                                    ? "Fit the card, or the slab label, in view and tap Read card. It is read on your phone."
+                                    : "Fit the box label in view and tap Read label. It is read on your phone."}
                             </Text>
                             <Button
-                                label={readingLabel ? "Reading..." : "Read label"}
+                                label={readingLabel ? "Reading..." : scanStep === "card" ? "Read card" : "Read label"}
                                 leadingIcon="scan-outline"
                                 size="lg"
                                 fullWidth
