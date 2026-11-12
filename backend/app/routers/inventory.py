@@ -12,7 +12,7 @@ import math
 import socket
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 from urllib.parse import urljoin, urlparse
@@ -433,6 +433,21 @@ def _sheet_push(db: Session, item: InventoryItem) -> None:
     enqueue_sheet_push(db, item)
 
 
+def _sort_order(sort: str) -> list:
+    """ORDER BY for the list's sort menu; id breaks ties so pages never overlap."""
+    price = InventoryItem.expected_sell_price
+    orders = {
+        "newest": [InventoryItem.created_at.desc()],
+        "oldest": [InventoryItem.created_at.asc()],
+        "price_high": [price.desc().nulls_last()],
+        "price_low": [price.asc().nulls_last()],
+        "profit": [(price - InventoryItem.buy_price).desc().nulls_last()],
+        "qty": [InventoryItem.quantity.desc()],
+        "name": [func.lower(InventoryItem.name).asc()],
+    }
+    return [*orders[sort], InventoryItem.id.asc()]
+
+
 @router.get("", response_model=PaginatedItems)
 def list_items(
     page: int = Query(1, ge=1, description="Page number"),
@@ -446,6 +461,14 @@ def list_items(
     source_filter: Optional[str] = Query(None, alias="source", description="Filter by source (e.g. lightspeed)"),
     available_only: bool = Query(False, description="Only items with quantity > 0 and status in (in_stock, listed)"),
     upc: Optional[str] = Query(None, max_length=50, description="Exact barcode (UPC/EAN) match, for scan-to-sell"),
+    sort: str = Query(
+        "newest",
+        pattern="^(newest|oldest|price_high|price_low|profit|qty|name)$",
+        description="Order: newest, oldest (longest in stock), price_high, price_low, profit, qty, name",
+    ),
+    min_age_days: Optional[int] = Query(
+        None, ge=1, le=3650, description="Stale stock: only in-stock items added at least this many days ago"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -475,6 +498,14 @@ def list_items(
             InventoryItem.quantity > 0,
         )
 
+    if min_age_days:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=min_age_days)
+        base_query = base_query.filter(
+            InventoryItem.status.in_(["in_stock", "listed"]),
+            InventoryItem.quantity > 0,
+            InventoryItem.created_at <= cutoff,
+        )
+
     if q and q.strip():
         # Rank in Python: typo tolerance, sizes and nicknames don't map to ILIKE.
         candidates = (
@@ -496,7 +527,7 @@ def list_items(
     total = base_query.count()
     items = (
         base_query
-        .order_by(InventoryItem.created_at.desc())
+        .order_by(*_sort_order(sort))
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()

@@ -25,6 +25,7 @@ import {
   cacheDashboard,
   readCachedDashboard,
 } from "./offline";
+import type { SortKey } from "../utils/inventorySort";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://vendora.lexmakesit.com/api/v1";
@@ -452,6 +453,10 @@ export interface ListItemsParams {
   availableOnly?: boolean;
   /** Exact barcode match (scan to sell). */
   upc?: string;
+  /** Sort menu order; server default is newest. */
+  sort?: SortKey;
+  /** Stale stock: available items added at least this many days ago. */
+  minAgeDays?: number;
 }
 
 export async function listItems(
@@ -480,6 +485,8 @@ export async function listItems(
   if (params.source) qs.set("source", params.source);
   if (params.availableOnly) qs.set("available_only", "true");
   if (params.upc) qs.set("upc", params.upc);
+  if (params.sort && params.sort !== "newest") qs.set("sort", params.sort);
+  if (params.minAgeDays) qs.set("min_age_days", String(params.minAgeDays));
 
   if (!isOnline()) return offlineListItems(normalized);
   try {

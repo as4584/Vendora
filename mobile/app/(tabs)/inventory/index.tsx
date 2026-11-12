@@ -10,6 +10,7 @@ import {
   TextInput,
   Alert,
   Modal,
+  ScrollView,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,6 +26,12 @@ import { SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import InventoryCard, { STATUS_TONES } from "../../../components/InventoryCard";
 import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
 import { errorMessage } from "../../../services/errors";
+import { peekSnapshot, saveSnapshot } from "../../../services/offline/snapshot";
+import { SkeletonList } from "../../../components/Skeleton";
+import { SORT_OPTIONS, STALE_DAYS, sortLabel, type SortKey } from "../../../utils/inventorySort";
+
+type ListSnapshot = { items: api.InventoryItem[]; total: number; pages: number; sort: SortKey };
+const LIST_SNAPSHOT = "inventory:list";
 
 /** Mirrors backend TIER_LIMITS['free'] in app/dependencies/tier_limiter.py. */
 export const FREE_ITEM_LIMIT = 25;
@@ -43,11 +50,15 @@ export default function InventoryListScreen() {
     return () => { live = false; };
   }, [freeLimit]));
   const insets = useSafeAreaInsets();
-  const [items, setItems] = useState<api.InventoryItem[]>([]);
-  const [total, setTotal] = useState(0);
+  // Paint the last list instantly (default view), then refresh quietly.
+  const [snap] = useState(() => peekSnapshot<ListSnapshot>(LIST_SNAPSHOT));
+  const [items, setItems] = useState<api.InventoryItem[]>(snap?.items ?? []);
+  const [total, setTotal] = useState(snap?.total ?? 0);
   const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [pages, setPages] = useState(snap?.pages ?? 0);
+  const [loading, setLoading] = useState(!snap);
+  const [sort, setSort] = useState<SortKey>(snap?.sort ?? "newest");
+  const [staleOnly, setStaleOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,7 +76,9 @@ export default function InventoryListScreen() {
     query: string;
     status: string | null;
     source: string | null;
-  }>({ query: "", status: null, source: null });
+    sort: SortKey;
+    stale: boolean;
+  }>({ query: "", status: null, source: null, sort: snap?.sort ?? "newest", stale: false });
 
   const fetchItems = useCallback(
     async (options: { page?: number; refresh?: boolean; query?: string; status?: string | null; source?: string | null } = {}) => {
@@ -73,6 +86,7 @@ export default function InventoryListScreen() {
       const nextQuery = options.query ?? filtersRef.current.query;
       const nextStatus = options.status !== undefined ? options.status : filtersRef.current.status;
       const nextSource = options.source !== undefined ? options.source : filtersRef.current.source;
+      const { sort: nextSort, stale } = filtersRef.current;
 
       try {
         const result = await api.listItems({
@@ -81,8 +95,13 @@ export default function InventoryListScreen() {
           q: nextQuery || undefined,
           status: nextStatus ?? undefined,
           source: nextSource ?? undefined,
+          sort: nextSort,
+          minAgeDays: stale ? STALE_DAYS : undefined,
         });
         setItems((previous) => (options.refresh === false ? [...previous, ...result.items] : result.items));
+        if (nextPage === 1 && !nextQuery && !nextStatus && !nextSource && !stale) {
+          saveSnapshot(LIST_SNAPSHOT, { items: result.items, total: result.total, pages: result.pages, sort: nextSort });
+        }
         setTotal(result.total);
         setPage(result.page);
         setPages(result.pages);
@@ -213,16 +232,37 @@ export default function InventoryListScreen() {
     fetchItems({ page: 1, refresh: true, source: next });
   };
 
+  const applySort = (next: SortKey) => {
+    setSort(next);
+    filtersRef.current.sort = next;
+    setLoading(true);
+    fetchItems({ page: 1, refresh: true });
+  };
+
+  const applyStale = (next: boolean) => {
+    setStaleOnly(next);
+    filtersRef.current.stale = next;
+    // Stale view reads best oldest-first.
+    if (next && filtersRef.current.sort === "newest") {
+      setSort("oldest");
+      filtersRef.current.sort = "oldest";
+    }
+    setLoading(true);
+    fetchItems({ page: 1, refresh: true });
+  };
+
   const clearFilters = () => {
     setStatusFilter(null);
     setSourceFilter(null);
+    setStaleOnly(false);
     filtersRef.current.status = null;
     filtersRef.current.source = null;
+    filtersRef.current.stale = false;
     setLoading(true);
     fetchItems({ page: 1, refresh: true, status: null, source: null });
   };
 
-  const activeFilterCount = (statusFilter ? 1 : 0) + (sourceFilter ? 1 : 0);
+  const activeFilterCount = (statusFilter ? 1 : 0) + (sourceFilter ? 1 : 0) + (staleOnly ? 1 : 0);
 
   const availableSources = useMemo(() => {
     const seen = new Set<string>();
@@ -238,8 +278,8 @@ export default function InventoryListScreen() {
 
   if (loading) {
     return (
-      <View testID="inventory-loading" style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={[styles.container, { paddingTop: insets.top + SPACING.sm }]}>
+        <SkeletonList testID="inventory-loading" rows={7} />
       </View>
     );
   }
@@ -256,6 +296,7 @@ export default function InventoryListScreen() {
             selectMode={selectMode}
             selected={selectedIds.has(item.id)}
             onToggleSelect={() => toggleSelect(item.id)}
+            onStalePress={staleOnly ? undefined : () => applyStale(true)}
           />
         )}
         contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.sm }]}
@@ -321,8 +362,24 @@ export default function InventoryListScreen() {
                   </TouchableOpacity>
                 </View>
               ) : null}
+              <View style={styles.activeFilters}>
+                <TouchableOpacity
+                  testID="sort-button"
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort: ${sortLabel(sort)}. Change sort`}
+                  onPress={() => setFilterOpen(true)}
+                >
+                  <Pill label={`Sort: ${sortLabel(sort)}`} tone={sort === "newest" ? "neutral" : "primary"} />
+                </TouchableOpacity>
+                {!staleOnly ? (
+                  <TouchableOpacity testID="stale-chip" accessibilityRole="button" accessibilityLabel={`Show items in stock ${STALE_DAYS} days or more`} onPress={() => applyStale(true)}>
+                    <Pill label={`Sitting ${STALE_DAYS}d+`} tone="neutral" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               {activeFilterCount ? (
                 <View style={styles.activeFilters}>
+                  {staleOnly ? <Pill label={`In stock ${STALE_DAYS}d+`} tone="warning" /> : null}
                   {statusFilter ? <Pill label={STATUS_LABELS[statusFilter] || statusFilter} tone={STATUS_TONES[statusFilter] || "primary"} /> : null}
                   {sourceFilter ? <Pill label={SOURCE_LABELS[sourceFilter] || sourceFilter} tone="info" /> : null}
                   <TouchableOpacity accessibilityLabel="Clear filters" onPress={clearFilters}><Pill label="Clear" tone="neutral" /></TouchableOpacity>
@@ -379,9 +436,15 @@ export default function InventoryListScreen() {
         <TouchableOpacity testID="filter-backdrop" style={styles.modalBackdrop} activeOpacity={1} onPress={() => setFilterOpen(false)}>
           <TouchableOpacity activeOpacity={1} style={styles.filterSheet}>
             <View style={styles.filterSheetHead}>
-              <Text style={styles.filterSheetTitle}>Filter inventory</Text>
+              <Text style={styles.filterSheetTitle}>Sort and filter</Text>
               <TouchableOpacity accessibilityLabel="Close filters" onPress={() => setFilterOpen(false)}><Icon name="close" size={20} color={COLORS.textMuted} /></TouchableOpacity>
             </View>
+            <ScrollView contentContainerStyle={styles.filterScroll}>
+
+            <Text style={styles.filterGroupLabel}>Sort by</Text>
+            {SORT_OPTIONS.map(({ key, label }) => (
+              <FilterOption key={key} label={label} active={sort === key} onPress={() => { applySort(key); setFilterOpen(false); }} />
+            ))}
 
             <Text style={styles.filterGroupLabel}>Status</Text>
             <FilterOption label="All statuses" active={!statusFilter} onPress={() => { applyStatus(null); setFilterOpen(false); }} />
@@ -398,6 +461,7 @@ export default function InventoryListScreen() {
                 ))}
               </>
             ) : null}
+            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -461,8 +525,10 @@ const styles = StyleSheet.create({
   exportTitle: { color: COLORS.text, fontSize: 16, fontWeight: "600", textAlign: "center" },
   exportHint: { color: COLORS.textMuted, fontSize: 13, textAlign: "center", lineHeight: 19 },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
+  filterScroll: { gap: 4 },
   filterSheet: {
-    backgroundColor: COLORS.card,
+    maxHeight: "85%",
+    backgroundColor: COLORS.bgElevated,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     borderWidth: 1,
