@@ -20,6 +20,7 @@ import { downloadPdfFile } from "../../../utils/fileActions";
 import { InvoicePayments, invoiceStatusLabel, invoiceStatusTone } from "../../../components/InvoicePayments";
 import { CustomerPicker } from "../../../components/CustomerPicker";
 import { Button } from "../../../components/Button";
+import { errorMessage } from "../../../services/errors";
 
 interface DraftLineItem {
   description: string;
@@ -180,8 +181,8 @@ export default function InvoicesScreen() {
     setVoiding(true);
     try {
       replaceInvoice(await api.updateInvoiceStatus(invoice.id, status));
-    } catch (err: any) {
-      Alert.alert(status === "cancelled" ? "Void failed" : "Update failed", err?.detail?.message || err?.message || "Could not update the invoice.");
+    } catch (err) {
+      Alert.alert(status === "cancelled" ? "Void failed" : "Update failed", errorMessage(err, "Could not update the invoice."));
     } finally {
       setVoiding(false);
     }
@@ -197,7 +198,7 @@ export default function InvoicesScreen() {
   );
 
   const handleClose = () => {
-    router.replace("/dashboard" as any);
+    router.replace("/dashboard");
   };
 
   const handleOpenInvoice = async (invoiceId: string) => {
@@ -205,8 +206,8 @@ export default function InvoicesScreen() {
     try {
       const { pdf_base64, filename } = await api.exportInvoicePdf(invoiceId);
       await downloadPdfFile(pdf_base64, filename);
-    } catch (err: any) {
-      Alert.alert("Invoice unavailable", err?.message || "Could not open the invoice PDF.");
+    } catch (err) {
+      Alert.alert("Invoice unavailable", errorMessage(err, "Could not open the invoice PDF."));
     } finally {
       setOpeningInvoiceId(null);
     }
@@ -261,8 +262,8 @@ export default function InvoicesScreen() {
           : `${invoice.customer_name} - ${formatCurrency(invoice.total)}`,
       );
       setView("history");
-    } catch (err: any) {
-      Alert.alert("Invoice failed", err?.message || "Could not create the invoice.");
+    } catch (err) {
+      Alert.alert("Invoice failed", errorMessage(err, "Could not create the invoice."));
     } finally {
       setSubmitting(false);
     }
@@ -575,7 +576,7 @@ export default function InvoicesScreen() {
                 label="Preview"
                 onPress={() =>
                   router.push({
-                    pathname: "/inventory/invoice-preview" as any,
+                    pathname: "/inventory/invoice-preview",
                     params: { id: selectedInvoice.id },
                   })
                 }

@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.services import analytics
 from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.user import User
@@ -155,6 +156,8 @@ def create_transaction(
             item.status = "sold"
             db.add(item)
 
+    db.commit()
+    analytics.track_first(db, current_user.id, "sale_recorded")
     db.commit()
     db.refresh(txn)
     return txn

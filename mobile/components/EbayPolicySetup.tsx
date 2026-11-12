@@ -12,6 +12,7 @@ import * as api from "../services/api";
 import { Button } from "./Button";
 import { Card, Pill, SectionLabel } from "./ui";
 import { COLORS, RADII, SPACING, TYPE } from "../theme/tokens";
+import { errorMessage } from "../services/errors";
 
 export const DEFAULT_FLAT_SHIPPING = "12.00";
 
@@ -45,7 +46,7 @@ export function EbayPolicySetup({ onDone, testIDPrefix = "ebay-policy" }: Props)
       const result = await api.setupEbayPolicies({ free_shipping: freeShipping, returns_accepted: acceptReturns });
       onDone?.(result);
     } catch (err: any) {
-      setError(err?.detail?.message || err?.message || "Could not set up eBay policies. Try again.");
+      setError(errorMessage(err, "Could not set up eBay policies. Try again."));
     } finally {
       setBusy(false);
     }
@@ -101,7 +102,7 @@ export function EbayPoliciesCard({ connected }: { connected: boolean }) {
       setOverview(await api.getEbayPolicies());
       setLoadError(null);
     } catch (err: any) {
-      setLoadError(err?.detail?.message || err?.message || "Could not check eBay policies.");
+      setLoadError(errorMessage(err, "Could not check eBay policies."));
     }
   }, []);
 

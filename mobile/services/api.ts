@@ -777,6 +777,8 @@ export interface Transaction {
   /** Sales tax collected on this line; not revenue, not profit. */
   tax_amount?: string;
   variant_size?: string | null;
+  /** Cost of goods frozen on the sale (refunds carry negative cost). */
+  cost_amount?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1503,6 +1505,15 @@ export interface EbayStatus {
   /** False when the connection predates listing permissions: reconnect to list. */
   can_list?: boolean;
   environment?: string;
+}
+
+/** Register this device for eBay sale alerts. */
+export async function registerPushToken(token: string, platform: string): Promise<void> {
+  await request<void>("/devices/push-token", { method: "POST", body: JSON.stringify({ token, platform }) });
+}
+
+export async function unregisterPushToken(token: string): Promise<void> {
+  await request<void>("/devices/push-token/remove", { method: "POST", body: JSON.stringify({ token }) });
 }
 
 export async function getEbayStatus(): Promise<EbayStatus> {

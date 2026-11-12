@@ -69,7 +69,6 @@ function useStockxStatus() {
 
 export function StockxSettingsCard() {
   const { status, state, reload } = useStockxStatus();
-  const [busy, setBusy] = useState(false);
 
   const connect = async () => {
     try {
@@ -78,19 +77,6 @@ export function StockxSettingsCard() {
       await reload();
     } catch (err) {
       Alert.alert("StockX unavailable", errorText(err, "Could not open the StockX connect flow."));
-    }
-  };
-
-  const sync = async () => {
-    setBusy(true);
-    try {
-      const result = await api.syncStockx();
-      Alert.alert("StockX synced", `${result.transactions_imported} new sale(s) imported.`);
-      await reload();
-    } catch (err) {
-      Alert.alert("StockX sync failed", errorText(err, "Could not sync StockX."));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -126,7 +112,6 @@ export function StockxSettingsCard() {
       ) : null}
       <View style={styles.actions}>
         {state === "disconnected" ? <Button label="Connect StockX" onPress={connect} size="sm" /> : null}
-        {state === "ready" ? <Button label="Sync StockX" onPress={sync} loading={busy} size="sm" /> : null}
         {state === "ready" ? <Button label="Disconnect" onPress={disconnect} variant="ghost" size="sm" /> : null}
       </View>
     </Card>

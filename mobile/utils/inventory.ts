@@ -53,6 +53,20 @@ export function formatCurrency(value?: string | number | null) {
   return `$${parsed.toFixed(2)}`;
 }
 
+/** Quiet sync freshness for a connected account, e.g. "Updated 3 min ago". Sync runs on its own. */
+export function syncFreshness(value?: string | null, now: Date = new Date()): string {
+  if (!value) return "Syncing automatically";
+  const t = new Date(value).getTime();
+  if (Number.isNaN(t)) return "Syncing automatically";
+  const mins = Math.max(0, Math.round((now.getTime() - t) / 60000));
+  if (mins < 1) return "Updated just now";
+  if (mins < 60) return `Updated ${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `Updated ${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return `Updated ${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 export function formatCompactDate(value?: string | null) {
   if (!value) return "Never";
   const parsed = new Date(value);

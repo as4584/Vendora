@@ -78,4 +78,27 @@ describe('ReceiptSheet', () => {
     expect(screen.UNSAFE_getByType(Modal).props.animationType).toBe('slide');
     screen.unmount();
   });
+
+  it('offers Undo sale only for synced cash sales, after confirmation', async () => {
+    const onUndo = jest.fn(async () => undefined);
+    const synced = { ...RECEIPT, orderId: 'order-1', transactionIds: ['t1', 't2'] };
+    const s = render(<ReceiptSheet receipt={synced} onNewSale={jest.fn()} onDone={jest.fn()} onUndo={onUndo} />);
+    fireEvent.press(s.getByTestId('undo-sale'));
+    const buttons = (Alert.alert as jest.Mock).mock.calls.at(-1)[2];
+    expect((Alert.alert as jest.Mock).mock.calls.at(-1)[0]).toBe('Undo this sale?');
+    await buttons.find((b: { text: string }) => b.text === 'Undo sale').onPress();
+    expect(onUndo).toHaveBeenCalled();
+
+    for (const r of [
+      { ...synced, payments: [{ method: 'card', cents: 15000 }] },
+      { ...synced, pending: true },
+      { ...RECEIPT },
+    ]) {
+      const other = render(<ReceiptSheet receipt={r} onNewSale={jest.fn()} onDone={jest.fn()} onUndo={onUndo} />);
+      expect(other.queryByTestId('undo-sale')).toBeNull();
+      other.unmount();
+    }
+    const noHandler = render(<ReceiptSheet receipt={synced} onNewSale={jest.fn()} onDone={jest.fn()} />);
+    expect(noHandler.queryByTestId('undo-sale')).toBeNull();
+  });
 });

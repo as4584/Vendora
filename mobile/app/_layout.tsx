@@ -11,10 +11,14 @@ import { View, ActivityIndicator, Platform, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { COLORS } from "../theme/tokens";
+import { identify, initCrashReporting, track } from "../services/telemetry";
+import { maybePromptSaleAlerts, syncPushToken } from "../services/pushAlerts";
+// react-navigation is vendored inside expo-router in SDK 57.
+import { DarkTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
+
+initCrashReporting();
 // Navigation theme: dark everywhere, so wide screens (iPad) and screen
 // transitions never show the default light background behind content.
-// (react-navigation is vendored inside expo-router in SDK 57.)
-import { DarkTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
 
 const NAV_THEME = {
     ...DarkTheme,
@@ -28,9 +32,17 @@ const NAV_THEME = {
     },
 };
 function RootLayoutNav() {
-    const { isAuthenticated, isLoading } = useAuth();
+    const { isAuthenticated, isLoading, user } = useAuth();
     const segments = useSegments();
     const { replace } = useRouter();
+    const userId = user?.id ? String(user.id) : null;
+
+    useEffect(() => {
+        identify(userId);
+        if (!userId) return;
+        track("app_open");
+        void syncPushToken().then((on) => (on ? undefined : maybePromptSaleAlerts(userId)));
+    }, [userId]);
 
     useEffect(() => {
         if (isLoading) return;

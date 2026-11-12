@@ -6,6 +6,7 @@ import { Card, HeaderTitle, Pill, SectionLabel } from "../../../components/ui";
 import { Button } from "../../../components/Button";
 import { COLORS, FONT_SCALE, SPACING, TYPE } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency } from "../../../utils/inventory";
+import { errorMessage } from "../../../services/errors";
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft", sent: "Sent", partially_paid: "Part paid", paid: "Paid", cancelled: "Void",
@@ -30,8 +31,8 @@ export default function CustomerDetailScreen() {
         address: detail.address || "", notes: detail.notes || "", tax_exempt: detail.tax_exempt,
       });
       setError(null);
-    } catch (err: any) {
-      setError(err?.message || "Could not load this customer.");
+    } catch (err) {
+      setError(errorMessage(err, "Could not load this customer."));
     }
   }, [id]);
 
@@ -47,8 +48,8 @@ export default function CustomerDetailScreen() {
       await api.updateCustomer(customer.id, { ...form, name: form.name.trim() });
       setEditing(false);
       await load();
-    } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "Could not update the customer.");
+    } catch (err) {
+      Alert.alert("Save failed", errorMessage(err, "Could not update the customer."));
     } finally {
       setSaving(false);
     }
@@ -151,7 +152,7 @@ export default function CustomerDetailScreen() {
       <Button
         label="New invoice for this customer"
         leadingIcon="receipt-outline"
-        onPress={() => router.push({ pathname: "/inventory/invoices" as any, params: { customer: customer.id } })}
+        onPress={() => router.push({ pathname: "/inventory/invoices", params: { customer: customer.id } })}
         fullWidth
       />
     </ScrollView>

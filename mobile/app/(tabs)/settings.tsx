@@ -23,7 +23,8 @@ import { GoogleSheetsSettingsCard } from "../../components/GoogleSheets";
 import { registerBackgroundSync, unregisterBackgroundSync } from "../../tasks/backgroundSync";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel } from "../../components/ui";
 import { COLORS, SPACING } from "../../theme/tokens";
-import { formatCompactDate } from "../../utils/inventory";
+import { syncFreshness } from "../../utils/inventory";
+import { errorMessage } from "../../services/errors";
 
 function ProviderCard({
   name,
@@ -31,9 +32,7 @@ function ProviderCard({
   lastSynced,
   helper,
   loading,
-  syncing,
   onConnect,
-  onSync,
   onPush,
   onDisconnect,
 }: {
@@ -42,9 +41,7 @@ function ProviderCard({
   lastSynced?: string | null;
   helper: string;
   loading: boolean;
-  syncing: boolean;
   onConnect: () => void;
-  onSync: () => void;
   onPush?: () => void;
   onDisconnect?: () => void;
 }) {
@@ -59,9 +56,9 @@ function ProviderCard({
         )}
       </View>
       <Text style={styles.helperText}>{helper}</Text>
-      <Text style={styles.helperText}>Last sync: {formatCompactDate(lastSynced)}</Text>
+      {connected ? <Text testID={`${name}-freshness`} style={styles.helperText}>{syncFreshness(lastSynced)}</Text> : null}
       <View style={styles.providerActions}>
-        <ActionButton label={connected ? (syncing ? "Syncing..." : "Sync Now") : `Connect ${name}`} onPress={connected ? onSync : onConnect} tone={connected ? "primary" : "secondary"} compact />
+        {!connected ? <ActionButton label={`Connect ${name}`} onPress={onConnect} tone="secondary" compact /> : null}
         {connected && onPush ? <ActionButton label="Push to POS" onPress={onPush} tone="secondary" compact /> : null}
         {connected && onDisconnect ? <ActionButton label="Disconnect" onPress={onDisconnect} tone="ghost" compact /> : null}
       </View>
@@ -82,10 +79,6 @@ export default function SettingsScreen() {
   const [cvLoading, setCvLoading] = useState(true);
   const [ebStatus, setEbStatus] = useState<api.EbayStatus | null>(null);
   const [ebLoading, setEbLoading] = useState(true);
-  const [lsSyncing, setLsSyncing] = useState(false);
-  const [sqSyncing, setSqSyncing] = useState(false);
-  const [cvSyncing, setCvSyncing] = useState(false);
-  const [ebSyncing, setEbSyncing] = useState(false);
   const [photoSaving, setPhotoSaving] = useState(false);
   const [connectionProvider, setConnectionProvider] = useState<"square" | "clover" | null>(null);
   const [accessToken, setAccessToken] = useState("");
@@ -148,8 +141,8 @@ export default function SettingsScreen() {
       try {
         await api.updateProfile(user?.business_name, `data:image/jpeg;base64,${result.assets[0].base64}`);
         await refreshUser();
-      } catch (err: any) {
-        Alert.alert("Photo update failed", err?.message || "Could not update your profile photo.");
+      } catch (err) {
+        Alert.alert("Photo update failed", errorMessage(err, "Could not update your profile photo."));
       } finally {
         setPhotoSaving(false);
       }
@@ -162,32 +155,17 @@ export default function SettingsScreen() {
       await openProviderConnect(authorization_url);
       await registerBackgroundSync().catch(() => {});
       await fetchAll();
-    } catch (err: any) {
-      Alert.alert("Lightspeed unavailable", err?.message || "Could not open the Lightspeed connect flow.");
-    }
-  };
-
-  const handleSyncLightspeed = async () => {
-    setLsSyncing(true);
-    try {
-      await api.triggerLightspeedSync();
-      await fetchAll();
-      router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("Lightspeed sync failed", err?.message || "Could not complete the Lightspeed sync.");
-    } finally {
-      setLsSyncing(false);
+    } catch (err) {
+      Alert.alert("Lightspeed unavailable", errorMessage(err, "Could not open the Lightspeed connect flow."));
     }
   };
 
   const handlePushLightspeed = async () => {
-    setLsSyncing(true);
     try {
       const result = await api.pushLightspeedInventory();
       Alert.alert("Lightspeed updated", `${result.items_updated} linked item${result.items_updated === 1 ? "" : "s"} pushed to the POS.${result.errors_count ? ` ${result.errors_count} failed.` : ""}`);
       await fetchAll();
-    } catch (err: any) { Alert.alert("Lightspeed push failed", err?.message || "Could not publish inventory updates."); }
-    finally { setLsSyncing(false); }
+    } catch (err) { Alert.alert("Lightspeed push failed", errorMessage(err, "Could not publish inventory updates.")); }
   };
 
   const handleDisconnectLightspeed = () => Alert.alert(
@@ -197,57 +175,18 @@ export default function SettingsScreen() {
       { text: "Cancel", style: "cancel" },
       { text: "Disconnect", style: "destructive", onPress: async () => {
         try { await api.disconnectLightspeed(); await unregisterBackgroundSync().catch(() => {}); await fetchAll(); }
-        catch (err: any) { Alert.alert("Disconnect failed", err?.message || "Could not disconnect Lightspeed."); }
+        catch (err) { Alert.alert("Disconnect failed", errorMessage(err, "Could not disconnect Lightspeed.")); }
       } },
     ],
   );
-
-  const handleSyncSquare = async () => {
-    setSqSyncing(true);
-    try {
-      await api.triggerSquareSync();
-      await fetchAll();
-      router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("Square sync failed", err?.message || "Could not complete the Square sync.");
-    } finally {
-      setSqSyncing(false);
-    }
-  };
-
-  const handleSyncClover = async () => {
-    setCvSyncing(true);
-    try {
-      await api.triggerCloverSync();
-      await fetchAll();
-      router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("Clover sync failed", err?.message || "Could not complete the Clover sync.");
-    } finally {
-      setCvSyncing(false);
-    }
-  };
 
   const handleConnectEbay = async () => {
     try {
       const { authorization_url } = await api.getEbayConnectUrl();
       await openProviderConnect(authorization_url);
       await fetchAll();
-    } catch (err: any) {
-      Alert.alert("eBay unavailable", err?.message || "Could not open the eBay connect flow.");
-    }
-  };
-
-  const handleSyncEbay = async () => {
-    setEbSyncing(true);
-    try {
-      await api.triggerEbaySync();
-      await fetchAll();
-      router.push("/settings/sync-center" as any);
-    } catch (err: any) {
-      Alert.alert("eBay sync failed", err?.message || "Could not complete the eBay sync.");
-    } finally {
-      setEbSyncing(false);
+    } catch (err) {
+      Alert.alert("eBay unavailable", errorMessage(err, "Could not open the eBay connect flow."));
     }
   };
 
@@ -258,7 +197,7 @@ export default function SettingsScreen() {
       { text: "Cancel", style: "cancel" },
       { text: "Disconnect", style: "destructive", onPress: async () => {
         try { await api.disconnectEbay(); await fetchAll(); }
-        catch (err: any) { Alert.alert("Disconnect failed", err?.message || "Could not disconnect eBay."); }
+        catch (err) { Alert.alert("Disconnect failed", errorMessage(err, "Could not disconnect eBay.")); }
       } },
     ],
   );
@@ -274,7 +213,7 @@ export default function SettingsScreen() {
           try {
             await (provider === "square" ? api.disconnectSquare() : api.disconnectClover());
             await fetchAll();
-          } catch (err: any) { Alert.alert("Disconnect failed", err?.message || `Could not disconnect ${label}.`); }
+          } catch (err) { Alert.alert("Disconnect failed", errorMessage(err, `Could not disconnect ${label}.`)); }
         } },
       ],
     );
@@ -319,8 +258,8 @@ export default function SettingsScreen() {
       setConnectionProvider(null);
       await fetchAll();
       Alert.alert("Connected", `${providerName} is connected. You can sync inventory now.`);
-    } catch (err: any) {
-      Alert.alert("Connection failed", err?.message || "Could not save the provider connection.");
+    } catch (err) {
+      Alert.alert("Connection failed", errorMessage(err, "Could not save the provider connection."));
     } finally {
       setConnectionSaving(false);
     }
@@ -340,8 +279,8 @@ export default function SettingsScreen() {
       await api.deleteAccount(deletePassword);
       setDeleteModalOpen(false);
       await signOut();
-    } catch (err: any) {
-      Alert.alert("Account deletion failed", err?.message || "Could not delete your account.");
+    } catch (err) {
+      Alert.alert("Account deletion failed", errorMessage(err, "Could not delete your account."));
     } finally {
       setDeleteSaving(false);
     }
@@ -382,10 +321,10 @@ export default function SettingsScreen() {
         <SectionLabel>Resqlo Plus</SectionLabel>
         <Text style={styles.helperText}>Billing, analytics, storefront, and support are now available in the app.</Text>
         <View style={styles.productActions}>
-          <ActionButton label="Plans & Billing" onPress={() => router.push("/settings/subscription" as any)} tone="secondary" compact />
-          <ActionButton label="Advanced Analytics" onPress={() => router.push("/settings/analytics" as any)} tone="secondary" compact />
-          <ActionButton label="Support" onPress={() => router.push("/settings/support" as any)} tone="secondary" compact />
-          {user?.is_partner ? <ActionButton label="View Public Storefront" onPress={() => router.push(`/seller/${user.id}` as any)} tone="secondary" compact /> : null}
+          <ActionButton label="Plans & Billing" onPress={() => router.push("/settings/subscription")} tone="secondary" compact />
+          <ActionButton label="Advanced Analytics" onPress={() => router.push("/settings/analytics")} tone="secondary" compact />
+          <ActionButton label="Support" onPress={() => router.push("/settings/support")} tone="secondary" compact />
+          {user?.is_partner ? <ActionButton label="View Public Storefront" onPress={() => router.push(`/seller/${user.id}`)} tone="secondary" compact /> : null}
         </View>
       </Card>
 
@@ -405,7 +344,7 @@ export default function SettingsScreen() {
             <Text style={styles.syncStatLabel}>Tracked providers</Text>
           </View>
         </View>
-        <ActionButton label="Open Sync Center" onPress={() => router.push("/settings/sync-center" as any)} tone="secondary" />
+        <ActionButton label="Open Sync Center" onPress={() => router.push("/settings/sync-center")} tone="secondary" />
       </Card>
 
       <SectionLabel>Integrations</SectionLabel>
@@ -415,9 +354,7 @@ export default function SettingsScreen() {
         lastSynced={lsStatus?.last_synced_at}
         helper="POS inventory source with recurring sync support."
         loading={lsLoading}
-        syncing={lsSyncing}
         onConnect={handleConnectLightspeed}
-        onSync={handleSyncLightspeed}
         onPush={handlePushLightspeed}
         onDisconnect={handleDisconnectLightspeed}
       />
@@ -427,9 +364,7 @@ export default function SettingsScreen() {
         lastSynced={sqStatus?.last_synced_at}
         helper="Connect Square to compare local inventory against your provider catalog."
         loading={sqLoading}
-        syncing={sqSyncing}
         onConnect={handleConnectSquare}
-        onSync={handleSyncSquare}
         onDisconnect={() => handleDisconnectPos("square")}
       />
       <ProviderCard
@@ -438,9 +373,7 @@ export default function SettingsScreen() {
         lastSynced={cvStatus?.last_synced_at}
         helper="Pull Clover inventory updates into the same stock dashboard."
         loading={cvLoading}
-        syncing={cvSyncing}
         onConnect={handleConnectClover}
-        onSync={handleSyncClover}
         onDisconnect={() => handleDisconnectPos("clover")}
       />
       <ProviderCard
@@ -449,9 +382,7 @@ export default function SettingsScreen() {
         lastSynced={ebStatus?.last_synced_at}
         helper="Import your eBay listings and orders into Resqlo (read-only)."
         loading={ebLoading}
-        syncing={ebSyncing}
         onConnect={handleConnectEbay}
-        onSync={handleSyncEbay}
         onDisconnect={handleDisconnectEbay}
       />
       <StockxSettingsCard />
@@ -612,8 +543,8 @@ function InvoiceBrandingCard({ user, onSaved }: { user: api.User | null; onSaved
       });
       await onSaved();
       Alert.alert("Saved", "Your invoice branding was updated.");
-    } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "Could not update branding.");
+    } catch (err) {
+      Alert.alert("Save failed", errorMessage(err, "Could not update branding."));
     } finally {
       setSaving(false);
     }

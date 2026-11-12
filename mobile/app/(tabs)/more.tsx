@@ -25,7 +25,7 @@ export default function MoreScreen() {
           key={link.route}
           style={styles.row}
           activeOpacity={0.85}
-          onPress={() => router.push(link.route as any)}
+          onPress={() => router.push(link.route)}
         >
           <IconCircle name={link.icon} />
           <View style={styles.rowText}>

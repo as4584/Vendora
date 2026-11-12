@@ -7,6 +7,7 @@ import { Button } from "../../../components/Button";
 import { EbayPayouts } from "../../../components/EbayPayouts";
 import { EbayPoliciesCard } from "../../../components/EbayPolicySetup";
 import { COLORS, SPACING } from "../../../theme/tokens";
+import { errorMessage } from "../../../services/errors";
 
 type ProviderKey = "lightspeed" | "square" | "clover" | "ebay" | "google_sheets";
 type ProviderStatus = { connected: boolean; last_synced_at: string | null };
@@ -88,15 +89,15 @@ export default function SyncCenterScreen() {
   const syncOne = async (key: ProviderKey) => {
     const provider = PROVIDERS.find((p) => p.key === key)!;
     if (!statuses[key]?.connected) {
-      router.push("/settings" as any);
+      router.push("/settings");
       return;
     }
     setSyncing(key);
     try {
       await provider.sync();
       await load();
-    } catch (err: any) {
-      Alert.alert("Sync failed", err?.message || `Could not sync ${provider.name}.`);
+    } catch (err) {
+      Alert.alert("Sync failed", errorMessage(err, `Could not sync ${provider.name}.`));
     } finally {
       setSyncing(null);
     }
@@ -125,8 +126,8 @@ export default function SyncCenterScreen() {
       const result = await api.retryOutboxJob(job.id);
       if (result.status !== "done") Alert.alert("Still failing", result.last_error || `${providerName(result.provider)} did not accept the change yet.`);
       await load();
-    } catch (err: any) {
-      Alert.alert("Retry failed", err?.message || "Could not retry this update.");
+    } catch (err) {
+      Alert.alert("Retry failed", errorMessage(err, "Could not retry this update."));
     } finally {
       setRetrying(null);
     }
@@ -138,8 +139,8 @@ export default function SyncCenterScreen() {
       const result = await api.retrySyncRun(run.id);
       if (result.errors_count > 0) Alert.alert("Retried with errors", `${result.errors_count} item${result.errors_count === 1 ? "" : "s"} still failed.`);
       await load();
-    } catch (err: any) {
-      Alert.alert("Retry failed", err?.detail?.message || err?.message || `Could not retry the ${providerName(run.provider)} sync.`);
+    } catch (err) {
+      Alert.alert("Retry failed", errorMessage(err, `Could not retry the ${providerName(run.provider)} sync.`));
     } finally {
       setBusyRun(null);
     }
@@ -150,8 +151,8 @@ export default function SyncCenterScreen() {
     try {
       await api.updateReconciliationIssue(issue.id, { status: next });
       await load();
-    } catch (err: any) {
-      Alert.alert("Update failed", err?.detail?.message || err?.message || "Could not update this issue.");
+    } catch (err) {
+      Alert.alert("Update failed", errorMessage(err, "Could not update this issue."));
     } finally {
       setBusyIssue(null);
     }

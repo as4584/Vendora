@@ -8,6 +8,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import {
+    Linking,
     View,
     Text,
     TextInput,
@@ -138,7 +139,7 @@ export default function AddItemScreen() {
         };
     }, []);
 
-    // â”€â”€ Photo picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Photo picker ─────────────────────────────────────────────────────────
     const pickPhoto = async (side: PhotoSide) => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== "granted") {
@@ -201,12 +202,22 @@ export default function AddItemScreen() {
         );
     };
 
-    // â”€â”€ Barcode scanner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Barcode scanner ──────────────────────────────────────────────────────
     const openScanner = async () => {
         if (!cameraPermission?.granted) {
-            const { granted } = await requestCameraPermission();
+            const { granted, canAskAgain } = await requestCameraPermission();
             if (!granted) {
-                Alert.alert("Permission Required", "Allow camera access to scan barcodes.");
+                // Once denied, iOS won't ask again: send the seller to Settings instead.
+                Alert.alert(
+                    "Camera access needed",
+                    "Allow camera access to scan barcodes and box labels.",
+                    canAskAgain
+                        ? [{ text: "OK" }]
+                        : [
+                              { text: "Not now", style: "cancel" },
+                              { text: "Open Settings", onPress: () => void Linking.openSettings() },
+                          ],
+                );
                 return;
             }
         }
@@ -351,7 +362,7 @@ export default function AddItemScreen() {
         setScanNote("New barcode. Type the details once and Resqlo will remember it next time.");
     };
 
-    // â”€â”€ Auto-SKU â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Auto-SKU ─────────────────────────────────────────────────────────────
     const handleAutoSKU = () => {
         setSku(generateSKU(category || "other"));
     };
@@ -380,7 +391,7 @@ export default function AddItemScreen() {
         setVariants((prev) => prev.filter((_, i) => i !== idx));
     };
 
-    // â”€â”€ Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Submit ───────────────────────────────────────────────────────────────
     const handleSubmit = async () => {
         if (!name.trim()) {
             Alert.alert("Required", "Item name is required.");
@@ -467,7 +478,7 @@ export default function AddItemScreen() {
         }
     };
 
-    // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Render ───────────────────────────────────────────────────────────────
     return (
         <KeyboardAvoidingView
             style={{ flex: 1, backgroundColor: "#0E0E11" }}
@@ -480,7 +491,7 @@ export default function AddItemScreen() {
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
             >
-                {/* â”€â”€ Photos â”€â”€ */}
+                {/* ── Photos ── */}
                 {/* Smart scan: the fastest way to add a boxed item */}
                 <Button
                     label="Scan a box"
@@ -491,6 +502,15 @@ export default function AddItemScreen() {
                     accessibilityLabel="Scan a box barcode and label"
                     testID="smart-scan-button"
                     style={styles.smartScanButton}
+                />
+                <Button
+                    label="Scan many boxes"
+                    leadingIcon="layers-outline"
+                    variant="ghost"
+                    fullWidth
+                    onPress={() => router.push("/inventory/batch-scan")}
+                    accessibilityLabel="Batch scan many boxes, then review and save them together"
+                    testID="batch-scan-button"
                 />
                 {scanNote ? (
                     <View style={styles.scanNote} accessibilityLiveRegion="polite" testID="smart-scan-note">
@@ -532,7 +552,7 @@ export default function AddItemScreen() {
                     </TouchableOpacity>
                 </View>
 
-                {/* â”€â”€ Required â”€â”€ */}
+                {/* ── Required ── */}
                 <Text style={styles.sectionTitle}>Required</Text>
                 <Text style={styles.label}>Item Name</Text>
                 <TextInput
@@ -544,7 +564,7 @@ export default function AddItemScreen() {
                     onChangeText={setName}
                 />
 
-                {/* â”€â”€ Details â”€â”€ */}
+                {/* ── Details ── */}
                 <Text style={styles.sectionTitle}>Details</Text>
 
                 <View style={styles.row}>
@@ -627,7 +647,7 @@ export default function AddItemScreen() {
                     onChangeText={setCondition}
                 />
 
-                {/* â”€â”€ Pricing â”€â”€ */}
+                {/* ── Pricing ── */}
                 <Text style={styles.sectionTitle}>Pricing</Text>
                 <View style={styles.row}>
                     <View style={styles.halfField}>
@@ -755,7 +775,7 @@ export default function AddItemScreen() {
                 />
             </ScrollView>
 
-            {/* â”€â”€ Barcode Scanner Modal â”€â”€ */}
+            {/* ── Barcode Scanner Modal ── */}
             <Modal visible={scannerOpen} animationType="slide" onRequestClose={closeScanner}>
                 <View style={styles.scannerContainer}>
                     <CameraView

@@ -11,6 +11,7 @@ import { Button, triggerHaptic } from "./Button";
 import { Icon } from "./ui";
 import { COLORS, MIN_TOUCH, RADII, SPACING, TYPE } from "../theme/tokens";
 import { formatCurrency, formatShortDateTime } from "../utils/inventory";
+import { errorMessage } from "../services/errors";
 
 export const PAYMENT_METHODS: { value: api.InvoicePaymentMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
@@ -100,8 +101,8 @@ export function InvoicePayments({
       triggerHaptic(updated.status === "paid" ? "success" : "light");
       setOpen(false);
       onRecorded(updated);
-    } catch (err: any) {
-      setError(err?.message || "Could not record the payment.");
+    } catch (err) {
+      setError(errorMessage(err, "Could not record the payment."));
     } finally {
       setSaving(false);
     }

@@ -19,12 +19,15 @@ import { Card, Icon, Pill, SectionLabel } from "../../../components/ui";
 import { Button, IconButton, triggerHaptic } from "../../../components/Button";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 import { ReceiptSheet } from "../../../components/ReceiptSheet";
+import { maybeAskForRating, recordSale } from "../../../services/rating";
 import { BRAND, COLORS, FONT_SCALE, RADII, SPACING, TYPE } from "../../../theme/tokens";
 import { formatCurrency, resolveQty } from "../../../utils/inventory";
 import {
   centsToString,
   computeCheckout,
   formatCents,
+  haggle,
+  HAGGLE_STEPS,
   paymentLabel,
   sameBarcode,
   sizeOptions,
@@ -32,6 +35,7 @@ import {
   type DiscountMode,
   type ReceiptData,
 } from "../../../utils/checkout";
+import { errorMessage } from "../../../services/errors";
 
 // Cash and card first: that is how almost every show sale is paid.
 const PRIMARY_METHODS = ["cash", "card"];
@@ -198,8 +202,8 @@ export default function QuickSaleScreen() {
       await api.updateProfile({ sales_tax_rate: taxRate.trim() || "0" });
       setDefaultTax(taxRate.trim());
       triggerHaptic("success");
-    } catch (err: any) {
-      Alert.alert("Couldn't save", err?.message || "Try again when you're online.");
+    } catch (err) {
+      Alert.alert("Couldn't save", errorMessage(err, "Try again when you're online."));
     }
   };
 
@@ -313,6 +317,7 @@ export default function QuickSaleScreen() {
       const order = await api.createSaleOrder(payload);
       const offline = !!order.pending || !isOnline();
       triggerHaptic("success");
+      if (!offline) void recordSale();
       setReceipt({
         businessName,
         date: new Date(),
@@ -328,11 +333,24 @@ export default function QuickSaleScreen() {
         })),
         pending: offline,
         orderId: offline ? undefined : order.order_id,
+        transactionIds: offline ? undefined : (order.transactions ?? []).map((t) => t.id),
       });
-    } catch (err: any) {
-      Alert.alert("Sale failed", err?.message || "Could not log this sale.");
+    } catch (err) {
+      Alert.alert("Sale failed", errorMessage(err, "Could not log this sale."));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const undoSale = async () => {
+    const ids = receipt?.transactionIds ?? [];
+    try {
+      for (const id of ids) await api.refundTransaction(id, "Undone at checkout");
+      triggerHaptic("success");
+      resetSale();
+      Alert.alert("Sale undone", "Items are back in stock.");
+    } catch (err) {
+      Alert.alert("Couldn't undo", (err as Error)?.message || "Try again, or refund it from the item.");
     }
   };
 
@@ -438,6 +456,20 @@ export default function QuickSaleScreen() {
                       })}
                     </View>
                   ) : null}
+                  <View style={styles.haggleRow}>
+                    {HAGGLE_STEPS.map(({ step, label }) => (
+                      <TouchableOpacity
+                        key={step}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${label} on ${line.item.name}`}
+                        onPress={() => changePrice(line.item.id, haggle(line.price, listPrice(line.item), step))}
+                        style={styles.haggleChip}
+                        hitSlop={4}
+                      >
+                        <Text style={styles.haggleText}>{label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                   <View style={styles.cartControls}>
                     <View style={styles.priceField}>
                       <Text style={styles.currency}>$</Text>
@@ -663,10 +695,15 @@ export default function QuickSaleScreen() {
 
       <ReceiptSheet
         receipt={receipt}
-        onNewSale={resetSale}
+        onUndo={undoSale}
+        onNewSale={() => {
+          resetSale();
+          void maybeAskForRating();
+        }}
         onDone={() => {
           resetSale();
           router.replace("/(tabs)/dashboard");
+          void maybeAskForRating();
         }}
       />
     </View>
@@ -780,6 +817,9 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   cartTop: { flexDirection: "row", alignItems: "flex-start", gap: SPACING.sm },
+  haggleRow: { flexDirection: "row", gap: SPACING.xs, flexWrap: "wrap" },
+  haggleChip: { minHeight: 32, paddingHorizontal: SPACING.sm, justifyContent: "center", borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
+  haggleText: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
   cartControls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: SPACING.sm },
   qtyStepper: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
   qtyValue: { color: COLORS.text, fontSize: 16, fontWeight: "600", minWidth: 24, textAlign: "center" },

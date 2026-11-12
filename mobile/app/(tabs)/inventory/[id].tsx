@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { itemProfit } from "../../../services/profit";
 import * as api from "../../../services/api";
 import { StockxItemCard } from "../../../components/Stockx";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +23,7 @@ import { EbayCompsCard } from "../../../components/EbayCompsCard";
 import { ProUpsell, isProRequired } from "../../../components/ProUpsell";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
+import { errorMessage } from "../../../services/errors";
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   in_stock: ["listed", "sold"],
@@ -70,8 +72,8 @@ export default function ItemDetailScreen() {
       if (nextActivity.status === "fulfilled") setActivity(nextActivity.value);
       if (nextTransactions.status === "fulfilled") setTransactions(nextTransactions.value.items);
       if (nextInvoices.status === "fulfilled") setInvoices(nextInvoices.value.items);
-    } catch (err: any) {
-      setLoadError(err?.message || "Could not load this item.");
+    } catch (err) {
+      setLoadError(errorMessage(err, "Could not load this item."));
     } finally {
       setLoading(false);
     }
@@ -92,8 +94,8 @@ export default function ItemDetailScreen() {
         side === "back" ? uri : undefined
       );
       setItem(updated);
-    } catch (err: any) {
-      Alert.alert("Upload failed", err?.message || "Could not update the item photo.");
+    } catch (err) {
+      Alert.alert("Upload failed", errorMessage(err, "Could not update the item photo."));
     } finally {
       setPhotoUploading(false);
     }
@@ -132,8 +134,8 @@ export default function ItemDetailScreen() {
           try {
             await api.refundTransaction(transaction.id);
             await loadItem();
-          } catch (err: any) {
-            Alert.alert("Refund failed", err?.detail?.message || err?.message || "Could not refund this sale.");
+          } catch (err) {
+            Alert.alert("Refund failed", errorMessage(err, "Could not refund this sale."));
           } finally {
             setRefunding(null);
           }
@@ -146,8 +148,8 @@ export default function ItemDetailScreen() {
     try {
       const updated = await api.updateItemStatus(item!.id, status);
       setItem(updated);
-    } catch (err: any) {
-      Alert.alert("Status update failed", err?.message || "Could not update item status.");
+    } catch (err) {
+      Alert.alert("Status update failed", errorMessage(err, "Could not update item status."));
     }
   };
 
@@ -161,8 +163,8 @@ export default function ItemDetailScreen() {
           try {
             await api.deleteItem(item!.id);
             replace("/(tabs)/inventory");
-          } catch (err: any) {
-            Alert.alert("Delete failed", err?.message || "Could not delete this item.");
+          } catch (err) {
+            Alert.alert("Delete failed", errorMessage(err, "Could not delete this item."));
           }
         },
       },
@@ -180,7 +182,7 @@ export default function ItemDetailScreen() {
         }),
       ]);
       setMarket(nextMarket); setSuggestion(nextSuggestion);
-    } catch (err: any) { Alert.alert("Market pricing unavailable", err?.message || "Could not compare current pricing."); }
+    } catch (err) { Alert.alert("Market pricing unavailable", errorMessage(err, "Could not compare current pricing.")); }
     finally { setPricingLoading(false); }
   };
 
@@ -189,7 +191,7 @@ export default function ItemDetailScreen() {
     try {
       const result = await api.pushItemToLightspeed(item!.id);
       Alert.alert("Published to Lightspeed", result.items_created ? "A linked Lightspeed catalog item was created." : "The linked Lightspeed catalog item was updated.");
-    } catch (err: any) { Alert.alert("Publish failed", err?.message || "Connect Lightspeed in Settings first."); }
+    } catch (err) { Alert.alert("Publish failed", errorMessage(err, "Connect Lightspeed in Settings first.")); }
     finally { setPublishing(false); }
   };
 
@@ -231,7 +233,7 @@ export default function ItemDetailScreen() {
       <HeaderTitle
         title={item.name}
         subtitle={`${item.category || "Inventory item"} • ${item.sku || "No SKU yet"}`}
-        right={<ActionButton label="Edit" onPress={() => push({ pathname: "/(tabs)/inventory/edit", params: { id: item.id } } as any)} tone="secondary" compact />}
+        right={<ActionButton label="Edit" onPress={() => push({ pathname: "/(tabs)/inventory/edit", params: { id: item.id } })} tone="secondary" compact />}
       />
 
       <Card>
@@ -273,35 +275,34 @@ export default function ItemDetailScreen() {
       </Card>
 
       {(() => {
-        const cost = Number(item.buy_price ?? 0);
-        const list = Number(item.expected_sell_price ?? 0);
-        const profit = list - cost;
-        const roi = cost > 0 ? Math.round((profit / cost) * 100) : null;
+        const p = itemProfit(item, transactions);
+        const sold = p.kind === "realized";
         return (
           <Card>
-            <View style={styles.metricStrip}>
+            <View style={styles.metricStrip} testID="item-profit">
               <View style={styles.metricCell}>
-                <Text style={styles.metricCellValue}>{formatCurrency(item.buy_price)}</Text>
+                <Text style={styles.metricCellValue}>{`$${p.cost.toFixed(0)}`}</Text>
                 <Text style={styles.metricCellLabel}>Cost</Text>
               </View>
               <View style={styles.metricCellDivider} />
               <View style={styles.metricCell}>
-                <Text style={styles.metricCellValue}>{formatCurrency(item.expected_sell_price)}</Text>
-                <Text style={styles.metricCellLabel}>List</Text>
+                <Text style={styles.metricCellValue}>{sold ? `$${p.revenue.toFixed(0)}` : formatCurrency(item.expected_sell_price)}</Text>
+                <Text style={styles.metricCellLabel}>{sold ? "Sold" : "List"}</Text>
               </View>
               <View style={styles.metricCellDivider} />
               <View style={styles.metricCell}>
-                <Text style={[styles.metricCellValue, { color: profit >= 0 ? COLORS.success : COLORS.danger }]}>
-                  {`${profit >= 0 ? "+" : "-"}$${Math.abs(profit).toFixed(0)}`}
+                <Text style={[styles.metricCellValue, { color: p.profit >= 0 ? COLORS.success : COLORS.danger }]}>
+                  {`${p.profit >= 0 ? "+" : "-"}$${Math.abs(p.profit).toFixed(0)}`}
                 </Text>
-                <Text style={styles.metricCellLabel}>Profit</Text>
+                <Text style={styles.metricCellLabel}>{sold ? "Profit" : "Est. profit"}</Text>
               </View>
               <View style={styles.metricCellDivider} />
               <View style={styles.metricCell}>
-                <Text style={[styles.metricCellValue, { color: COLORS.primaryBright }]}>{roi == null ? "—" : `${roi}%`}</Text>
+                <Text style={[styles.metricCellValue, { color: COLORS.primaryBright }]}>{p.roi == null ? "—" : `${p.roi}%`}</Text>
                 <Text style={styles.metricCellLabel}>ROI</Text>
               </View>
             </View>
+            <Text testID="item-profit-note" style={styles.profitNote}>{p.note}</Text>
           </Card>
         );
       })()}
@@ -490,6 +491,7 @@ const styles = StyleSheet.create({
   photoThumbRow: { flexDirection: "row", gap: SPACING.sm, marginTop: SPACING.sm },
   thumbPhoto: { width: 64, height: 64, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardAlt },
   thumbPhotoActive: { borderColor: COLORS.primary, borderWidth: 2 },
+  profitNote: { color: COLORS.textMuted, fontSize: 12, textAlign: "center", marginTop: SPACING.xs },
   metricStrip: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   metricCell: { flex: 1, alignItems: "center", gap: 3 },
   metricCellValue: { color: COLORS.text, fontSize: 16, fontWeight: "600" },

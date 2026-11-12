@@ -13,6 +13,7 @@
  *  - On reconnect, flushOutbox() replays the outbox FIFO, remapping the temp
  *    ids of offline-created items to their real server ids as it goes.
  */
+import { smartSearch } from "../smartSearch";
 import type {
   InventoryItem,
   PaginatedItems,
@@ -98,22 +99,14 @@ export async function offlineListItems(
   const m = await readMirror();
   let items = Object.values(m);
 
-  if (params.q) {
-    const q = params.q.toLowerCase();
-    items = items.filter(
-      (i) =>
-        i.name?.toLowerCase().includes(q) ||
-        i.sku?.toLowerCase().includes(q) ||
-        i.category?.toLowerCase().includes(q),
-    );
-  }
   if (params.status) items = items.filter((i) => i.status === params.status);
   if (params.source) items = items.filter((i) => i.source === params.source);
   if (params.availableOnly) items = items.filter((i) => i.quantity > 0);
   if (params.upc) items = items.filter((i) => sameBarcode(i.upc, params.upc));
 
-  // Newest first, matching the server's default ordering.
+  // Newest first, matching the server's default ordering; a search then ranks best match first.
   items.sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
+  if (params.q) items = smartSearch(items, params.q);
 
   const page = params.page ?? 1;
   const perPage = params.perPage ?? 20;
@@ -502,14 +495,14 @@ export async function flushOutbox(): Promise<void> {
       } catch (err) {
         if (isTransient(err)) {
           q[0].attempts += 1;
-          q[0].lastError = String((err as any)?.message ?? err);
+          q[0].lastError = String((err as { message?: unknown } | null)?.message ?? err);
           await writeJSON(KEYS.outbox, q);
           break; // stop and retry on the next reconnect
         }
         // Rejected for good (4xx). Don't lose it silently: record it for the
         // user, undo its optimistic change, and pull out anything queued
         // after it that depends on an item that will now never exist.
-        const message = String((err as any)?.message ?? err);
+        const message = String((err as { message?: unknown } | null)?.message ?? err);
         const rejected = [q[0], ...dependentsOf(q[0], q.slice(1))];
         const rejectedIds = new Set(rejected.map((e) => e.id));
         q = q.filter((e) => !rejectedIds.has(e.id));

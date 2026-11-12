@@ -14,6 +14,7 @@ import { ActionButton, Card, HeaderTitle, Pill, SectionLabel, Stepper } from "..
 import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import ImportReview from "../../../components/ImportReview";
+import { errorMessage } from "../../../services/errors";
 
 export default function InventoryImportScreen() {
   const [preview, setPreview] = useState<api.InventoryImportPreview | null>(null);
@@ -57,8 +58,8 @@ export default function InventoryImportScreen() {
       const nextPreview = await api.previewInventoryImport(formData);
       scrollToReview.current = true;
       setPreview(nextPreview);
-    } catch (err: any) {
-      Alert.alert("Import preview failed", err?.message || "Could not read this CSV file.");
+    } catch (err) {
+      Alert.alert("Import preview failed", errorMessage(err, "Could not read this CSV file."));
     } finally {
       setLoading(false);
     }
@@ -75,8 +76,8 @@ export default function InventoryImportScreen() {
       );
       setPreview(null);
       setFileName(null);
-    } catch (err: any) {
-      Alert.alert("Import failed", err?.message || "Could not commit the import.");
+    } catch (err) {
+      Alert.alert("Import failed", errorMessage(err, "Could not commit the import."));
     } finally {
       setCommitting(false);
     }
@@ -123,8 +124,8 @@ export default function InventoryImportScreen() {
           `${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`
         );
       }
-    } catch (err: any) {
-      Alert.alert("Link import failed", err?.message || "Could not import from this spreadsheet link.");
+    } catch (err) {
+      Alert.alert("Link import failed", errorMessage(err, "Could not import from this spreadsheet link."));
     } finally {
       setLinkLoading(null);
     }

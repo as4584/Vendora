@@ -15,7 +15,7 @@ export function ProUpsell({ message, testID = "pro-upsell" }: { message: string;
   return (
     <View testID={testID} style={styles.box}>
       <Text style={styles.text}>{message}</Text>
-      <Button label="See Pro" size="sm" onPress={() => router.push(SUBSCRIPTION_ROUTE as any)} />
+      <Button label="See Pro" size="sm" onPress={() => router.push(SUBSCRIPTION_ROUTE)} />
     </View>
   );
 }

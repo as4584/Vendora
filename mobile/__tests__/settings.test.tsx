@@ -392,12 +392,14 @@ describe('SettingsScreen', () => {
     );
   });
 
-  it('syncs each connected provider and routes to the sync center', async () => {
+  it('syncs connected providers automatically: no Sync button, quiet freshness line', async () => {
+    const tenMinAgo = new Date(Date.now() - 10 * 60000).toISOString();
     (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue({
       ...NOT_CONNECTED_LS,
       connected: true,
+      last_synced_at: tenMinAgo,
     });
-    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_SQ, connected: true });
+    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_SQ, connected: true, last_synced_at: null });
     (apiMock.getCloverStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_CV, connected: true });
     (apiMock.getProviderHealth as jest.Mock).mockResolvedValue({
       providers: [
@@ -405,55 +407,12 @@ describe('SettingsScreen', () => {
         { last_run_status: 'partial', open_issues_count: 2 },
       ],
     });
-    (apiMock.triggerLightspeedSync as jest.Mock).mockResolvedValue({});
-    (apiMock.triggerSquareSync as jest.Mock).mockResolvedValue({});
-    (apiMock.triggerCloverSync as jest.Mock).mockResolvedValue({});
     const screen = render(<SettingsScreen />);
-    await waitFor(() => expect(screen.getAllByText('Sync Now')).toHaveLength(3));
-    const buttons = screen.getAllByText('Sync Now');
-    fireEvent.press(buttons[0]);
-    fireEvent.press(buttons[1]);
-    fireEvent.press(buttons[2]);
-    await waitFor(() => {
-      expect(apiMock.triggerLightspeedSync).toHaveBeenCalled();
-      expect(apiMock.triggerSquareSync).toHaveBeenCalled();
-      expect(apiMock.triggerCloverSync).toHaveBeenCalled();
-      expect(apiMock.getLightspeedStatus).toHaveBeenCalledTimes(4);
-    });
-    expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
+    expect(await screen.findByText('Updated 10 min ago')).toBeTruthy();
+    expect(screen.getAllByText('Syncing automatically').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('Sync Now')).toBeNull();
+    expect(screen.queryByText('Connect Lightspeed')).toBeNull();
     expect(screen.getByText('3')).toBeTruthy();
-  });
-
-  it('reports provider sync failures', async () => {
-    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_LS, connected: true });
-    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_SQ);
-    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_CV);
-    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue(EMPTY_HEALTH);
-    (apiMock.triggerLightspeedSync as jest.Mock).mockRejectedValueOnce(new Error('sync down'));
-    const screen = render(<SettingsScreen />);
-    await screen.findByText('Sync Now');
-    fireEvent.press(screen.getByText('Sync Now'));
-    await waitFor(() =>
-      expect(Alert.alert).toHaveBeenCalledWith('Lightspeed sync failed', 'sync down'),
-    );
-  });
-
-  it('reports Square and Clover sync failures', async () => {
-    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue(NOT_CONNECTED_LS);
-    (apiMock.getSquareStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_SQ, connected: true });
-    (apiMock.getCloverStatus as jest.Mock).mockResolvedValue({ ...NOT_CONNECTED_CV, connected: true });
-    (apiMock.getProviderHealth as jest.Mock).mockResolvedValue(EMPTY_HEALTH);
-    (apiMock.triggerSquareSync as jest.Mock).mockRejectedValueOnce(new Error('square down'));
-    (apiMock.triggerCloverSync as jest.Mock).mockRejectedValueOnce(new Error('clover down'));
-    const screen = render(<SettingsScreen />);
-    await waitFor(() => expect(screen.getAllByText('Sync Now')).toHaveLength(2));
-    const buttons = screen.getAllByText('Sync Now');
-    fireEvent.press(buttons[0]);
-    fireEvent.press(buttons[1]);
-    await waitFor(() => {
-      expect(Alert.alert).toHaveBeenCalledWith('Square sync failed', 'square down');
-      expect(Alert.alert).toHaveBeenCalledWith('Clover sync failed', 'clover down');
-    });
   });
 
   it('validates and connects Clover credentials', async () => {
@@ -561,23 +520,6 @@ describe('SettingsScreen', () => {
     (apiMock.getEbayConnectUrl as jest.Mock).mockRejectedValueOnce(new Error('nope'));
     fireEvent.press(screen.getByText('Connect eBay'));
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('eBay unavailable', 'nope'));
-  });
-
-  it('syncs eBay to the sync center and reports failures', async () => {
-    setupAllDisconnected();
-    (apiMock.getEbayStatus as jest.Mock).mockResolvedValue({ connected: true, account_id: 'seller', expires_at: null, last_synced_at: null });
-    (apiMock.triggerEbaySync as jest.Mock).mockResolvedValueOnce({ status: 'completed' });
-    const screen = render(<SettingsScreen />);
-    await screen.findByTestId('settings-content');
-    fireEvent.press(await screen.findByText('Sync Now')); // eBay is the only connected provider
-    await waitFor(() => {
-      expect(apiMock.triggerEbaySync).toHaveBeenCalled();
-      expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
-    });
-
-    (apiMock.triggerEbaySync as jest.Mock).mockRejectedValueOnce(new Error('sync down'));
-    fireEvent.press(screen.getByText('Sync Now'));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('eBay sync failed', 'sync down'));
   });
 
   it('disconnects eBay after confirmation and reports failures', async () => {

@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.models.base import Base
 from app.models.user import User       # noqa: F401 — register model
+from app.models.app_event import AppEvent  # noqa: F401 - register model
+from app.models.push_token import PushToken  # noqa: F401 - register model
 from app.models.inventory import InventoryItem  # noqa: F401 — register model
 from app.models.transaction import Transaction  # noqa: F401 — register model
 from app.models.invoice import Invoice, InvoiceItem  # noqa: F401 — register model

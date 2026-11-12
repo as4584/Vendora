@@ -20,9 +20,10 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel as _PydBase
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.services import analytics
 from app.database import get_db
 from app.models.user import User
 from app.models.inventory import (
@@ -49,6 +50,7 @@ from app.schemas.inventory import (
 )
 from app.dependencies.auth import get_current_user
 from app.dependencies.tier_limiter import TIER_LIMITS, enforce_item_limit
+from app.services import smart_search
 from app.services.inventory import transition_item
 from app.services.scan_memory import remember_items
 from app.services.spreadsheet_import import (
@@ -63,6 +65,9 @@ from app.services.spreadsheet_import import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Upper bound on rows scored per search (a seller's whole active inventory).
+SEARCH_CANDIDATE_LIMIT = 5000
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -415,6 +420,8 @@ def create_item(
     db.flush()
     _sheet_push(db, item)
     db.commit()
+    analytics.track_first(db, current_user.id, "item_created")
+    db.commit()
     db.refresh(item)
     return item
 
@@ -430,7 +437,11 @@ def _sheet_push(db: Session, item: InventoryItem) -> None:
 def list_items(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
-    q: Optional[str] = Query(None, description="Search by name, SKU, or UPC"),
+    q: Optional[str] = Query(
+        None,
+        max_length=200,
+        description="Smart search: name, SKU, UPC, size ('sz 10'), color, card details, nicknames; typo tolerant",
+    ),
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     source_filter: Optional[str] = Query(None, alias="source", description="Filter by source (e.g. lightspeed)"),
     available_only: bool = Query(False, description="Only items with quantity > 0 and status in (in_stock, listed)"),
@@ -452,16 +463,6 @@ def list_items(
             variants.add(code[1:])
         base_query = base_query.filter(InventoryItem.upc.in_(sorted(variants)))
 
-    if q:
-        term = f"%{q[:50]}%"  # cap at 50 chars for safety
-        base_query = base_query.filter(
-            or_(
-                InventoryItem.name.ilike(term),
-                InventoryItem.sku.ilike(term),
-                InventoryItem.upc.ilike(term),
-            )
-        )
-
     if status_filter:
         base_query = base_query.filter(InventoryItem.status == status_filter)
 
@@ -472,6 +473,24 @@ def list_items(
         base_query = base_query.filter(
             InventoryItem.status.in_(["in_stock", "listed"]),
             InventoryItem.quantity > 0,
+        )
+
+    if q and q.strip():
+        # Rank in Python: typo tolerance, sizes and nicknames don't map to ILIKE.
+        candidates = (
+            base_query.order_by(InventoryItem.created_at.desc())
+            .limit(SEARCH_CANDIDATE_LIMIT)
+            .all()
+        )
+        ranked = smart_search.rank(candidates, q)
+        total = len(ranked)
+        items = ranked[(page - 1) * per_page : page * per_page]
+        return PaginatedItems(
+            items=items,
+            total=total,
+            page=page,
+            per_page=per_page,
+            pages=math.ceil(total / per_page) if total > 0 else 0,
         )
 
     total = base_query.count()

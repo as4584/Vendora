@@ -23,6 +23,7 @@ import {
   rowToItem,
   validateDraft,
 } from "../utils/importReview";
+import { errorMessage } from "../services/errors";
 
 const BADGES: Record<string, { label: string; tone: "success" | "info" | "danger" }> = {
   create: { label: "New item", tone: "success" },
@@ -79,8 +80,8 @@ export default function ImportReview({ preview, committing, onCommit, onRowsChan
       } else {
         setEditing(null);
       }
-    } catch (err: any) {
-      Alert.alert("Couldn't save the row", err?.message || "Try again.");
+    } catch (err) {
+      Alert.alert("Couldn't save the row", errorMessage(err, "Try again."));
     } finally {
       setSaving(false);
     }
@@ -93,10 +94,10 @@ export default function ImportReview({ preview, committing, onCommit, onRowsChan
     setLastRemoved({ row, previousAction });
     try {
       await api.updateInventoryImportRow(preview.job_id, row.id, { skip: true });
-    } catch (err: any) {
+    } catch (err) {
       replaceRow(row);
       setLastRemoved(null);
-      Alert.alert("Couldn't remove the row", err?.message || "Try again.");
+      Alert.alert("Couldn't remove the row", errorMessage(err, "Try again."));
     }
   };
 
@@ -108,9 +109,9 @@ export default function ImportReview({ preview, committing, onCommit, onRowsChan
     try {
       const restored = await api.updateInventoryImportRow(preview.job_id, row.id!, { skip: false });
       replaceRow(restored);
-    } catch (err: any) {
+    } catch (err) {
       replaceRow({ ...row, action: "skip" });
-      Alert.alert("Couldn't restore the row", err?.message || "Try again.");
+      Alert.alert("Couldn't restore the row", errorMessage(err, "Try again."));
     }
   };
 
