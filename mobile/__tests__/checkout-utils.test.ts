@@ -11,6 +11,7 @@ import {
   toCents,
   toSignedCents,
 } from '../utils/checkout';
+import { canUndoSale, haggle } from '../utils/checkout';
 
 describe('checkout cents math', () => {
   it('parses typed money without floats', () => {
@@ -95,4 +96,22 @@ describe('checkout cents math', () => {
     expect(paymentLabel('cashapp')).toBe('Cash App');
     expect(paymentLabel('weird')).toBe('weird');
   });
+});
+
+describe('haggle', () => {
+  it('knocks off fixed amounts, 10% rounded to whole dollars, or resets to list', () => {
+    expect(haggle('150.00', '150.00', 'minus5')).toBe('145.00');
+    expect(haggle('150.00', '150.00', 'minus10')).toBe('140.00');
+    expect(haggle('155.00', '160.00', 'minus10pct')).toBe('140.00');
+    expect(haggle('120.00', '160.00', 'list')).toBe('160.00');
+    expect(haggle('3.00', '10.00', 'minus5')).toBe('0.00');
+  });
+});
+
+it('canUndoSale requires a synced cash sale with lines', () => {
+  const base = { date: new Date(), lines: [], subtotal: 0, discount: 0, tax: 0, total: 0, payments: [{ method: 'cash', cents: 1 }], orderId: 'o', transactionIds: ['t'] };
+  expect(canUndoSale(base)).toBe(true);
+  expect(canUndoSale(null)).toBe(false);
+  expect(canUndoSale({ ...base, transactionIds: [] })).toBe(false);
+  expect(canUndoSale({ ...base, payments: [{ method: 'cash', cents: 1 }, { method: 'card', cents: 1 }] })).toBe(false);
 });

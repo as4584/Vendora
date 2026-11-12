@@ -140,6 +140,32 @@ export interface ReceiptData {
   pending?: boolean;
   /** Server order id once synced; enables the PDF receipt. */
   orderId?: string;
+  /** Sale lines on the server, so the sale can be undone right after. */
+  transactionIds?: string[];
+}
+
+export type HaggleStep = "minus5" | "minus10" | "minus10pct" | "list";
+export const HAGGLE_STEPS: { step: HaggleStep; label: string }[] = [
+  { step: "minus5", label: "-$5" },
+  { step: "minus10", label: "-$10" },
+  { step: "minus10pct", label: "-10%" },
+  { step: "list", label: "List" },
+];
+
+/** One-tap haggle: knock a bit off the current price (never below $0) or reset to list. */
+export function haggle(price: string, list: string, step: HaggleStep): string {
+  const cents = toCents(price);
+  const next =
+    step === "minus5" ? cents - 500
+      : step === "minus10" ? cents - 1000
+        : step === "minus10pct" ? Math.round((cents * 0.9) / 100) * 100
+          : toCents(list);
+  return centsToString(Math.max(0, next));
+}
+
+/** Undo is offered only for cash sales: card money must be refunded through the processor. */
+export function canUndoSale(r: ReceiptData | null): boolean {
+  return !!r && !r.pending && !!r.orderId && !!r.transactionIds?.length && r.payments.every((p) => p.method === "cash");
 }
 
 /** Plain-text receipt for the native share sheet (Messages, mail, notes). */

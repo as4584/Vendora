@@ -39,6 +39,7 @@ jest.mock('expo-camera', () => {
 jest.mock('../services/api', () => ({
   listItems: jest.fn(),
   createSaleOrder: jest.fn(),
+  refundTransaction: jest.fn(),
   getMe: jest.fn(),
   updateProfile: jest.fn(),
 }));
@@ -164,6 +165,43 @@ describe('QuickSaleScreen (checkout)', () => {
         expect.objectContaining({ lines: [{ item_id: 'item-1', quantity: 1, unit_price: '300.00' }] }),
       ),
     );
+  });
+
+  it('haggles with one tap: -$5, -$10, -10%, back to list', async () => {
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    const price = () => screen.getByLabelText('Sale price for Jordan 1 Retro High').props.value;
+    fireEvent.press(screen.getByLabelText('-$10 on Jordan 1 Retro High'));
+    expect(price()).toBe('330.00');
+    fireEvent.press(screen.getByLabelText('-$5 on Jordan 1 Retro High'));
+    expect(price()).toBe('325.00');
+    fireEvent.press(screen.getByLabelText('-10% on Jordan 1 Retro High'));
+    expect(price()).toBe('293.00');
+    fireEvent.press(screen.getByLabelText('List on Jordan 1 Retro High'));
+    expect(price()).toBe('340.00');
+  });
+
+  it('undoes a cash sale right after it is logged', async () => {
+    (apiMock.createSaleOrder as jest.Mock).mockResolvedValue({ ...ORDER, transactions: [{ id: 't1' }] });
+    (apiMock.refundTransaction as jest.Mock).mockRejectedValueOnce(new Error('server busy')).mockResolvedValue({});
+    const pressConfirm = () => {
+      const buttons = (Alert.alert as jest.Mock).mock.calls.at(-1)[2];
+      return buttons.find((b: { text: string }) => b.text === 'Undo sale').onPress();
+    };
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await screen.findByText('Sale complete');
+
+    fireEvent.press(screen.getByTestId('undo-sale'));
+    await act(async () => { await pressConfirm(); });
+    expect(Alert.alert).toHaveBeenLastCalledWith("Couldn't undo", 'server busy');
+
+    fireEvent.press(screen.getByTestId('undo-sale'));
+    await act(async () => { await pressConfirm(); });
+    expect(apiMock.refundTransaction).toHaveBeenLastCalledWith('t1', 'Undone at checkout');
+    expect(Alert.alert).toHaveBeenLastCalledWith('Sale undone', 'Items are back in stock.');
+    await waitFor(() => expect(screen.queryByText('Sale complete')).toBeNull());
   });
 
   it('applies a dollar or percent discount and validates it', async () => {
