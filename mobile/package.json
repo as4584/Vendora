@@ -21,7 +21,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "12.0.1",
-    "@sentry/react-native": "~7.11.0",
+    "@sentry/react-native": "~8.34.0",
     "expo": "~57.0.33",
     "expo-background-fetch": "~57.0.23",
     "expo-camera": "~57.0.6",
