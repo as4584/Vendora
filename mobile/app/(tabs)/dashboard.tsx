@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  ActivityIndicator,
   RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -21,6 +20,8 @@ import {
   StatCard,
 } from "../../components/ui";
 import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../../theme/tokens";
+import { loadSnapshot, peekSnapshot, saveSnapshot } from "../../services/offline/snapshot";
+import { SkeletonDashboard } from "../../components/Skeleton";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -46,17 +47,24 @@ function pctDelta(current: number, prior: number): { text: string; tone: "up" | 
   return { text: `${arrow} ${Math.abs(rounded)}% vs last week`, tone: rounded >= 0 ? "up" : "down" };
 }
 
+const DASHBOARD_SNAPSHOT = "dashboard";
+type DashboardSnapshot = { data: api.Dashboard; analytics: api.AdvancedAnalytics | null; inventory: api.InventoryItem[] };
+
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [view, setView] = useState({
-    data: null as api.Dashboard | null,
-    analytics: null as api.AdvancedAnalytics | null,
-    inventory: [] as api.InventoryItem[],
-    loading: true,
-    refreshing: false,
-    loadError: false,
+  // Paint the last-seen dashboard instantly; fresh numbers replace it quietly.
+  const [view, setView] = useState(() => {
+    const snap = peekSnapshot<DashboardSnapshot>(DASHBOARD_SNAPSHOT);
+    return {
+      data: snap?.data ?? (null as api.Dashboard | null),
+      analytics: snap?.analytics ?? (null as api.AdvancedAnalytics | null),
+      inventory: snap?.inventory ?? ([] as api.InventoryItem[]),
+      loading: !snap,
+      refreshing: false,
+      loadError: false,
+    };
   });
 
   const fetchAll = useCallback(async (mode: "load" | "refresh" = "load") => {
@@ -68,30 +76,33 @@ export default function DashboardScreen() {
         api.listItems({ perPage: 100, availableOnly: true }),
       ]);
       if (dashboardResult.status === "rejected") throw dashboardResult.reason;
-      setView({
+      const fresh = {
         data: dashboardResult.value,
         analytics: analyticsResult.status === "fulfilled" ? analyticsResult.value : null,
         inventory: inventoryResult.status === "fulfilled" ? inventoryResult.value.items : [],
-        loading: false,
-        refreshing: false,
-        loadError: false,
-      });
+      };
+      saveSnapshot(DASHBOARD_SNAPSHOT, fresh);
+      setView({ ...fresh, loading: false, refreshing: false, loadError: false });
     } catch {
-      setView((c) => ({ ...c, loading: false, refreshing: false, loadError: true }));
+      // Keep showing the last numbers if we have them; error only on a cold, failed load.
+      setView((c) => ({ ...c, loading: false, refreshing: false, loadError: !c.data }));
     }
   }, []);
 
   useEffect(() => {
+    let active = true;
+    void loadSnapshot<DashboardSnapshot>(DASHBOARD_SNAPSHOT).then((snap) => {
+      if (active && snap) setView((c) => (c.loading ? { ...c, ...snap, loading: false } : c));
+    });
     const timer = setTimeout(() => void fetchAll(), 0);
-    return () => clearTimeout(timer);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [fetchAll]);
 
   if (view.loading) {
-    return (
-      <View testID="dashboard-loading" style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
+    return <SkeletonDashboard testID="dashboard-loading" />;
   }
 
   if (view.loadError || !view.data) {
