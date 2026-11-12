@@ -275,6 +275,17 @@ describe('InventoryListScreen', () => {
     await waitFor(() => expect(apiMock.listItems).toHaveBeenCalledTimes(3));
   });
 
+  it('offers the closest item when a search finds nothing', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [makeItem({ id: 'a', name: 'Jordan 4 Retro Bred' })], total: 1 });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Jordan 4 Retro Bred');
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [], total: 0 });
+    fireEvent.changeText(screen.getByLabelText('Search inventory'), 'jordn bredd');
+    expect(await screen.findByTestId('did-you-mean')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('did-you-mean'));
+    expect(screen.getByLabelText('Search inventory').props.value).toBe('Jordan 4 Retro Bred');
+  });
+
   it('swipe delete hides the row at once, undo brings it back with no server call', async () => {
     jest.useFakeTimers();
     try {

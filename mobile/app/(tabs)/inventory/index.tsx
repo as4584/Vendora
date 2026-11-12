@@ -16,7 +16,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
-import { smartSearch } from "../../../services/smartSearch";
+import { didYouMean, smartSearch } from "../../../services/smartSearch";
 import { addRecentSearch, clearRecentSearches, getRecentSearches } from "../../../services/recentSearches";
 import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
 import { ProUpsell, graceMessage } from "../../../components/ProUpsell";
@@ -61,6 +61,8 @@ export default function InventoryListScreen() {
   const [loading, setLoading] = useState(!snap);
   const [sort, setSort] = useState<SortKey>(snap?.sort ?? "newest");
   const [staleOnly, setStaleOnly] = useState(false);
+  // The list as it was before searching: "Did you mean" suggests from this.
+  const [baseItems, setBaseItems] = useState<api.InventoryItem[]>(snap?.items ?? []);
   const undo = useUndo();
 
   // Swipe delete: gone at once, sent to the server only if not undone.
@@ -128,6 +130,7 @@ export default function InventoryListScreen() {
           minAgeDays: stale ? STALE_DAYS : undefined,
         });
         setItems((previous) => (options.refresh === false ? [...previous, ...result.items] : result.items));
+        if (!nextQuery && options.refresh !== false) setBaseItems(result.items);
         if (nextPage === 1 && !nextQuery && !nextStatus && !nextSource && !stale) {
           saveSnapshot(LIST_SNAPSHOT, { items: result.items, total: result.total, pages: result.pages, sort: nextSort });
         }
@@ -304,6 +307,11 @@ export default function InventoryListScreen() {
   // Instant on-device ranking over loaded items (same rules as the server), while the
   // debounced server search pulls in matches that aren't loaded yet.
   const displayedItems = useMemo(() => smartSearch(items, searchQuery.trim()), [items, searchQuery]);
+  // Nothing matched: offer the closest item ("Did you mean Jordan 4 Bred?").
+  const suggestion = useMemo(
+    () => (searchQuery.trim() && displayedItems.length === 0 ? didYouMean(baseItems, searchQuery.trim()) : null),
+    [baseItems, searchQuery, displayedItems.length],
+  );
 
   if (loading) {
     return (
@@ -437,7 +445,20 @@ export default function InventoryListScreen() {
           <Card>
             <View style={styles.empty}>
               <IconCircle name="cube-outline" size={56} />
-              <Text style={styles.emptyTitle}>No inventory matches this view.</Text>
+              <Text style={styles.emptyTitle}>{searchQuery.trim() ? `Nothing matches "${searchQuery.trim()}"` : "No inventory matches this view."}</Text>
+              {suggestion ? (
+                <TouchableOpacity
+                  testID="did-you-mean"
+                  accessibilityRole="button"
+                  accessibilityLabel={`Did you mean ${suggestion.name}? Search for it`}
+                  onPress={() => onSearchChange(suggestion.name)}
+                  hitSlop={8}
+                >
+                  <Text style={styles.emptyText}>
+                    Did you mean <Text style={styles.suggestion}>{suggestion.name}</Text>?
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
               <Text style={styles.emptyText}>Change the filters or add a new stock item to continue.</Text>
               <View style={styles.emptyCta}>
                 <ActionButton label="Add an item" onPress={() => router.push("/inventory/add")} />
@@ -558,6 +579,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   filterBadgeText: { color: BRAND.onPrimary, fontSize: 10, fontWeight: "600" },
+  suggestion: { color: COLORS.primaryBright, fontWeight: "600" },
   activeFilters: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, marginTop: SPACING.sm },
   exportOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: SPACING.xl },
   exportCard: { backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.xl, alignItems: "center", gap: SPACING.md, maxWidth: 320 },

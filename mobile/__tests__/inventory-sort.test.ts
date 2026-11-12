@@ -39,3 +39,20 @@ describe('stale stock', () => {
     expect(staleBadge(item('a', { created_at: daysAgo(120) }), NOW)).toEqual({ label: '120d in stock', tone: 'danger' });
   });
 });
+
+import { didYouMean } from '../services/smartSearch';
+
+describe('did you mean', () => {
+  const items = [
+    { id: '1', name: 'Jordan 4 Retro Bred', sku: 'FV5029-006' },
+    { id: '2', name: 'Pokemon 151 Booster Bundle', sku: null },
+  ] as never[];
+  it('suggests the closest item for a badly typed search', () => {
+    expect((didYouMean(items, 'jordn bredd') as { name: string } | null)?.name).toBe('Jordan 4 Retro Bred');
+    expect((didYouMean(items, 'pokmon bundel') as { name: string } | null)?.name).toBe('Pokemon 151 Booster Bundle');
+  });
+  it('stays quiet when nothing is close', () => {
+    expect(didYouMean(items, 'yeezy foam')).toBeNull();
+    expect(didYouMean(items, '')).toBeNull();
+  });
+});

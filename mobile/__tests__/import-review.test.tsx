@@ -192,7 +192,7 @@ describe('ImportReview', () => {
     expect(screen.getByText("Column 'buy_price': bad")).toBeTruthy();
     expect(screen.getByText('Edit row 1')).toBeTruthy();
     await act(async () => { fireEvent.press(screen.getByText('Save')); });
-    expect(Alert.alert).toHaveBeenCalledWith("Couldn't save the row", 'timeout');
+    expect(Alert.alert).toHaveBeenCalledWith("Couldn't save the row", expect.stringMatching(/Can't reach Resqlo/));
     fireEvent.press(screen.getByText('Cancel'));
     await waitFor(() => expect(screen.queryByText('Edit row 1')).toBeNull());
   });
