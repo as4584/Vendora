@@ -1,527 +1,33 @@
 /**
- * Offline inventory core: local mirror + write outbox + sync runner.
- *
- * The mirror and the outbox are deliberately in one module because they share
- * one invariant — a queued sale/edit must be reflected in the mirror
- * immediately, and a synced create must swap the temp record for the real one.
- * Keeping both here means that invariant lives in a single place.
- *
- * Flow:
- *  - Online reads upsert server items into the mirror (so they're there offline).
- *  - Offline reads filter/paginate the mirror client-side.
- *  - Offline writes mutate the mirror optimistically AND append to the outbox.
- *  - On reconnect, flushOutbox() replays the outbox FIFO, remapping the temp
- *    ids of offline-created items to their real server ids as it goes.
+ * One journal per account: a local receipt is confirmed only after its queue
+ * entry and optimistic state are durable. Network sends never hold the journal
+ * lock; acknowledgments edit the latest version, including concurrent appends.
  */
-import { smartSearch } from "../smartSearch";
 import type {
-  InventoryItem,
-  PaginatedItems,
-  ListItemsParams,
-  CreateItemPayload,
-  CreateTransactionPayload,
-  CreateSaleOrderPayload,
-  SaleOrder,
-  Transaction,
-  Dashboard,
-  CreateInvoicePayload,
-  InvoiceData,
+  InventoryItem, PaginatedItems, ListItemsParams, CreateItemPayload,
+  CreateTransactionPayload, CreateSaleOrderPayload, SaleOrder, Transaction,
+  Dashboard, CreateInvoicePayload, InvoiceData,
 } from "../api";
-import { isOnline } from "./net";
+import { smartSearch } from "../smartSearch";
 import { centsToString, computeCheckout, sameBarcode, toCents } from "../../utils/checkout";
+import { assertSession, captureSession, isCurrentSession, requireAccount, subscribeSession, type AccountContext } from "../session";
+import { isOnline } from "./net";
 import { tryGetSender } from "./sender";
-import {
-  KEYS,
-  readJSON,
-  writeJSON,
-  tempId,
-  isTempId,
-} from "./store";
+import { readAccountJSON, writeAccountJSON, updateAccountJSON, tempId, isTempId } from "./store";
 
-// ─── Mirror types ────────────────────────────────────
-// A mirror item is a normal InventoryItem plus optional local-only markers.
-type MirrorItem = InventoryItem & { _pending?: boolean };
-type Mirror = Record<string, MirrorItem>;
-
+type Mirror = Record<string, InventoryItem>;
 type OutboxKind = "create_item" | "update_item" | "quick_sale" | "sale_order" | "create_invoice";
 interface OutboxEntry {
   id: string;
   kind: OutboxKind;
-  path: string; // may embed a temp id to remap at flush time
-  method: "POST" | "PUT" | "PATCH" | "DELETE";
-  body: any; // may embed item_id referencing a temp id
-  tempId?: string; // create_item: the temp id being created
+  path: string;
+  method: "POST" | "PUT";
+  body: any;
+  tempId?: string;
+  localItem?: InventoryItem;
   createdAt: string;
   attempts: number;
   lastError?: string;
-}
-
-// ─── Change notification (for pending-count UI) ──────
-type SyncListener = () => void;
-const syncListeners = new Set<SyncListener>();
-export function subscribeSync(cb: SyncListener): () => void {
-  syncListeners.add(cb);
-  return () => syncListeners.delete(cb);
-}
-function notifySync() {
-  syncListeners.forEach((l) => l());
-}
-
-// ─── Mirror persistence ──────────────────────────────
-async function readMirror(): Promise<Mirror> {
-  return readJSON<Mirror>(KEYS.inventoryMirror, {});
-}
-async function writeMirror(m: Mirror): Promise<void> {
-  await writeJSON(KEYS.inventoryMirror, m);
-}
-
-/** Upsert server items into the mirror after a successful online read. */
-export async function cacheItemsFromServer(items: InventoryItem[]): Promise<void> {
-  if (!items.length) return;
-  const m = await readMirror();
-  for (const it of items) {
-    // Don't clobber a locally-pending record with a stale server copy.
-    if (m[it.id]?._pending) continue;
-    m[it.id] = it;
-  }
-  await writeMirror(m);
-  await writeJSON(KEYS.lastSync, new Date().toISOString());
-}
-
-export async function cacheItemFromServer(item: InventoryItem): Promise<void> {
-  await cacheItemsFromServer([item]);
-}
-
-// ─── Offline reads ───────────────────────────────────
-export async function offlineListItems(
-  params: ListItemsParams,
-): Promise<PaginatedItems> {
-  const m = await readMirror();
-  let items = Object.values(m);
-
-  if (params.status) items = items.filter((i) => i.status === params.status);
-  if (params.source) items = items.filter((i) => i.source === params.source);
-  if (params.availableOnly) items = items.filter((i) => i.quantity > 0);
-  if (params.upc) items = items.filter((i) => sameBarcode(i.upc, params.upc));
-
-  // Newest first, matching the server's default ordering; a search then ranks best match first.
-  items.sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
-  if (params.q) items = smartSearch(items, params.q);
-
-  const page = params.page ?? 1;
-  const perPage = params.perPage ?? 20;
-  const start = (page - 1) * perPage;
-  const slice = items.slice(start, start + perPage);
-  return {
-    items: slice,
-    total: items.length,
-    page,
-    per_page: perPage,
-    pages: Math.max(1, Math.ceil(items.length / perPage)),
-  };
-}
-
-export async function offlineGetItem(id: string): Promise<InventoryItem | null> {
-  const m = await readMirror();
-  return m[id] ?? null;
-}
-
-// ─── Offline writes ──────────────────────────────────
-async function enqueue(entry: OutboxEntry): Promise<void> {
-  const q = await readJSON<OutboxEntry[]>(KEYS.outbox, []);
-  q.push(entry);
-  await writeJSON(KEYS.outbox, q);
-  notifySync();
-}
-
-/** Create an item offline: mint a temp record, mirror it, queue the POST. */
-export async function queueCreateItem(
-  payload: CreateItemPayload,
-): Promise<InventoryItem> {
-  const id = tempId();
-  const now = new Date().toISOString();
-  const item: MirrorItem = {
-    id,
-    user_id: "",
-    name: payload.name,
-    category: payload.category ?? null,
-    sku: payload.sku ?? null,
-    upc: payload.upc ?? null,
-    size: payload.size ?? null,
-    color: payload.color ?? null,
-    condition: payload.condition ?? null,
-    serial_number: payload.serial_number ?? null,
-    custom_attributes: payload.custom_attributes ?? null,
-    buy_price: payload.buy_price ?? null,
-    expected_sell_price: payload.expected_sell_price ?? null,
-    actual_sell_price: payload.actual_sell_price ?? null,
-    platform: payload.platform ?? null,
-    status: "active",
-    photo_front_url: null,
-    photo_back_url: null,
-    quantity: payload.quantity ?? 1,
-    vendor_name: payload.vendor_name ?? null,
-    notes: payload.notes ?? null,
-    source: null,
-    external_id: null,
-    created_at: now,
-    updated_at: now,
-    _pending: true,
-  };
-  const m = await readMirror();
-  m[id] = item;
-  await writeMirror(m);
-  await enqueue({
-    id: tempId("ob"),
-    kind: "create_item",
-    path: "/inventory",
-    method: "POST",
-    body: payload,
-    tempId: id,
-    createdAt: now,
-    attempts: 0,
-  });
-  return item;
-}
-
-/** Edit an item offline: patch the mirror, queue the PUT. */
-export async function queueUpdateItem(
-  id: string,
-  payload: Partial<CreateItemPayload> & { expected_quantity?: number },
-): Promise<InventoryItem> {
-  const m = await readMirror();
-  const existing = m[id];
-  const { expected_quantity: _expected, ...fields } = payload;
-  const merged: MirrorItem = {
-    ...(existing as MirrorItem),
-    ...(fields as any),
-    id,
-    updated_at: new Date().toISOString(),
-    _pending: true,
-  };
-  m[id] = merged;
-  await writeMirror(m);
-  await enqueue({
-    id: tempId("ob"),
-    kind: "update_item",
-    path: `/inventory/${id}`,
-    method: "PUT",
-    body: payload,
-    createdAt: new Date().toISOString(),
-    attempts: 0,
-  });
-  return merged;
-}
-
-/** Log a quick sale offline: decrement stock in the mirror, queue the POST. */
-export async function queueQuickSale(
-  payload: CreateTransactionPayload,
-): Promise<Transaction> {
-  const now = new Date().toISOString();
-  const qty = payload.quantity ?? 1;
-  if (payload.item_id) {
-    const m = await readMirror();
-    const item = m[payload.item_id];
-    if (item) {
-      item.quantity = Math.max(0, item.quantity - qty);
-      if (item.quantity === 0) item.status = "sold";
-      item.updated_at = now;
-      await writeMirror(m);
-    }
-  }
-  const entryId = tempId("ob");
-  await enqueue({
-    id: entryId,
-    kind: "quick_sale",
-    path: "/transactions",
-    method: "POST",
-    body: { ...payload, client_request_id: entryId },
-    createdAt: now,
-    attempts: 0,
-  });
-  const gross = payload.gross_amount ?? "0";
-  const fee = payload.fee_amount ?? "0";
-  return {
-    id: tempId("txn"),
-    user_id: "",
-    item_id: payload.item_id ?? null,
-    invoice_id: null,
-    method: payload.method,
-    status: "pending_sync",
-    gross_amount: gross,
-    fee_amount: fee,
-    net_amount: String(Number(gross) - Number(fee)),
-    quantity: qty,
-    external_reference_id: payload.external_reference_id ?? null,
-    notes: payload.notes ?? null,
-    is_refund: false,
-    original_transaction_id: null,
-    created_at: now,
-    updated_at: now,
-  };
-}
-
-/**
- * Log a multi-item checkout offline as ONE outbox entry, so it can never sync
- * halfway: decrement each line in the mirror, queue POST /transactions/order.
- */
-export async function queueSaleOrder(payload: CreateSaleOrderPayload): Promise<SaleOrder> {
-  const now = new Date().toISOString();
-  const m = await readMirror();
-  for (const line of payload.lines) {
-    const item = m[line.item_id];
-    if (!item) continue;
-    item.quantity = Math.max(0, item.quantity - line.quantity);
-    if (item.quantity === 0) item.status = "sold";
-    adjustVariant(item, line.size, -line.quantity);
-    item.updated_at = now;
-  }
-  await writeMirror(m);
-  const entryId = tempId("ob");
-  await enqueue({
-    id: entryId,
-    kind: "sale_order",
-    path: "/transactions/order",
-    method: "POST",
-    body: { ...payload, client_request_id: entryId },
-    createdAt: now,
-    attempts: 0,
-  });
-  // Same cents math as the server, so the receipt shown offline matches what syncs.
-  const totals = computeCheckout({
-    lines: payload.lines.map((l) => ({ priceCents: toCents(l.unit_price), qty: l.quantity })),
-    discountMode: payload.discount_percent ? "percent" : "amount",
-    discountValue: payload.discount_percent ?? payload.discount_amount ?? "",
-    taxRate: payload.tax_rate ?? "",
-  });
-  const fee = toCents(payload.fee_amount ?? "0");
-  return {
-    order_id: tempId("order"),
-    subtotal_amount: centsToString(totals.subtotal),
-    discount_amount: centsToString(totals.discount),
-    gross_amount: centsToString(totals.gross),
-    tax_amount: centsToString(totals.tax),
-    total_amount: centsToString(totals.total),
-    fee_amount: centsToString(fee),
-    net_amount: centsToString(totals.gross - fee),
-    payments: payload.payments ?? (payload.method ? [{ method: payload.method, amount: centsToString(totals.total) }] : []),
-    created_at: now,
-    transactions: [],
-    pending: true,
-  };
-}
-
-/** Move a size variant's stock by delta (no-op for items without that size). */
-function adjustVariant(item: InventoryItem, size: string | undefined, delta: number): void {
-  const variants = item.custom_attributes?.variants;
-  if (!size || !Array.isArray(variants)) return;
-  const key = size.trim().toLowerCase();
-  const next = variants.map((v: any) =>
-    String(v?.size ?? "").trim().toLowerCase() === key
-      ? { ...v, quantity: Math.max(0, (Number(v.quantity) || 0) + delta) }
-      : v,
-  );
-  item.custom_attributes = { ...item.custom_attributes, variants: next };
-}
-
-// ─── Offline invoices ────────────────────────────────
-// An invoice made offline has no number yet: the server assigns INV0001-style
-// numbers under a lock, so the client never guesses one. It shows as
-// "Pending sync" until the outbox replays it (idempotently, by
-// client_request_id) and the real invoice replaces it.
-
-async function readPendingInvoices(): Promise<InvoiceData[]> {
-  return readJSON<InvoiceData[]>(KEYS.pendingInvoices, []);
-}
-
-/** Invoices created offline and not yet confirmed by the server, newest first. */
-export async function getPendingInvoices(): Promise<InvoiceData[]> {
-  return readPendingInvoices();
-}
-
-export async function getPendingInvoice(id: string): Promise<InvoiceData | null> {
-  return (await readPendingInvoices()).find((i) => i.id === id) ?? null;
-}
-
-function money(n: number): string {
-  return (Math.round(n * 100) / 100).toFixed(2);
-}
-
-/** Create an invoice offline: keep a local copy, queue the POST. Stock is
- * untouched (an invoice only takes stock when it is paid). */
-export async function queueCreateInvoice(payload: CreateInvoicePayload): Promise<InvoiceData> {
-  const id = tempId();
-  const entryId = tempId("ob");
-  const now = new Date().toISOString();
-  const lines = payload.items.map((line, index) => ({
-    id: `${id}_line${index}`,
-    invoice_id: id,
-    inventory_item_id: line.inventory_item_id ?? null,
-    size_label: line.size_label ?? null,
-    description: line.description,
-    quantity: line.quantity,
-    unit_price: line.unit_price,
-    line_total: money(Number(line.unit_price) * line.quantity),
-  }));
-  const subtotal = lines.reduce((s, l) => s + Number(l.line_total), 0);
-  const total = Math.max(
-    0,
-    subtotal + Number(payload.tax ?? 0) + Number(payload.shipping ?? 0) - Number(payload.discount ?? 0),
-  );
-  const invoice: InvoiceData = {
-    id,
-    user_id: "",
-    invoice_number: "",
-    customer_name: payload.customer_name,
-    customer_email: payload.customer_email ?? null,
-    status: "draft",
-    subtotal: money(subtotal),
-    tax: money(Number(payload.tax ?? 0)),
-    shipping: money(Number(payload.shipping ?? 0)),
-    discount: money(Number(payload.discount ?? 0)),
-    total: money(total),
-    amount_paid: "0.00",
-    balance_due: money(total),
-    payments: [],
-    stripe_payment_intent_id: null,
-    notes: payload.notes ?? null,
-    items: lines,
-    created_at: now,
-    updated_at: now,
-    _pending: true,
-  };
-  const pending = await readPendingInvoices();
-  await writeJSON(KEYS.pendingInvoices, [invoice, ...pending]);
-  await enqueue({
-    id: entryId,
-    kind: "create_invoice",
-    path: "/invoices",
-    method: "POST",
-    // Reuse the key of an online attempt that may have reached the server.
-    body: { ...payload, client_request_id: payload.client_request_id ?? entryId },
-    tempId: id,
-    createdAt: now,
-    attempts: 0,
-  });
-  return invoice;
-}
-
-async function dropPendingInvoice(id: string): Promise<void> {
-  const pending = await readPendingInvoices();
-  await writeJSON(KEYS.pendingInvoices, pending.filter((i) => i.id !== id));
-}
-
-/** Item ids an outbox entry refers to (sale orders and invoices carry several). */
-function referencedItemIds(entry: OutboxEntry): string[] {
-  const body = entry.body;
-  if (!body || typeof body !== "object") return [];
-  if (Array.isArray(body.lines)) return body.lines.map((l: any) => l?.item_id).filter(Boolean);
-  if (Array.isArray(body.items)) return body.items.map((l: any) => l?.inventory_item_id).filter(Boolean);
-  return body.item_id ? [body.item_id] : [];
-}
-
-// ─── Sync runner ─────────────────────────────────────
-let flushing = false;
-
-/** Apply accumulated temp→real id remaps to an entry's path and body. */
-function applyRemap(entry: OutboxEntry, remap: Record<string, string>): OutboxEntry {
-  let path = entry.path;
-  let body = entry.body;
-  for (const [temp, real] of Object.entries(remap)) {
-    if (path.includes(temp)) path = path.replace(temp, real);
-    if (body && typeof body === "object" && body.item_id === temp) {
-      body = { ...body, item_id: real };
-    }
-    if (body && typeof body === "object" && Array.isArray(body.lines)) {
-      body = {
-        ...body,
-        lines: body.lines.map((l: any) => (l?.item_id === temp ? { ...l, item_id: real } : l)),
-      };
-    }
-    if (body && typeof body === "object" && Array.isArray(body.items)) {
-      body = {
-        ...body,
-        items: body.items.map((l: any) =>
-          l?.inventory_item_id === temp ? { ...l, inventory_item_id: real } : l,
-        ),
-      };
-    }
-  }
-  return { ...entry, path, body };
-}
-
-/** Should this failure block the queue (retry later) or be discarded (poison)? */
-function isTransient(err: any): boolean {
-  const status = err?.status;
-  if (typeof status !== "number") return true; // network error → retry
-  if (status === 401 || status === 408 || status === 429) return true;
-  if (status >= 500) return true;
-  return false; // 4xx validation/conflict → discard so the queue can drain
-}
-
-/**
- * Replay the outbox FIFO. Stops on the first transient failure (to preserve
- * order and retry later); discards poison entries (permanent 4xx) so one bad
- * record can't wedge the whole queue.
- */
-export async function flushOutbox(): Promise<void> {
-  if (flushing || !isOnline()) return;
-  // No sender registered yet (api.ts not imported): nothing we can replay.
-  // The next reconnect or launch will pick the outbox back up.
-  const send = tryGetSender();
-  if (!send) return;
-  flushing = true;
-  const remap: Record<string, string> = {};
-  try {
-    let q = await readJSON<OutboxEntry[]>(KEYS.outbox, []);
-    while (q.length) {
-      const entry = applyRemap(q[0], remap);
-      try {
-        const res = await send(entry.path, entry.method, entry.body);
-        if (entry.kind === "create_item" && entry.tempId && res?.id) {
-          remap[entry.tempId] = res.id;
-          await reconcileCreated(entry.tempId, res);
-        } else if (entry.kind === "update_item" && res?.id) {
-          await reconcileServerItem(res);
-        } else if (entry.kind === "create_invoice" && entry.tempId) {
-          // The server copy (with its real number) is fetched on the next list.
-          if (res?.id) remap[entry.tempId] = res.id;
-          await dropPendingInvoice(entry.tempId);
-        }
-        // quick_sale / sale_order: server recomputes stock; nothing to reconcile.
-        q = q.slice(1);
-        await writeJSON(KEYS.outbox, q);
-        notifySync();
-      } catch (err) {
-        if (isTransient(err)) {
-          q[0].attempts += 1;
-          q[0].lastError = String((err as { message?: unknown } | null)?.message ?? err);
-          await writeJSON(KEYS.outbox, q);
-          break; // stop and retry on the next reconnect
-        }
-        // Rejected for good (4xx). Don't lose it silently: record it for the
-        // user, undo its optimistic change, and pull out anything queued
-        // after it that depends on an item that will now never exist.
-        const message = String((err as { message?: unknown } | null)?.message ?? err);
-        const rejected = [q[0], ...dependentsOf(q[0], q.slice(1))];
-        const rejectedIds = new Set(rejected.map((e) => e.id));
-        q = q.filter((e) => !rejectedIds.has(e.id));
-        await writeJSON(KEYS.outbox, q);
-        await recordFailures(rejected, message);
-        await revertOptimistic(rejected);
-        notifySync();
-      }
-    }
-  } finally {
-    flushing = false;
-  }
-}
-
-/** Entries queued after a rejected create that reference its temp id. */
-function dependentsOf(entry: OutboxEntry, rest: OutboxEntry[]): OutboxEntry[] {
-  if (entry.kind !== "create_item" || !entry.tempId) return [];
-  const temp = entry.tempId;
-  return rest.filter((e) => e.path.includes(temp) || referencedItemIds(e).includes(temp));
 }
 
 export interface FailedSync {
@@ -532,87 +38,420 @@ export interface FailedSync {
   failedAt: string;
 }
 
-const MAX_FAILED = 50;
-
-async function recordFailures(entries: OutboxEntry[], message: string): Promise<void> {
-  const failed = await readJSON<FailedSync[]>(KEYS.failed, []);
-  const now = new Date().toISOString();
-  for (const e of entries) {
-    failed.push({ id: e.id, kind: e.kind, message, createdAt: e.createdAt, failedAt: now });
-  }
-  await writeJSON(KEYS.failed, failed.slice(-MAX_FAILED));
+interface Journal {
+  /** Last confirmed copy; pending mutations are projected from the outbox. */
+  mirror: Mirror;
+  outbox: OutboxEntry[];
+  remap: Record<string, string>;
+  pendingInvoices: InvoiceData[];
+  failed: FailedSync[];
+  lastSync: string | null;
 }
 
-/** Undo the local-only effects of changes the server will never apply. */
-async function revertOptimistic(entries: OutboxEntry[]): Promise<void> {
-  const m = await readMirror();
-  for (const e of entries) {
-    if (e.kind === "create_item" && e.tempId) {
-      delete m[e.tempId];
-    } else if (e.kind === "quick_sale" && e.body?.item_id && m[e.body.item_id]) {
-      const item = m[e.body.item_id];
-      item.quantity += e.body.quantity ?? 1;
-      if (item.status === "sold" && item.quantity > 0) item.status = "in_stock";
+const JOURNAL = "offline:journal";
+const DASHBOARD = "offline:dashboard";
+const emptyJournal = (): Journal => ({
+  mirror: {}, outbox: [], remap: {}, pendingInvoices: [], failed: [], lastSync: null,
+});
+const readJournal = (account: AccountContext) => readAccountJSON(account, JOURNAL, emptyJournal);
+function updateJournal<T>(account: AccountContext, update: (journal: Journal) => T) {
+  return updateAccountJSON(account, JOURNAL, emptyJournal, update);
+}
+
+const syncListeners = new Set<() => void>();
+export function subscribeSync(cb: () => void): () => void {
+  syncListeners.add(cb);
+  return () => syncListeners.delete(cb);
+}
+function notifySync() {
+  syncListeners.forEach((listener) => listener());
+}
+subscribeSession(notifySync);
+
+/** Apply temp→real ids after restart as well as within the current flush. */
+function applyRemap(entry: OutboxEntry, remap: Record<string, string>): OutboxEntry {
+  let { path, body } = entry;
+  if (entry.kind === "update_item") {
+    const id = path.slice("/inventory/".length);
+    path = `/inventory/${remap[id] ?? id}`;
+  }
+  if (body?.item_id && remap[body.item_id]) body = { ...body, item_id: remap[body.item_id] };
+  if (Array.isArray(body?.lines)) {
+    body = {
+      ...body,
+      lines: body.lines.map((line: CreateSaleOrderPayload["lines"][number]) => ({
+        ...line, item_id: remap[line.item_id] ?? line.item_id,
+      })),
+    };
+  }
+  if (Array.isArray(body?.items)) {
+    body = {
+      ...body,
+      items: body.items.map((line: CreateInvoicePayload["items"][number]) =>
+        line.inventory_item_id && remap[line.inventory_item_id]
+          ? { ...line, inventory_item_id: remap[line.inventory_item_id] }
+          : line,
+      ),
+    };
+  }
+  return { ...entry, path, body };
+}
+
+function applyStockChange(
+  mirror: Mirror, entry: OutboxEntry, pending: boolean,
+): void {
+  const lines: { item_id?: string; quantity: number; size?: string }[] =
+    entry.kind === "quick_sale"
+      ? [{ item_id: entry.body.item_id, quantity: entry.body.quantity ?? 1 }]
+      : entry.kind === "sale_order" ? entry.body.lines : [];
+  for (const line of lines) {
+    if (!line.item_id || !mirror[line.item_id]) continue;
+    const item = { ...mirror[line.item_id] };
+    item.quantity = Math.max(0, item.quantity - line.quantity);
+    if (item.quantity === 0) item.status = "sold";
+    item.updated_at = entry.createdAt;
+    item._pending = pending;
+    const variants = item.custom_attributes?.variants;
+    if (line.size && Array.isArray(variants)) {
+      const size = line.size.trim().toLowerCase();
+      const next = variants.map((variant) =>
+        String(variant?.size ?? "").trim().toLowerCase() === size
+          ? { ...variant, quantity: Math.max(0, (Number(variant.quantity) || 0) - line.quantity) }
+          : variant,
+      );
+      item.custom_attributes = { ...item.custom_attributes, variants: next };
     }
-    if (e.kind === "sale_order" && Array.isArray(e.body?.lines)) {
-      for (const line of e.body.lines) {
-        const item = m[line?.item_id];
-        if (!item) continue;
-        item.quantity += line.quantity ?? 1;
-        if (item.status === "sold" && item.quantity > 0) item.status = "in_stock";
-        adjustVariant(item, line.size, line.quantity ?? 1);
+    mirror[line.item_id] = item;
+  }
+}
+
+function projectMirror(journal: Journal): Mirror {
+  const mirror = { ...journal.mirror };
+  for (const raw of journal.outbox) {
+    const entry = applyRemap(raw, journal.remap);
+    if (entry.kind === "create_item" && entry.localItem) {
+      mirror[entry.localItem.id] = entry.localItem;
+    } else if (entry.kind === "update_item") {
+      const id = entry.path.slice("/inventory/".length);
+      const { expected_quantity: _expected, ...fields } = entry.body;
+      mirror[id] = { ...mirror[id], ...fields, id, updated_at: entry.createdAt, _pending: true };
+    } else {
+      applyStockChange(mirror, entry, true);
+    }
+  }
+  return mirror;
+}
+
+export async function cacheItemsFromServer(items: InventoryItem[], session = captureSession()): Promise<void> {
+  assertSession(session);
+  if (!session.ownerId || !Array.isArray(items) || !items.length) return;
+  await updateJournal(requireAccount(session), (journal) => {
+    const projected = projectMirror(journal);
+    // A server read during an in-flight send may already include the sale.
+    for (const item of items) if (!projected[item.id]?._pending) journal.mirror[item.id] = item;
+    journal.lastSync = new Date().toISOString();
+  });
+}
+
+export async function cacheItemFromServer(item: InventoryItem, session = captureSession()): Promise<void> {
+  await cacheItemsFromServer([item], session);
+}
+
+export async function offlineListItems(params: ListItemsParams, session = captureSession()): Promise<PaginatedItems> {
+  const journal = await readJournal(requireAccount(session));
+  assertSession(session);
+  let items = Object.values(projectMirror(journal));
+  if (params.status) items = items.filter((i) => i.status === params.status);
+  if (params.source) items = items.filter((i) => i.source === params.source);
+  if (params.availableOnly) items = items.filter((i) => i.quantity > 0);
+  if (params.upc) items = items.filter((i) => sameBarcode(i.upc, params.upc));
+  items.sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
+  if (params.q) items = smartSearch(items, params.q);
+  const page = params.page ?? 1;
+  const perPage = params.perPage ?? 20;
+  const start = (page - 1) * perPage;
+  return {
+    items: items.slice(start, start + perPage), total: items.length, page,
+    per_page: perPage, pages: Math.max(1, Math.ceil(items.length / perPage)),
+  };
+}
+
+export async function offlineGetItem(id: string, session = captureSession()): Promise<InventoryItem | null> {
+  const journal = await readJournal(requireAccount(session));
+  assertSession(session);
+  return projectMirror(journal)[journal.remap[id] ?? id] ?? null;
+}
+
+async function enqueue<T>(
+  account: AccountContext, entry: OutboxEntry, result: (journal: Journal) => T,
+): Promise<T> {
+  const receipt = await updateJournal(account, (journal) => {
+    journal.outbox.push(entry);
+    return result(journal);
+  });
+  assertSession(account);
+  notifySync();
+  return receipt;
+}
+
+export async function queueCreateItem(payload: CreateItemPayload, session = captureSession()): Promise<InventoryItem> {
+  const account = requireAccount(session);
+  const id = tempId();
+  const now = new Date().toISOString();
+  const item: InventoryItem = {
+    id, user_id: account.ownerId, name: payload.name, category: payload.category ?? null,
+    sku: payload.sku ?? null, upc: payload.upc ?? null, size: payload.size ?? null,
+    color: payload.color ?? null, condition: payload.condition ?? null, serial_number: payload.serial_number ?? null,
+    custom_attributes: payload.custom_attributes ?? null, buy_price: payload.buy_price ?? null,
+    expected_sell_price: payload.expected_sell_price ?? null, actual_sell_price: payload.actual_sell_price ?? null,
+    platform: payload.platform ?? null, status: "active", photo_front_url: null, photo_back_url: null,
+    quantity: payload.quantity ?? 1, vendor_name: payload.vendor_name ?? null, notes: payload.notes ?? null,
+    source: null, external_id: null, created_at: now, updated_at: now, _pending: true,
+  };
+  return enqueue(account, {
+    id: tempId("ob"), kind: "create_item", path: "/inventory", method: "POST",
+    body: payload, tempId: id, localItem: item, createdAt: now, attempts: 0,
+  }, () => item);
+}
+
+export async function queueUpdateItem(
+  id: string, payload: Partial<CreateItemPayload> & { expected_quantity?: number }, session = captureSession(),
+): Promise<InventoryItem> {
+  return enqueue(requireAccount(session), {
+    id: tempId("ob"), kind: "update_item", path: `/inventory/${id}`, method: "PUT",
+    body: payload, createdAt: new Date().toISOString(), attempts: 0,
+  }, (journal) => projectMirror(journal)[journal.remap[id] ?? id]);
+}
+
+export async function queueQuickSale(payload: CreateTransactionPayload, session = captureSession()): Promise<Transaction> {
+  const account = requireAccount(session);
+  const now = new Date().toISOString();
+  const entryId = tempId("ob");
+  const gross = payload.gross_amount ?? "0";
+  const fee = payload.fee_amount ?? "0";
+  return enqueue(account, {
+    id: entryId, kind: "quick_sale", path: "/transactions", method: "POST",
+    body: { ...payload, client_request_id: payload.client_request_id ?? entryId },
+    createdAt: now, attempts: 0,
+  }, () => ({
+    id: tempId("txn"), user_id: account.ownerId, item_id: payload.item_id ?? null,
+    invoice_id: null, method: payload.method, status: "pending_sync", gross_amount: gross,
+    fee_amount: fee, net_amount: String(Number(gross) - Number(fee)), quantity: payload.quantity ?? 1,
+    external_reference_id: payload.external_reference_id ?? null, notes: payload.notes ?? null,
+    is_refund: false, original_transaction_id: null, created_at: now, updated_at: now,
+  }));
+}
+
+/** One durable entry for the entire sale; never sync individual lines. */
+export async function queueSaleOrder(payload: CreateSaleOrderPayload, session = captureSession()): Promise<SaleOrder> {
+  const account = requireAccount(session);
+  const now = new Date().toISOString();
+  const entryId = tempId("ob");
+  const totals = computeCheckout({
+    lines: payload.lines.map((line) => ({ priceCents: toCents(line.unit_price), qty: line.quantity })),
+    discountMode: payload.discount_percent ? "percent" : "amount",
+    discountValue: payload.discount_percent ?? payload.discount_amount ?? "",
+    taxRate: payload.tax_rate ?? "",
+  });
+  const fee = toCents(payload.fee_amount ?? "0");
+  return enqueue(account, {
+    id: entryId, kind: "sale_order", path: "/transactions/order", method: "POST",
+    body: { ...payload, client_request_id: payload.client_request_id ?? entryId },
+    createdAt: now, attempts: 0,
+  }, () => ({
+    order_id: tempId("order"), subtotal_amount: centsToString(totals.subtotal),
+    discount_amount: centsToString(totals.discount), gross_amount: centsToString(totals.gross),
+    tax_amount: centsToString(totals.tax), total_amount: centsToString(totals.total),
+    fee_amount: centsToString(fee), net_amount: centsToString(totals.gross - fee),
+    payments: payload.payments ?? (payload.method ? [{ method: payload.method, amount: centsToString(totals.total) }] : []),
+    created_at: now, transactions: [], pending: true,
+  }));
+}
+
+export async function getPendingInvoices(session = captureSession()): Promise<InvoiceData[]> {
+  assertSession(session);
+  if (!session.ownerId) return [];
+  const journal = await readJournal(requireAccount(session));
+  assertSession(session);
+  return journal.pendingInvoices;
+}
+
+export async function getPendingInvoice(id: string, session = captureSession()): Promise<InvoiceData | null> {
+  const pending = await getPendingInvoices(session);
+  assertSession(session);
+  return pending.find((i) => i.id === id) ?? null;
+}
+
+function money(n: number): string {
+  return (Math.round(n * 100) / 100).toFixed(2);
+}
+
+/** The real invoice number is assigned on the server; no stock is taken here. */
+export async function queueCreateInvoice(payload: CreateInvoicePayload, session = captureSession()): Promise<InvoiceData> {
+  const account = requireAccount(session);
+  const id = tempId();
+  const entryId = tempId("ob");
+  const now = new Date().toISOString();
+  const lines = payload.items.map((line, index) => ({
+    id: `${id}_line${index}`, invoice_id: id, inventory_item_id: line.inventory_item_id ?? null,
+    size_label: line.size_label ?? null, description: line.description, quantity: line.quantity,
+    unit_price: line.unit_price, line_total: money(Number(line.unit_price) * line.quantity),
+  }));
+  const subtotal = lines.reduce((s, line) => s + Number(line.line_total), 0);
+  const total = Math.max(0, subtotal + Number(payload.tax ?? 0) + Number(payload.shipping ?? 0) - Number(payload.discount ?? 0));
+  const invoice: InvoiceData = {
+    id, user_id: account.ownerId, invoice_number: "", customer_name: payload.customer_name,
+    customer_email: payload.customer_email ?? null, customer_phone: payload.customer_phone ?? null,
+    customer_id: payload.customer_id ?? null, status: "draft", subtotal: money(subtotal),
+    tax: money(Number(payload.tax ?? 0)), shipping: money(Number(payload.shipping ?? 0)),
+    discount: money(Number(payload.discount ?? 0)), total: money(total), amount_paid: "0.00",
+    balance_due: money(total), payments: [], stripe_payment_intent_id: null, notes: payload.notes ?? null,
+    items: lines, created_at: now, updated_at: now, _pending: true,
+  };
+  return enqueue(account, {
+    id: entryId, kind: "create_invoice", path: "/invoices", method: "POST", tempId: id,
+    body: { ...payload, client_request_id: payload.client_request_id ?? entryId },
+    createdAt: now, attempts: 0,
+  }, (journal) => {
+    journal.pendingInvoices.unshift(invoice);
+    return invoice;
+  });
+}
+
+function dropPendingInvoice(journal: Journal, temp: string) {
+  journal.pendingInvoices = journal.pendingInvoices.filter((i) => i.id !== temp);
+}
+
+function referencesTemp(entry: OutboxEntry, temp: string): boolean {
+  return entry.path === `/inventory/${temp}` || entry.body?.item_id === temp ||
+    entry.body?.lines?.some((line: CreateSaleOrderPayload["lines"][number]) => line.item_id === temp) ||
+    entry.body?.items?.some((line: CreateInvoicePayload["items"][number]) => line.inventory_item_id === temp);
+}
+
+/** A failed head stays queued unless the server definitively rejected it. */
+function isTransient(err: unknown): boolean {
+  const status = (err as { status?: number } | null)?.status;
+  return typeof status !== "number" || status === 401 || status === 408 || status === 429 || status >= 500;
+}
+
+// Do not let a new session for the same owner replay its predecessor's in-flight
+// head concurrently. A different owner can drain independently.
+const flushing = new Map<string, AccountContext>();
+
+export async function flushOutbox(): Promise<void> {
+  const session = captureSession();
+  if (!session.ownerId || flushing.has(session.ownerId) || !isOnline()) return;
+  const send = tryGetSender();
+  if (!send) return;
+  const account = requireAccount(session);
+  flushing.set(account.ownerId, account);
+  try {
+    while (isCurrentSession(account) && isOnline()) {
+      const snapshot = await readJournal(account);
+      assertSession(account);
+      if (!snapshot.outbox.length) break;
+      const entry = applyRemap(snapshot.outbox[0], snapshot.remap);
+      let result: InventoryItem | undefined;
+      try {
+        result = await send(entry.path, entry.method, entry.body, account);
+        assertSession(account);
+        if (entry.kind === "create_item" && !result?.id) throw new Error("Missing created item ID");
+      } catch (err) {
+        if (!isCurrentSession(account)) break;
+        const transient = isTransient(err);
+        const message = String((err as { message?: unknown } | null)?.message ?? err);
+        await updateJournal(account, (journal) => {
+          const head = journal.outbox[0];
+          if (head?.id !== entry.id) return;
+          if (transient) {
+            head.attempts += 1;
+            head.lastError = message;
+            return;
+          }
+          const rejected = [head, ...journal.outbox.slice(1).filter((other) =>
+            head.kind === "create_item" && head.tempId && referencesTemp(other, head.tempId),
+          )];
+          const ids = new Set(rejected.map((other) => other.id));
+          journal.outbox = journal.outbox.filter((other) => !ids.has(other.id));
+          const failedAt = new Date().toISOString();
+          for (const other of rejected) {
+            journal.failed.push({ id: other.id, kind: other.kind, message, createdAt: other.createdAt, failedAt });
+            if (other.kind === "create_invoice" && other.tempId) dropPendingInvoice(journal, other.tempId);
+          }
+          journal.failed = journal.failed.slice(-50);
+        });
+        notifySync();
+        if (transient) break;
+        continue;
       }
+      // Commit remap, mirror, and acknowledgment together. If storage rejects,
+      // the existing journal is retained and the failure reaches the caller.
+      await updateJournal(account, (journal) => {
+        if (journal.outbox[0]?.id !== entry.id) return;
+        if (entry.kind === "create_item" && entry.tempId && result?.id) {
+          journal.remap[entry.tempId] = result.id;
+          journal.mirror[result.id] = result;
+          for (const invoice of journal.pendingInvoices) {
+            for (const line of invoice.items) {
+              if (line.inventory_item_id === entry.tempId) line.inventory_item_id = result.id;
+            }
+          }
+        } else if (entry.kind === "update_item" && result?.id) {
+          journal.mirror[result.id] = result;
+        } else if (entry.kind === "create_invoice" && entry.tempId) {
+          dropPendingInvoice(journal, entry.tempId);
+        } else {
+          applyStockChange(journal.mirror, entry, false);
+        }
+        journal.outbox.shift();
+      });
+      notifySync();
     }
-    // update_item: the next server read replaces the mirror copy.
+  } catch (error) {
+    if (isCurrentSession(account)) throw error;
+  } finally {
+    flushing.delete(account.ownerId);
+    const latest = captureSession();
+    if (latest !== account && latest.ownerId === account.ownerId) flushInBackground();
   }
-  await writeMirror(m);
-  for (const e of entries) {
-    if (e.kind === "create_invoice" && e.tempId) await dropPendingInvoice(e.tempId);
-  }
+}
+
+/** Automatic triggers retry later; the journal remains intact on I/O failure. */
+export function flushInBackground(): void {
+  void flushOutbox().catch(() => undefined);
 }
 
 export async function getFailedSyncs(): Promise<FailedSync[]> {
-  return readJSON<FailedSync[]>(KEYS.failed, []);
+  const session = captureSession();
+  if (!session.ownerId) return [];
+  const journal = await readJournal(requireAccount(session));
+  assertSession(session);
+  return journal.failed;
 }
 
 export async function clearFailedSyncs(): Promise<void> {
-  await writeJSON(KEYS.failed, []);
+  const session = captureSession();
+  if (!session.ownerId) return;
+  await updateJournal(requireAccount(session), (journal) => { journal.failed = []; });
   notifySync();
 }
 
-/** Replace an offline-created temp record with the confirmed server item. */
-async function reconcileCreated(tmp: string, serverItem: InventoryItem): Promise<void> {
-  const m = await readMirror();
-  delete m[tmp];
-  m[serverItem.id] = serverItem;
-  await writeMirror(m);
+export async function cacheDashboard(data: Dashboard, session = captureSession()): Promise<void> {
+  assertSession(session);
+  if (session.ownerId) await writeAccountJSON(requireAccount(session), DASHBOARD, data);
 }
 
-/** Overwrite a mirror record with a clean server copy (clears _pending). */
-async function reconcileServerItem(serverItem: InventoryItem): Promise<void> {
-  const m = await readMirror();
-  m[serverItem.id] = serverItem;
-  await writeMirror(m);
+export async function readCachedDashboard(session = captureSession()): Promise<Dashboard | null> {
+  assertSession(session);
+  return session.ownerId ? readAccountJSON<Dashboard | null>(requireAccount(session), DASHBOARD, () => null) : null;
 }
 
-// ─── Dashboard cache (stale-but-visible when offline) ─
-export async function cacheDashboard(d: Dashboard): Promise<void> {
-  await writeJSON(KEYS.dashboardCache, d);
-}
-export async function readCachedDashboard(): Promise<Dashboard | null> {
-  return readJSON<Dashboard | null>(KEYS.dashboardCache, null);
-}
-
-// ─── Sync state (for UI) ─────────────────────────────
-export async function getSyncState(): Promise<{
-  pending: number;
-  failed: number;
-  lastSync: string | null;
-}> {
-  const q = await readJSON<OutboxEntry[]>(KEYS.outbox, []);
-  const failed = await readJSON<FailedSync[]>(KEYS.failed, []);
-  const lastSync = await readJSON<string | null>(KEYS.lastSync, null);
-  return { pending: q.length, failed: failed.length, lastSync };
+export async function getSyncState(session = captureSession()): Promise<{ pending: number; failed: number; lastSync: string | null }> {
+  assertSession(session);
+  if (!session.ownerId) return { pending: 0, failed: 0, lastSync: null };
+  const journal = await readJournal(requireAccount(session));
+  assertSession(session);
+  return { pending: journal.outbox.length, failed: journal.failed.length, lastSync: journal.lastSync };
 }
 
 export { isTempId };

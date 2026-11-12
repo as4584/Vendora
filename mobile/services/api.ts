@@ -25,13 +25,18 @@ import {
   cacheDashboard,
   readCachedDashboard,
 } from "./offline";
+import { accountKey, OfflineStorageError, readAccountJSON, tempId, writeAccountJSON } from "./offline/store";
+import {
+  assertSession, captureSession, replaceSession, requireAccount, SessionChangedError, type SessionContext,
+} from "./session";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://vendora.lexmakesit.com/api/v1";
 
 const TOKEN_KEY = "vendora_access_token";
 const REFRESH_TOKEN_KEY = "vendora_refresh_token";
-// Last profile fetched, so the app can open signed in without a connection.
+const ACTIVE_CREDENTIAL_KEY = "vendora_active_credentials";
+// The legacy profile is readable only if its user ID matches the stored token.
 const CACHED_USER_KEY = "vendora_cached_user";
 
 async function secureStorageAvailable(): Promise<boolean> {
@@ -64,44 +69,181 @@ async function deleteSecret(key: string): Promise<void> {
 type UnauthorizedHandler = () => void;
 let _unauthorizedHandler: UnauthorizedHandler | null = null;
 
-export function onUnauthorized(handler: UnauthorizedHandler): void {
+export function onUnauthorized(handler: UnauthorizedHandler | null): void {
   _unauthorizedHandler = handler;
 }
 
 // ─── Token Management ────────────────────────────────
 
-export async function getToken(): Promise<string | null> {
-  return readSecret(TOKEN_KEY);
+// Reads cannot see a half-written token pair. Writes already in progress finish
+// before a newer login/logout writes; delayed refreshes cannot reenter it.
+let credentialTail: Promise<unknown> = Promise.resolve();
+function serializeCredentials<T>(operation: () => Promise<T>): Promise<T> {
+  const next = credentialTail.then(operation);
+  credentialTail = next.catch(() => undefined);
+  return next;
+}
+function withCredentials<T>(session: SessionContext, operation: () => Promise<T>): Promise<T> {
+  return serializeCredentials(() => {
+    assertSession(session);
+    return operation();
+  });
 }
 
-export async function getRefreshToken(): Promise<string | null> {
-  return readSecret(REFRESH_TOKEN_KEY);
+type Tokens = { accessToken: string | null; refreshToken: string | null };
+type CredentialRef = { key: string } | { legacy: Tokens } | { empty: true };
+const refs = new WeakMap<SessionContext, CredentialRef>();
+const emptyTokens: Tokens = { accessToken: null, refreshToken: null };
+
+// Each login stores an atomic pair under a unique key. The active pointer is
+// only a startup default; a mounted session keeps its own reference. Refresh
+// and logout touch only that key, even if another browser tab signs in.
+async function getCredentialRef(session: SessionContext): Promise<CredentialRef> {
+  const known = refs.get(session);
+  if (known) return known;
+  const active = await readSecret(ACTIVE_CREDENTIAL_KEY);
+  const ref: CredentialRef = active
+    ? { key: active }
+    : { legacy: { accessToken: await readSecret(TOKEN_KEY), refreshToken: await readSecret(REFRESH_TOKEN_KEY) } };
+  refs.set(session, ref);
+  return ref;
+}
+
+async function readTokens(ref: CredentialRef): Promise<Tokens> {
+  if ("legacy" in ref) return ref.legacy;
+  if ("empty" in ref) return emptyTokens;
+  const raw = await readSecret(ref.key);
+  return raw ? JSON.parse(raw) as Tokens : emptyTokens;
+}
+
+async function getTokens(session: SessionContext): Promise<Tokens> {
+  const tokens = await withCredentials(session, async () => readTokens(await getCredentialRef(session)));
+  assertSession(session);
+  if (session.ownerId && tokenIdentity(tokens.accessToken) !== session.ownerId) {
+    void closeCredentials(session).catch(() => undefined);
+    _unauthorizedHandler?.();
+    throw new SessionChangedError();
+  }
+  return tokens;
+}
+
+export async function getToken(session = captureSession()): Promise<string | null> {
+  return (await getTokens(session)).accessToken;
+}
+
+export async function getRefreshToken(session = captureSession()): Promise<string | null> {
+  return (await getTokens(session)).refreshToken;
+}
+
+export function activateAccount(ownerId: string, expected: SessionContext): void {
+  assertSession(expected);
+  const ref = refs.get(expected);
+  const active = replaceSession(ownerId);
+  if (ref) refs.set(active, ref);
 }
 
 export async function setToken(token: string): Promise<void> {
-  await writeSecret(TOKEN_KEY, token);
+  await setSession(token, null);
 }
 
-export async function setSession(accessToken: string, refreshToken: string): Promise<void> {
-  await Promise.all([
-    writeSecret(TOKEN_KEY, accessToken),
-    writeSecret(REFRESH_TOKEN_KEY, refreshToken),
-  ]);
+export async function setSession(accessToken: string, refreshToken: string | null, session = replaceSession()): Promise<void> {
+  assertSession(session);
+  const ref = { key: `vendora_credentials_${tempId("session")}` };
+  refs.set(session, ref);
+  await withCredentials(session, async () => {
+    await writeSecret(ref.key, JSON.stringify({ accessToken, refreshToken }));
+    assertSession(session);
+    await writeSecret(ACTIVE_CREDENTIAL_KEY, ref.key);
+  });
+  assertSession(session);
 }
 
-export async function clearToken(): Promise<void> {
-  await Promise.all([
-    deleteSecret(TOKEN_KEY),
-    deleteSecret(REFRESH_TOKEN_KEY),
-    AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => undefined),
-  ]);
+async function updateTokens(session: SessionContext, tokens: Tokens): Promise<void> {
+  await withCredentials(session, async () => {
+    const ref = await getCredentialRef(session);
+    assertSession(session);
+    if ("key" in ref) {
+      // Do not resurrect a token another tab has already logged out.
+      if (!(await readSecret(ref.key))) throw new SessionChangedError();
+      assertSession(session);
+      await writeSecret(ref.key, JSON.stringify(tokens));
+    } else if ("legacy" in ref) {
+      // Preserve pre-upgrade startup while this legacy session is still active.
+      if (await readSecret(TOKEN_KEY) === ref.legacy.accessToken) {
+        assertSession(session);
+        if (tokens.accessToken) await writeSecret(TOKEN_KEY, tokens.accessToken);
+        if (tokens.refreshToken) await writeSecret(REFRESH_TOKEN_KEY, tokens.refreshToken);
+      }
+      ref.legacy = tokens;
+    }
+  });
+  assertSession(session);
 }
 
-export async function getCachedUser(): Promise<User | null> {
+function closeCredentials(session: SessionContext): Promise<Tokens> {
+  assertSession(session);
+  const closed = replaceSession();
+  refs.set(closed, { empty: true });
+  return serializeCredentials(async () => {
+    const ref = refs.get(session);
+    if (!ref) return emptyTokens;
+    const tokens = await readTokens(ref);
+    if (session.ownerId && tokens.accessToken && tokenIdentity(tokens.accessToken) !== session.ownerId) return emptyTokens;
+    if ("key" in ref) {
+      await deleteSecret(ref.key);
+    } else if ("legacy" in ref && tokens.accessToken && await readSecret(TOKEN_KEY) === tokens.accessToken) {
+      // Never delete a different tab's upgraded bundle or active pointer.
+      await Promise.all([deleteSecret(TOKEN_KEY), deleteSecret(REFRESH_TOKEN_KEY)]);
+    }
+    return tokens;
+  });
+}
+
+export async function clearToken(expected = captureSession()): Promise<void> {
+  await closeCredentials(expected);
+}
+
+/** Read only claims from a token already in local credential storage. The
+ * server still validates signatures; this only associates an offline profile
+ * with that stored session. Works even when the access token has expired. */
+function tokenIdentity(token: string | null): string | null {
+  if (!token) return null;
+  const segment = token.split(".")[1];
+  if (!segment || !/^[\w-]+$/.test(segment)) return null;
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  let decoded = "";
+  let bits = 0;
+  let buffer = 0;
+  for (const char of segment) {
+    buffer = (buffer << 6) | alphabet.indexOf(char);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      decoded += String.fromCharCode((buffer >> bits) & 255);
+    }
+  }
   try {
-    const raw = await AsyncStorage.getItem(CACHED_USER_KEY);
-    return raw ? (JSON.parse(raw) as User) : null;
+    const claims = JSON.parse(decoded);
+    return typeof claims.sub === "string" ? claims.sub : null;
   } catch {
+    return null;
+  }
+}
+
+export async function getCachedUser(session = captureSession()): Promise<User | null> {
+  const identity = tokenIdentity(await getToken(session));
+  assertSession(session);
+  if (!identity) return null;
+  try {
+    // The older profile carries a user ID, unlike the legacy device-global
+    // journals. It is safe only if the stored token proves the same owner.
+    const raw = (await AsyncStorage.getItem(accountKey(identity, "auth:profile")))
+      || await AsyncStorage.getItem(CACHED_USER_KEY);
+    assertSession(session);
+    const user = raw ? JSON.parse(raw) as User : null;
+    return user?.id === identity ? user : null;
+  } catch {
+    assertSession(session);
     return null;
   }
 }
@@ -110,12 +252,14 @@ export async function getCachedUser(): Promise<User | null> {
 
 // true = refreshed, false = server rejected the refresh token,
 // null = couldn't reach the server (keep the session; it may still be valid).
-let refreshInFlight: Promise<boolean | null> | null = null;
+let refreshInFlight: { session: SessionContext; result: Promise<boolean | null> } | null = null;
 
-async function refreshAccessToken(): Promise<boolean | null> {
-  if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = (async () => {
-    const refreshToken = await getRefreshToken();
+async function refreshAccessToken(session: SessionContext): Promise<boolean | null> {
+  assertSession(session);
+  if (refreshInFlight?.session === session) return refreshInFlight.result;
+  const result = (async () => {
+    const refreshToken = await getRefreshToken(session);
+    assertSession(session);
     if (!refreshToken) return false;
     try {
       const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
@@ -123,28 +267,41 @@ async function refreshAccessToken(): Promise<boolean | null> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
+      assertSession(session);
       if (response.status === 401 || response.status === 403) return false;
       if (!response.ok) return null;
-      const session = (await response.json()) as TokenResponse;
-      await setSession(session.access_token, session.refresh_token);
+      const tokens = (await response.json()) as TokenResponse;
+      assertSession(session);
+      if (session.ownerId && tokenIdentity(tokens.access_token) !== session.ownerId) throw new SessionChangedError();
+      await updateTokens(session, { accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
       return true;
-    } catch {
+    } catch (error) {
+      assertSession(session);
+      if (error instanceof SessionChangedError) throw error;
       return null;
     }
   })();
+  refreshInFlight = { session, result };
   try {
-    return await refreshInFlight;
+    return await result;
   } finally {
-    refreshInFlight = null;
+    if (refreshInFlight?.result === result) refreshInFlight = null;
   }
 }
+
+const PUBLIC_AUTH = new Set(["/auth/login", "/auth/register", "/auth/forgot-password", "/auth/reset-password"]);
+
+class ConnectionError extends Error {}
 
 export async function request<T>(
   path: string,
   options: RequestInit = {},
   allowRefresh = true,
+  session = captureSession(),
 ): Promise<T> {
-  const token = await getToken();
+  const publicAuth = PUBLIC_AUTH.has(path);
+  const token = publicAuth ? null : await getToken(session);
+  assertSession(session);
   const isFormData =
     typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers: Record<string, string> = {
@@ -157,32 +314,66 @@ export async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  } catch (error) {
+    assertSession(session);
+    throw new ConnectionError(error instanceof Error ? error.message : "Network request failed.");
+  }
+  assertSession(session);
+
+  if (response.status === 401 && token && !publicAuth) {
+    if (allowRefresh && (!path.startsWith("/auth/") || path === "/auth/me")) {
+      // A parallel request may already have finished rotating this token.
+      const latestToken = await getToken(session);
+      assertSession(session);
+      const refreshed = latestToken !== token || await refreshAccessToken(session);
+      assertSession(session);
+      if (refreshed) return request<T>(path, options, false, session);
+      if (refreshed === null) {
+        throw new ConnectionError("Could not reach Resqlo. Check your connection.");
+      }
+    }
+    // Invalidate immediately; no old callback may clear or sign out a new user.
+    const cleared = clearToken(session);
+    _unauthorizedHandler?.();
+    try {
+      await cleared;
+    } catch {
+      // The in-process session is already invalidated, even if storage failed.
+    }
+    throw new ApiError("Your session expired. Please sign in again.", 401);
+  }
 
   const contentType = response.headers.get("content-type");
   const isJson = contentType && contentType.includes("application/json");
-
+  let responseText: string;
+  try {
+    responseText = await response.text();
+  } catch (error) {
+    assertSession(session);
+    if (!response.ok) throw new ApiError(`Request failed (${response.status})`, response.status);
+    throw new ConnectionError(error instanceof Error ? error.message : "Could not read the response.");
+  }
+  assertSession(session);
   let data: any;
 
   if (isJson) {
     try {
-      const text = await response.text();
-      data = text ? JSON.parse(text) : {};
+      data = responseText ? JSON.parse(responseText) : {};
     } catch (e) {
       console.error("Failed to parse JSON response:", e);
-      throw new Error("Invalid JSON response from server");
+      if (!response.ok) throw new ApiError(`Request failed (${response.status})`, response.status);
+      throw new ConnectionError("Invalid JSON response from server");
     }
   } else {
     // Non-JSON response (e.g. 500 HTML error or 404 text)
-    const text = await response.text();
     if (!response.ok) {
-      throw new ApiError(text || `Request failed (${response.status})`, response.status);
+      throw new ApiError(responseText || `Request failed (${response.status})`, response.status);
     }
     // If OK but not JSON (e.g. text/csv, 204 empty), return text content
-    return text as unknown as T;
+    return responseText as unknown as T;
   }
 
   if (!response.ok) {
@@ -190,20 +381,6 @@ export async function request<T>(
       typeof data.detail === "string"
         ? data.detail
         : data?.detail?.message || `Request failed (${response.status})`;
-    if (response.status === 401) {
-      // Token expired or invalid — clear storage and notify auth context.
-      if (allowRefresh && (!path.startsWith("/auth/") || path === "/auth/me")) {
-        const refreshed = await refreshAccessToken();
-        if (refreshed) return request<T>(path, options, false);
-        if (refreshed === null) {
-          // Offline or server hiccup: don't sign the user out. A plain Error
-          // is treated as a network failure by the offline layer.
-          throw new Error("Could not reach Resqlo. Check your connection.");
-        }
-      }
-      await clearToken();
-      _unauthorizedHandler?.();
-    }
     throw new ApiError(message, response.status, data?.detail);
   }
 
@@ -222,19 +399,25 @@ export class ApiError extends Error {
 }
 
 // ─── Offline wiring ──────────────────────────────────
-// A real HTTP failure (no server response) throws a plain Error/TypeError with
-// no numeric status; an ApiError always carries one. Treat the former as
-// "connection is down" so reads fall back to cache and writes queue.
 function isNetworkError(e: unknown): boolean {
-  return !(e instanceof ApiError);
+  return e instanceof ConnectionError;
+}
+
+async function bestEffortCache(session: SessionContext, persist: () => Promise<void>): Promise<void> {
+  try {
+    await persist();
+  } catch (error) {
+    if (!(error instanceof OfflineStorageError)) throw error;
+  }
+  assertSession(session);
 }
 
 // Let the offline sync runner replay queued mutations through the authed client.
-setSender((path, method, body) =>
+setSender((path, method, body, session) =>
   request(path, {
     method,
     body: body != null ? JSON.stringify(body) : undefined,
-  }),
+  }, true, session),
 );
 
 // ─── Auth Endpoints ──────────────────────────────────
@@ -288,19 +471,32 @@ export async function login(
   });
 }
 
-export async function logoutSession(): Promise<void> {
-  const refreshToken = await getRefreshToken();
+export async function logoutSession(pushToken?: string | null): Promise<void> {
+  const { refreshToken, accessToken } = await closeCredentials(captureSession());
+  // Only the credentials captured from the closed session may be used for
+  // remote cleanup. Neither response is allowed to alter a newer session.
+  if (accessToken && pushToken) {
+    try {
+      await fetch(`${API_BASE_URL}/devices/push-token/remove`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ token: pushToken }),
+      });
+    } catch {
+      // Best effort.
+    }
+  }
   if (refreshToken) {
     try {
-      await request<{ message: string }>("/auth/logout", {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
     } catch {
       // Local credential removal remains authoritative when offline.
     }
   }
-  await clearToken();
 }
 
 export async function deleteAccount(password: string): Promise<{ message: string }> {
@@ -329,9 +525,19 @@ export async function resetPassword(
   });
 }
 
-export async function getMe(): Promise<User> {
-  const user = await request<User>("/auth/me");
-  AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user)).catch(() => undefined);
+export async function getMe(session = captureSession()): Promise<User> {
+  const user = await request<User>("/auth/me", {}, true, session);
+  assertSession(session);
+  if (typeof user?.id === "string") {
+    await withCredentials(session, async () => {
+      const identity = tokenIdentity((await readTokens(await getCredentialRef(session))).accessToken);
+      assertSession(session);
+      if (identity && user.id === identity) {
+        await AsyncStorage.setItem(accountKey(identity, "auth:profile"), JSON.stringify(user)).catch(() => undefined);
+      }
+    });
+  }
+  assertSession(session);
   return user;
 }
 
@@ -458,6 +664,7 @@ export async function listItems(
   pageOrParams: number | ListItemsParams = 1,
   perPage = 20
 ): Promise<PaginatedItems> {
+  const session = captureSession();
   let page: number;
   let params: ListItemsParams;
 
@@ -481,29 +688,34 @@ export async function listItems(
   if (params.availableOnly) qs.set("available_only", "true");
   if (params.upc) qs.set("upc", params.upc);
 
-  if (!isOnline()) return offlineListItems(normalized);
+  if (!isOnline()) return offlineListItems(normalized, session);
   try {
-    const res = await request<PaginatedItems>(`/inventory?${qs.toString()}`);
-    await cacheItemsFromServer(res.items);
+    const res = await request<PaginatedItems>(`/inventory?${qs.toString()}`, {}, true, session);
+    await bestEffortCache(session, () => cacheItemsFromServer(res.items, session));
+    assertSession(session);
     return res;
   } catch (e) {
-    if (isNetworkError(e)) return offlineListItems(normalized);
+    if (isNetworkError(e)) return offlineListItems(normalized, session);
     throw e;
   }
 }
 
 export async function getItem(id: string): Promise<InventoryItem> {
-  if (!isOnline()) {
-    const cached = await offlineGetItem(id);
+  const session = captureSession();
+  if (!isOnline() || isTempId(id)) {
+    const cached = await offlineGetItem(id, session);
+    assertSession(session);
     if (cached) return cached;
   }
   try {
-    const item = await request<InventoryItem>(`/inventory/${id}`);
-    await cacheItemFromServer(item);
+    const item = await request<InventoryItem>(`/inventory/${id}`, {}, true, session);
+    await bestEffortCache(session, () => cacheItemFromServer(item, session));
+    assertSession(session);
     return item;
   } catch (e) {
     if (isNetworkError(e)) {
-      const cached = await offlineGetItem(id);
+      const cached = await offlineGetItem(id, session);
+      assertSession(session);
       if (cached) return cached;
     }
     throw e;
@@ -520,16 +732,18 @@ export async function getItemActivity(
 export async function createItem(
   payload: CreateItemPayload
 ): Promise<InventoryItem> {
-  if (!isOnline()) return queueCreateItem(payload);
+  const session = captureSession();
+  if (!isOnline()) return queueCreateItem(payload, session);
   try {
     const item = await request<InventoryItem>("/inventory", {
       method: "POST",
       body: JSON.stringify(payload),
-    });
-    await cacheItemFromServer(item);
+    }, true, session);
+    await bestEffortCache(session, () => cacheItemFromServer(item, session));
+    assertSession(session);
     return item;
   } catch (e) {
-    if (isNetworkError(e)) return queueCreateItem(payload);
+    if (isNetworkError(e)) return queueCreateItem(payload, session);
     throw e;
   }
 }
@@ -543,16 +757,18 @@ export async function updateItem(
   id: string,
   payload: UpdateItemPayload
 ): Promise<InventoryItem> {
-  if (!isOnline()) return queueUpdateItem(id, payload);
+  const session = captureSession();
+  if (!isOnline()) return queueUpdateItem(id, payload, session);
   try {
     const item = await request<InventoryItem>(`/inventory/${id}`, {
       method: "PUT",
       body: JSON.stringify(payload),
-    });
-    await cacheItemFromServer(item);
+    }, true, session);
+    await bestEffortCache(session, () => cacheItemFromServer(item, session));
+    assertSession(session);
     return item;
   } catch (e) {
-    if (isNetworkError(e)) return queueUpdateItem(id, payload);
+    if (isNetworkError(e)) return queueUpdateItem(id, payload, session);
     throw e;
   }
 }
@@ -685,6 +901,7 @@ export async function importInventoryFromLink(
   url: string,
   dryRun = false
 ): Promise<InventoryImportResult> {
+  const session = captureSession();
   const payload = {
     method: "POST",
     body: JSON.stringify({
@@ -695,7 +912,7 @@ export async function importInventoryFromLink(
   };
 
   try {
-    return await request<InventoryImportResult>("/inventory/import", payload);
+    return await request<InventoryImportResult>("/inventory/import", payload, true, session);
   } catch (error) {
     if (
       !dryRun &&
@@ -703,7 +920,7 @@ export async function importInventoryFromLink(
       [502, 503, 504].includes(error.status)
     ) {
       await new Promise((resolve) => setTimeout(resolve, 1800));
-      return request<InventoryImportResult>("/inventory/import", payload);
+      return request<InventoryImportResult>("/inventory/import", payload, true, session);
     }
     throw error;
   }
@@ -808,7 +1025,7 @@ export interface CreateSaleOrderPayload {
   /** Sales tax percent, e.g. "6.625". */
   tax_rate?: string;
   notes?: string;
-  /** Offline outbox id; the server records a replayed order only once. */
+  /** Idempotency key reused by the first POST and the offline outbox. */
   client_request_id?: string;
   /** The buyer, picked at checkout. */
   customer_id?: string;
@@ -848,35 +1065,39 @@ export interface CreateTransactionPayload {
   quantity?: number;
   external_reference_id?: string;
   notes?: string;
-  /** Offline outbox id; the server records a replayed sale only once. */
+  /** Idempotency key reused by the first POST and the offline outbox. */
   client_request_id?: string;
 }
 
 export async function createTransaction(
   payload: CreateTransactionPayload
 ): Promise<Transaction> {
-  if (!isOnline()) return queueQuickSale(payload);
+  const session = captureSession();
+  const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("sale") };
+  if (!isOnline()) return queueQuickSale(body, session);
   try {
     return await request<Transaction>("/transactions", {
       method: "POST",
-      body: JSON.stringify(payload),
-    });
+      body: JSON.stringify(body),
+    }, true, session);
   } catch (e) {
-    if (isNetworkError(e)) return queueQuickSale(payload);
+    if (isNetworkError(e)) return queueQuickSale(body, session);
     throw e;
   }
 }
 
 /** Record a multi-item checkout all-or-nothing (queued as one unit offline). */
 export async function createSaleOrder(payload: CreateSaleOrderPayload): Promise<SaleOrder> {
-  if (!isOnline()) return queueSaleOrder(payload);
+  const session = captureSession();
+  const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("order") };
+  if (!isOnline()) return queueSaleOrder(body, session);
   try {
     return await request<SaleOrder>("/transactions/order", {
       method: "POST",
-      body: JSON.stringify(payload),
-    });
+      body: JSON.stringify(body),
+    }, true, session);
   } catch (e) {
-    if (isNetworkError(e)) return queueSaleOrder(payload);
+    if (isNetworkError(e)) return queueSaleOrder(body, session);
     throw e;
   }
 }
@@ -934,17 +1155,21 @@ export interface Dashboard {
 }
 
 export async function getDashboard(): Promise<Dashboard> {
+  const session = captureSession();
   if (!isOnline()) {
-    const cached = await readCachedDashboard();
+    const cached = await readCachedDashboard(session);
+    assertSession(session);
     if (cached) return cached;
   }
   try {
-    const d = await request<Dashboard>("/dashboard");
-    await cacheDashboard(d);
+    const d = await request<Dashboard>("/dashboard", {}, true, session);
+    await bestEffortCache(session, () => cacheDashboard(d, session));
+    assertSession(session);
     return d;
   } catch (e) {
     if (isNetworkError(e)) {
-      const cached = await readCachedDashboard();
+      const cached = await readCachedDashboard(session);
+      assertSession(session);
       if (cached) return cached;
     }
     throw e;
@@ -1058,16 +1283,17 @@ function requestKey(prefix: string): string {
 export async function createInvoice(
   payload: CreateInvoicePayload
 ): Promise<InvoiceData> {
+  const session = captureSession();
   const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("inv") };
-  if (!isOnline()) return queueCreateInvoice(body);
+  if (!isOnline()) return queueCreateInvoice(body, session);
   try {
     return await request<InvoiceData>("/invoices", {
       method: "POST",
       body: JSON.stringify(body),
-    });
+    }, true, session);
   } catch (e) {
     // Same key on replay: if the first POST did land, the server returns it.
-    if (isNetworkError(e)) return queueCreateInvoice(body);
+    if (isNetworkError(e)) return queueCreateInvoice(body, session);
     throw e;
   }
 }
@@ -1093,6 +1319,7 @@ export async function listInvoices(
     | { page?: number; perPage?: number; status?: string; inventoryItemId?: string } = 1,
   perPage = 20
 ): Promise<PaginatedInvoices> {
+  const session = captureSession();
   let page = 1;
   let status: string | undefined;
   let inventoryItemId: string | undefined;
@@ -1112,7 +1339,8 @@ export async function listInvoices(
   if (inventoryItemId) qs.set("inventory_item_id", inventoryItemId);
   // Offline-created invoices lead the unfiltered first page until they sync.
   const showPending = page === 1 && !status && !inventoryItemId;
-  const pending = showPending ? await getPendingInvoices() : [];
+  const pending = showPending ? await getPendingInvoices(session) : [];
+  assertSession(session);
   const offlinePage = (): PaginatedInvoices => ({
     items: pending,
     total: pending.length,
@@ -1122,22 +1350,26 @@ export async function listInvoices(
   });
   if (!isOnline()) return offlinePage();
   try {
-    const res = await request<PaginatedInvoices>(`/invoices?${qs.toString()}`);
+    const res = await request<PaginatedInvoices>(`/invoices?${qs.toString()}`, {}, true, session);
+    assertSession(session);
     if (!pending.length) return res;
     return { ...res, items: [...pending, ...res.items], total: res.total + pending.length };
   } catch (e) {
+    assertSession(session);
     if (isNetworkError(e)) return offlinePage();
     throw e;
   }
 }
 
 export async function getInvoice(id: string): Promise<InvoiceData> {
+  const session = captureSession();
   if (isTempId(id)) {
-    const local = await getPendingInvoice(id);
+    const local = await getPendingInvoice(id, session);
+    assertSession(session);
     if (local) return local;
     throw new Error("This invoice has synced or was removed. Pull to refresh.");
   }
-  return request<InvoiceData>(`/invoices/${id}`);
+  return request<InvoiceData>(`/invoices/${id}`, {}, true, session);
 }
 
 export async function updateInvoiceStatus(
@@ -1963,17 +2195,30 @@ export interface CustomerInput {
   notes?: string;
 }
 
-/** Customer list; falls back to the last list seen on this device when offline. */
+/** Customer list; offline searches use only this account's last full list. */
 export async function listCustomers(q?: string): Promise<Customer[]> {
+  const session = captureSession();
   const term = q?.trim();
   const path = term ? `/customers?q=${encodeURIComponent(term)}` : "/customers";
   try {
-    const page = await request<{ items: Customer[]; total: number }>(path);
-    if (!term) await cacheCustomers(page.items);
+    const page = await request<{ items: Customer[]; total: number }>(path, {}, true, session);
+    assertSession(session);
+    if (!term && session.ownerId) {
+      await bestEffortCache(session, () => writeAccountJSON(requireAccount(session), "offline:customers", page.items));
+    }
+    assertSession(session);
     return page.items;
   } catch (e) {
-    if (isNetworkError(e) || !isOnline()) {
-      const cached = await readCachedCustomers();
+    assertSession(session);
+    if (isNetworkError(e) && session.ownerId) {
+      let cached: Customer[] | null;
+      try {
+        cached = await readAccountJSON<Customer[] | null>(requireAccount(session), "offline:customers", () => null);
+      } catch (error) {
+        if (error instanceof OfflineStorageError) throw e;
+        throw error;
+      }
+      assertSession(session);
       if (cached) {
         const needle = (term || "").toLowerCase();
         return needle
@@ -1995,21 +2240,6 @@ export async function createCustomer(body: CustomerInput & { name: string }): Pr
 
 export async function updateCustomer(id: string, body: CustomerInput): Promise<Customer> {
   return request<Customer>(`/customers/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
-}
-
-const CUSTOMERS_CACHE_KEY = "offline:customers";
-
-async function cacheCustomers(items: Customer[]): Promise<void> {
-  try { await AsyncStorage.setItem(CUSTOMERS_CACHE_KEY, JSON.stringify(items)); } catch { /* best effort */ }
-}
-
-async function readCachedCustomers(): Promise<Customer[] | null> {
-  try {
-    const raw = await AsyncStorage.getItem(CUSTOMERS_CACHE_KEY);
-    return raw ? (JSON.parse(raw) as Customer[]) : null;
-  } catch {
-    return null;
-  }
 }
 
 export async function disconnectSquare(): Promise<{ disconnected: boolean; links_retained: number }> {

@@ -3,7 +3,9 @@ import fixtures from './visual/fixtures.json';
 
 test('confirmed sale shows a readable receipt with reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.addInitScript(() => localStorage.setItem('vendora_access_token', 'local-test-token'));
+  await page.addInitScript((sub) => {
+    localStorage.setItem('vendora_access_token', `x.${btoa(JSON.stringify({ sub })).replace(/=+$/, '')}.x`);
+  }, fixtures.me.id);
   await page.route('**/api/v1/**', route => {
     const path = new URL(route.request().url()).pathname;
     const body = path.endsWith('/auth/me') ? fixtures.me

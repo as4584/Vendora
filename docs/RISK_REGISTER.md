@@ -354,6 +354,24 @@ Confirmation prompts
 
 Delayed permanent deletion
 
+7.3 Offline sales lost or replayed for the wrong account
+
+Impact: High
+Likelihood: Reduced by session and journal isolation
+Priority: High
+
+Mitigation: Keep the outbox, local invoices, and temp-ID remaps in one
+account-scoped journal. Do not confirm a pending sale until storage commits.
+Recheck the initiating session before sending and applying responses. Retry
+sale orders and ordinary quick sales using the original request ID.
+
+Residual: Legacy journals with no trustworthy owner stay untouched but cannot
+be replayed. Device loss/storage erasure still loses pending local writes.
+Inventory creates/updates are not server-idempotent; a crash or a lost
+acknowledgment after the server applies one can leave an ambiguous retry.
+Journal mutations are serialized within one running app instance, not between
+two web tabs both writing the same account at once.
+
 🟨 8. USER TRUST RISKS
 8.1 Incorrect Profit Calculations
 
@@ -382,6 +400,17 @@ Enforce “3-minute onboarding” rule
 Reduce clutter
 
 Continuous UX review
+
+8.3 Shared device shows another account's private offline data
+
+Impact: High
+Priority: High
+
+Mitigation: Use a verified account namespace for offline customer lists,
+inventory, dashboard, pending invoices, scan learning, and search history.
+Discard stale request results on account change and do not read or delete
+legacy unknown-owner data. This isolates accounts inside the app; it does
+not add encryption to local storage.
 
 🧭 Review Policy
 

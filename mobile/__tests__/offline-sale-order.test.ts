@@ -5,12 +5,21 @@
  */
 let AsyncStorage: any;
 
-const OUTBOX = "offline:outbox";
-const MIRROR = "offline:inventory_mirror";
-const FAILED = "offline:failed";
+const OUTBOX = "outbox";
+const MIRROR = "mirror";
+const FAILED = "failed";
 
+const JOURNAL_KEY = "account:v1:seller:offline:journal";
 async function read(key: string) {
-  return JSON.parse((await AsyncStorage.getItem(key)) ?? "null");
+  return JSON.parse((await AsyncStorage.getItem(JOURNAL_KEY)) ?? "null")?.[key] ?? null;
+}
+
+async function seed(key: string, value: string) {
+  const prior = JSON.parse((await AsyncStorage.getItem(JOURNAL_KEY)) ?? "null");
+  await AsyncStorage.setItem(JOURNAL_KEY, JSON.stringify({
+    mirror: {}, outbox: [], remap: {}, pendingInvoices: [], failed: [], lastSync: null,
+    ...prior, [key]: JSON.parse(value),
+  }));
 }
 
 function apiError(status: number, message: string) {
@@ -22,10 +31,11 @@ describe("offline sale orders", () => {
     jest.resetModules();
     AsyncStorage = require("@react-native-async-storage/async-storage").default;
     await AsyncStorage.clear();
+    require("../services/session").replaceSession("seller");
   });
 
   it("queues one entry and decrements every line in the mirror", async () => {
-    await AsyncStorage.setItem(MIRROR, JSON.stringify({
+    await seed(MIRROR, JSON.stringify({
       a: { id: "a", quantity: 2, status: "in_stock" },
       b: { id: "b", quantity: 1, status: "in_stock" },
     }));
@@ -46,13 +56,13 @@ describe("offline sale orders", () => {
     expect(outbox).toHaveLength(1);
     expect(outbox[0]).toMatchObject({ kind: "sale_order", path: "/transactions/order", method: "POST" });
     expect(outbox[0].body.client_request_id).toBe(outbox[0].id);
-    const mirror = await read(MIRROR);
+    const mirror = (await offline.offlineListItems({})).items.reduce((all: any, item: any) => ({ ...all, [item.id]: item }), {});
     expect(mirror.a).toMatchObject({ quantity: 1, status: "in_stock" });
     expect(mirror.b).toMatchObject({ quantity: 0, status: "sold" });
   });
 
   it("rewrites offline-created item ids inside the order lines", async () => {
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify([
+    await seed(OUTBOX, JSON.stringify([
       { id: "ob_c", kind: "create_item", path: "/inventory", method: "POST",
         body: { name: "New" }, tempId: "local_1", createdAt: "t", attempts: 0 },
       { id: "ob_o", kind: "sale_order", path: "/transactions/order", method: "POST",
@@ -71,16 +81,16 @@ describe("offline sale orders", () => {
     expect(send).toHaveBeenLastCalledWith("/transactions/order", "POST", expect.objectContaining({
       lines: [{ item_id: "srv_1", quantity: 1, unit_price: "5.00" },
               { item_id: "real_2", quantity: 1, unit_price: "6.00" }],
-    }));
+    }), expect.objectContaining({ ownerId: "seller" }));
     expect(await read(OUTBOX)).toEqual([]);
   });
 
   it("restores stock for every line when the server rejects the order", async () => {
-    await AsyncStorage.setItem(MIRROR, JSON.stringify({
-      a: { id: "a", quantity: 0, status: "sold" },
-      b: { id: "b", quantity: 3, status: "in_stock" },
+    await seed(MIRROR, JSON.stringify({
+      a: { id: "a", quantity: 2, status: "in_stock" },
+      b: { id: "b", quantity: 4, status: "in_stock" },
     }));
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify([
+    await seed(OUTBOX, JSON.stringify([
       { id: "ob_o", kind: "sale_order", path: "/transactions/order", method: "POST",
         body: { method: "cash", lines: [{ item_id: "a", quantity: 2, unit_price: "5.00" },
                                         { item_id: "b", quantity: 1, unit_price: "5.00" }] },
@@ -98,7 +108,7 @@ describe("offline sale orders", () => {
   });
 
   it("queues a split, discounted, taxed, sized order and returns server-identical totals", async () => {
-    await AsyncStorage.setItem(MIRROR, JSON.stringify({
+    await seed(MIRROR, JSON.stringify({
       s: { id: "s", quantity: 3, status: "in_stock", custom_attributes: { variants: [{ size: "9", quantity: 1 }, { size: "10", quantity: 2 }] } },
     }));
     const offline = require("../services/offline/inventory");
@@ -116,7 +126,7 @@ describe("offline sale orders", () => {
       pending: true, subtotal_amount: "220.00", discount_amount: "20.00", gross_amount: "200.00",
       tax_amount: "10.00", total_amount: "210.00", net_amount: "199.00", payments,
     });
-    const mirror = await read(MIRROR);
+    const mirror = { s: await offline.offlineGetItem("s") };
     expect(mirror.s.quantity).toBe(1);
     expect(mirror.s.custom_attributes.variants).toEqual([{ size: "9", quantity: 1 }, { size: "10", quantity: 0 }]);
     const outbox = await read(OUTBOX);
@@ -136,7 +146,7 @@ describe("offline sale orders", () => {
   });
 
   it("finds mirrored items by barcode offline", async () => {
-    await AsyncStorage.setItem(MIRROR, JSON.stringify({
+    await seed(MIRROR, JSON.stringify({
       a: { id: "a", quantity: 1, status: "in_stock", upc: "012345678905", created_at: "2" },
       b: { id: "b", quantity: 1, status: "in_stock", upc: null, created_at: "1" },
     }));
@@ -146,7 +156,7 @@ describe("offline sale orders", () => {
   });
 
   it("pulls an order that depends on a rejected offline-created item", async () => {
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify([
+    await seed(OUTBOX, JSON.stringify([
       { id: "ob_c", kind: "create_item", path: "/inventory", method: "POST",
         body: { name: "" }, tempId: "local_x", createdAt: "t", attempts: 0 },
       { id: "ob_o", kind: "sale_order", path: "/transactions/order", method: "POST",
@@ -176,6 +186,6 @@ describe("api.createSaleOrder", () => {
     const offline = require("../services/offline");
     const payload = { lines: [{ item_id: "a", quantity: 1, unit_price: "1.00" }], method: "cash" };
     await expect(api.createSaleOrder(payload)).resolves.toEqual({ pending: true });
-    expect(offline.queueSaleOrder).toHaveBeenCalledWith(payload);
+    expect(offline.queueSaleOrder).toHaveBeenCalledWith({ ...payload, client_request_id: expect.any(String) }, expect.any(Object));
   });
 });

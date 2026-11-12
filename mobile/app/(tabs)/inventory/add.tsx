@@ -27,6 +27,7 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
+import { captureSession, isCurrentSession } from "../../../services/session";
 import { isTempId } from "../../../services/offline";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 import { StockxPriceHint } from "../../../components/Stockx";
@@ -122,11 +123,12 @@ export default function AddItemScreen() {
     const [liveSupported, setLiveSupported] = useState(false);
     const [liveOpen, setLiveOpen] = useState(false);
 
+    const session = captureSession();
     // Bring this account's barcode memory onto the phone so scans work offline.
     useEffect(() => {
-        // ...then, once per device, learn barcodes from inventory imported before Smart Scan.
-        syncScanMemory()
-            .then(() => backfillScanMemoryOnce())
+        // Learn barcodes from this account's inventory once on this device.
+        syncScanMemory(session)
+            .then(() => isCurrentSession(session) && backfillScanMemoryOnce(session))
             .catch(() => undefined);
         let alive = true;
         isLiveScanAvailable()
@@ -137,7 +139,7 @@ export default function AddItemScreen() {
         return () => {
             alive = false;
         };
-    }, []);
+    }, [session]);
 
     // ── Photo picker ─────────────────────────────────────────────────────────
     const pickPhoto = async (side: PhotoSide) => {
@@ -232,6 +234,7 @@ export default function AddItemScreen() {
 
     /** Live scan finished: memory first, then what the camera read. */
     const onLiveFinish = async (result: LiveScanResult) => {
+        if (!isCurrentSession(session)) return;
         setLiveOpen(false);
         const { barcode, ...read } = result;
         if (!barcode && Object.keys(read).length === 0) {
@@ -243,7 +246,7 @@ export default function AddItemScreen() {
         if (barcode) {
             setUpc(barcode);
             try {
-                const hit = await resolveScan(barcode, read.style_code);
+                const hit = await resolveScan(barcode, read.style_code, session);
                 if (hit.match === "memory" || hit.match === "inventory") {
                     // Remembered beats read.
                     fields = mergeFields(hit.fields, read);
@@ -259,6 +262,7 @@ export default function AddItemScreen() {
                 // Memory unavailable: use what was read.
             }
         }
+        if (!isCurrentSession(session)) return;
         applyScanFields(fields);
         setScanNote(note);
     };
@@ -305,13 +309,14 @@ export default function AddItemScreen() {
     };
 
     const onBarcodeScanned = async ({ data }: { data: string }) => {
-        if (scanLock.current) return;
+        if (scanLock.current || !isCurrentSession(session)) return;
         scanLock.current = true;
         setScanned(true);
         setUpc(data);
         pendingBarcode.current = data;
         try {
-            const hit = await resolveScan(data);
+            const hit = await resolveScan(data, undefined, session);
+            if (!isCurrentSession(session)) return;
             if (hit.match === "memory" || hit.match === "inventory") {
                 applyScanFields(hit.fields);
                 closeScanner();
@@ -325,6 +330,7 @@ export default function AddItemScreen() {
         } catch {
             // Memory unavailable: carry on to the label step.
         }
+        if (!isCurrentSession(session)) return;
         if (isLabelReaderAvailable()) {
             setScanStep("label");
         } else {
@@ -334,14 +340,16 @@ export default function AddItemScreen() {
     };
 
     const captureLabel = async () => {
-        if (!cameraRef.current || readingLabel) return;
+        if (!cameraRef.current || readingLabel || !isCurrentSession(session)) return;
         setReadingLabel(true);
         try {
             const photo = await cameraRef.current.takePictureAsync({ quality: 0.7 });
             let fields = await readLabel(photo.uri);
+            if (!isCurrentSession(session)) return;
             if (fields.style_code) {
                 // A different size of a shoe you already have fills in the rest.
-                const family = await resolveScan(pendingBarcode.current, fields.style_code);
+                const family = await resolveScan(pendingBarcode.current, fields.style_code, session);
+                if (!isCurrentSession(session)) return;
                 if (family.match) fields = { ...fields, ...family.fields, size: fields.size ?? family.fields.size };
             }
             applyScanFields(fields);
@@ -393,6 +401,7 @@ export default function AddItemScreen() {
 
     // ── Submit ───────────────────────────────────────────────────────────────
     const handleSubmit = async () => {
+        if (!isCurrentSession(session)) return;
         if (!name.trim()) {
             Alert.alert("Required", "Item name is required.");
             return;
@@ -424,6 +433,7 @@ export default function AddItemScreen() {
             };
 
             const created = await api.createItem(payload);
+            if (!isCurrentSession(session)) return;
 
             // Teach smart scan what this barcode is (phone first, then account).
             if (payload.upc) {
@@ -438,7 +448,7 @@ export default function AddItemScreen() {
                     buy_price: payload.buy_price,
                     expected_sell_price: payload.expected_sell_price,
                     platform: payload.platform,
-                }).catch(() => undefined);
+                }, session).catch(() => undefined);
             }
             const queuedOffline = isTempId(created.id);
 
@@ -453,6 +463,7 @@ export default function AddItemScreen() {
                 }
             }
 
+            if (!isCurrentSession(session)) return;
             Alert.alert(
                 queuedOffline ? "Saved offline" : "Added",
                 queuedOffline
@@ -461,6 +472,7 @@ export default function AddItemScreen() {
                 [{ text: "OK", onPress: () => router.replace("/(tabs)/inventory") }],
             );
         } catch (err: any) {
+            if (!isCurrentSession(session)) return;
             if (err.detail?.error === "tier_limit_reached") {
                 Alert.alert(
                     "You've hit the free limit",

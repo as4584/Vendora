@@ -233,7 +233,17 @@ State Management:
 
 React Query for API sync
 
-Local draft cache for offline mode
+Offline sales, inventory mutations, and invoices are recorded in one local
+journal per verified account. The same atomic write commits queue changes,
+pending invoices, and temp-ID remaps. Inventory is projected from confirmed
+items plus that journal. A reconnect sends the captured account's entries
+FIFO, reusing the first sale request ID after an uncertain response.
+
+Customer lists, dashboard, scan learning, and inventory search history also
+use account-scoped keys. Account activation gates cached reads and replay;
+sign-out invalidates pending requests immediately but retains the journal for
+the same account. Pre-upgrade keys with no trustworthy owner are left untouched
+and are not adopted, displayed, or replayed.
 
 🔐 Security
 

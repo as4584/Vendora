@@ -6,10 +6,13 @@
  * its endpoints. To avoid a circular import, api.ts registers its authenticated
  * request function here at module load, and the sync runner reads it back.
  */
+import type { AccountContext } from "../session";
+
 export type Sender = (
   path: string,
   method: string,
   body: unknown,
+  account: AccountContext,
 ) => Promise<any>;
 
 let _send: Sender | null = null;

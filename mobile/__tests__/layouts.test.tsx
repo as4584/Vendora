@@ -10,7 +10,9 @@ const mockRedirect = jest.fn(() => null);
 const mockStack = jest.fn(() => null);
 const mockTabsScreen = jest.fn(() => null);
 const mockSegments: string[] = [];
-let mockAuthState = { isAuthenticated: false, isLoading: false };
+let mockAuthState: { isAuthenticated: boolean; isLoading: boolean; user?: { id: string } } = {
+  isAuthenticated: false, isLoading: false,
+};
 
 jest.mock('expo-router', () => {
   const ReactModule = require('react');
@@ -101,6 +103,7 @@ describe('router layouts', () => {
   });
 
   it('registers visible and hidden tab routes with safe-area padding', () => {
+    mockAuthState = { isAuthenticated: true, isLoading: false, user: { id: 'seller' } };
     render(<TabsLayout />);
     expect(mockTabsScreen).toHaveBeenCalledTimes(20);
     const routeNames = mockTabsScreen.mock.calls.map(([props]) => props.name);
@@ -143,5 +146,10 @@ describe('router layouts', () => {
     }
     const dashboard = mockTabsScreen.mock.calls[0][0];
     expect(dashboard.options.tabBarIcon({ focused: true })).toBeTruthy();
+  });
+
+  it('does not mount any private tab routes while signed out', () => {
+    render(<TabsLayout />);
+    expect(mockTabsScreen).not.toHaveBeenCalled();
   });
 });

@@ -58,12 +58,12 @@ describe('scanRemote', () => {
 describe('wrappers', () => {
   it('pass connectivity and the remote to the memory layer', async () => {
     scan.resolveScan('123', 'S');
-    expect(mockResolve).toHaveBeenCalledWith('123', { styleCode: 'S', online: true, remote: scan.scanRemote });
+    expect(mockResolve).toHaveBeenCalledWith('123', { styleCode: 'S', online: true, remote: scan.scanRemote }, expect.any(Object));
     mockOnline.mockReturnValue(false);
     scan.rememberScan('123', { name: 'Tee' });
-    expect(mockRemember).toHaveBeenCalledWith('123', { name: 'Tee' }, { online: false, remote: scan.scanRemote });
+    expect(mockRemember).toHaveBeenCalledWith('123', { name: 'Tee' }, { online: false, remote: scan.scanRemote }, expect.any(Object));
     scan.syncScanMemory();
-    expect(mockSync).toHaveBeenCalledWith(scan.scanRemote);
+    expect(mockSync).toHaveBeenCalledWith(scan.scanRemote, expect.any(Object));
   });
 
   it('only backfills when online', async () => {

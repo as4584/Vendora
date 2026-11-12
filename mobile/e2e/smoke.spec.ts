@@ -98,7 +98,7 @@ test.describe('Login form interaction', () => {
 test.describe('Completed product surfaces', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
-      window.localStorage.setItem('vendora_access_token', 'e2e-access-token');
+      window.localStorage.setItem('vendora_access_token', `x.${btoa(JSON.stringify({ sub: 'user-1' })).replace(/=+$/, '')}.x`);
       window.localStorage.setItem('vendora_refresh_token', 'e2e-refresh-token');
     });
     await page.route('**/api/v1/**', async (route) => {

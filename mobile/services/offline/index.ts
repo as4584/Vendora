@@ -2,7 +2,8 @@
  * Public surface for the offline layer + one-time sync wiring.
  */
 import { initNetwork, isOnline, subscribeNetwork } from "./net";
-import { flushOutbox } from "./inventory";
+import { flushInBackground } from "./inventory";
+import { subscribeSession } from "../session";
 
 export { isOnline, subscribeNetwork } from "./net";
 export {
@@ -26,26 +27,33 @@ export {
   readCachedDashboard,
   isTempId,
 } from "./inventory";
-export { clearOfflineData } from "./store";
 export { setSender } from "./sender";
 
-let _started = false;
+let stopSync: (() => void) | null = null;
 
 /**
  * Start connectivity tracking and drain the outbox whenever we come back
  * online. Idempotent — safe to call from the app root on every mount.
  */
 export function initOfflineSync(): () => void {
+  if (stopSync) return stopSync;
   const stopNet = initNetwork();
-  if (_started) return stopNet;
-  _started = true;
 
   // Flush on every offline→online transition.
-  subscribeNetwork((online) => {
-    if (online) void flushOutbox();
+  const stopConnectivity = subscribeNetwork((online) => {
+    if (online) flushInBackground();
   });
+  const stopSession = subscribeSession(flushInBackground);
   // And attempt once now, in case we launched already-online with a backlog.
-  if (isOnline()) void flushOutbox();
+  if (isOnline()) flushInBackground();
 
-  return stopNet;
+  const stop = () => {
+    if (stopSync !== stop) return;
+    stopSync = null;
+    stopNet();
+    stopConnectivity();
+    stopSession();
+  };
+  stopSync = stop;
+  return stop;
 }

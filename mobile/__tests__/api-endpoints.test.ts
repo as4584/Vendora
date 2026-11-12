@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import * as api from '../services/api';
+import { replaceSession } from '../services/session';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
@@ -261,7 +262,7 @@ describe('API endpoint contracts', () => {
       call: () => api.createTransaction({ method: 'cash', gross_amount: '20.00' }),
       path: '/transactions',
       method: 'POST',
-      body: { method: 'cash', gross_amount: '20.00' },
+      body: { method: 'cash', gross_amount: '20.00', client_request_id: expect.any(String) },
     },
     {
       name: 'refund transaction',
@@ -579,16 +580,21 @@ describe('API endpoint contracts', () => {
     const previous = Platform.OS;
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
     try {
-      (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce('web-token');
+      replaceSession();
+      (AsyncStorage.getItem as jest.Mock)
+        .mockResolvedValueOnce(null).mockResolvedValueOnce('web-token').mockResolvedValueOnce(null);
       expect(await api.getToken()).toBe('web-token');
       await api.setToken('new-web-token');
-      expect(AsyncStorage.setItem).toHaveBeenCalledWith('vendora_access_token', 'new-web-token');
+      expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+        expect.stringMatching(/^vendora_credentials_session_/),
+        JSON.stringify({ accessToken: 'new-web-token', refreshToken: null }),
+      );
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: previous });
     }
 
     await api.setToken('native-token');
     expect(SecureStore.setItemAsync).toHaveBeenCalled();
-    expect(AsyncStorage.removeItem).toHaveBeenCalledWith('vendora_access_token');
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith('vendora_active_credentials');
   });
 });

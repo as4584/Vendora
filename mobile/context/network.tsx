@@ -11,6 +11,7 @@ import {
   getSyncState,
   clearFailedSyncs,
 } from "../services/offline";
+import { captureSession, isCurrentSession } from "../services/session";
 
 interface NetworkState {
   online: boolean;
@@ -39,11 +40,19 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     const unNet = subscribeNetwork(setOnline);
 
     const refreshSync = () => {
-      void getSyncState().then((s) => {
+      const session = captureSession();
+      if (!session.ownerId) {
+        setPending(0);
+        setFailed(0);
+        setLastSync(null);
+        return;
+      }
+      void getSyncState(session).then((s) => {
+        if (!isCurrentSession(session)) return;
         setPending(s.pending);
         setFailed(s.failed);
         setLastSync(s.lastSync);
-      });
+      }).catch(() => undefined);
     };
     const unSync = subscribeSync(refreshSync);
     refreshSync();
@@ -57,7 +66,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <NetworkContext.Provider
-      value={{ online, pending, failed, lastSync, dismissFailed: () => void clearFailedSyncs() }}
+      value={{ online, pending, failed, lastSync, dismissFailed: () => void clearFailedSyncs().catch(() => undefined) }}
     >
       {children}
     </NetworkContext.Provider>
