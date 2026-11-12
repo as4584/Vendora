@@ -20,7 +20,7 @@ import { addRecentSearch, clearRecentSearches, getRecentSearches } from "../../.
 import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
 import { ProUpsell, graceMessage } from "../../../components/ProUpsell";
 import { useAuth } from "../../../context/auth";
-import { COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
+import { BRAND, COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
 import { SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import InventoryCard, { STATUS_TONES } from "../../../components/InventoryCard";
 import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  filterBadgeText: { color: "#fff", fontSize: 10, fontWeight: "600" },
+  filterBadgeText: { color: BRAND.onPrimary, fontSize: 10, fontWeight: "600" },
   activeFilters: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, marginTop: SPACING.sm },
   exportOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: SPACING.xl },
   exportCard: { backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.xl, alignItems: "center", gap: SPACING.md, maxWidth: 320 },

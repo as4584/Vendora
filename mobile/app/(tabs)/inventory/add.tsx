@@ -45,7 +45,7 @@ import {
     type ScanFields,
 } from "../../../services/smartScan";
 
-import { COLORS, FONT_SCALE } from "../../../theme/tokens";
+import { BRAND, COLORS, FONT_SCALE, TONES } from "../../../theme/tokens";
 const CATEGORY_PREFIXES: Record<string, string> = {
     sneakers: "SNK",
     clothing: "CLO",
@@ -481,7 +481,7 @@ export default function AddItemScreen() {
     // ── Render ───────────────────────────────────────────────────────────────
     return (
         <KeyboardAvoidingView
-            style={{ flex: 1, backgroundColor: "#0E0E11" }}
+            style={{ flex: 1, backgroundColor: COLORS.bg }}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
         >
@@ -530,7 +530,7 @@ export default function AddItemScreen() {
                             <Image source={{ uri: frontPhoto }} style={styles.photoThumb} resizeMode="cover" />
                         ) : (
                             <View style={styles.photoPlaceholder}>
-                                <Ionicons name="camera-outline" size={26} color="#8C8C96" />
+                                <Ionicons name="camera-outline" size={26} color={COLORS.textSoft} />
                                 <Text style={styles.photoLabel}>Front</Text>
                             </View>
                         )}
@@ -545,7 +545,7 @@ export default function AddItemScreen() {
                             <Image source={{ uri: backPhoto }} style={styles.photoThumb} resizeMode="cover" />
                         ) : (
                             <View style={styles.photoPlaceholder}>
-                                <Ionicons name="camera-outline" size={26} color="#8C8C96" />
+                                <Ionicons name="camera-outline" size={26} color={COLORS.textSoft} />
                                 <Text style={styles.photoLabel}>Back</Text>
                             </View>
                         )}
@@ -559,7 +559,7 @@ export default function AddItemScreen() {
                     accessibilityLabel="Item Name"
                     style={styles.input}
                     placeholder="e.g. Jordan 1 Retro High OG"
-                    placeholderTextColor="#8C8C96"
+                    placeholderTextColor={COLORS.textSoft}
                     value={name}
                     onChangeText={setName}
                 />
@@ -574,7 +574,7 @@ export default function AddItemScreen() {
                             accessibilityLabel="Category"
                             style={styles.input}
                             placeholder="sneakers"
-                            placeholderTextColor="#8C8C96"
+                            placeholderTextColor={COLORS.textSoft}
                             value={category}
                             onChangeText={setCategory}
                             autoCapitalize="none"
@@ -587,7 +587,7 @@ export default function AddItemScreen() {
                                 accessibilityLabel="SKU"
                                 style={[styles.input, styles.skuInput]}
                                 placeholder="SKU"
-                                placeholderTextColor="#8C8C96"
+                                placeholderTextColor={COLORS.textSoft}
                                 value={sku}
                                 onChangeText={setSku}
                                 autoCapitalize="characters"
@@ -604,7 +604,7 @@ export default function AddItemScreen() {
                         accessibilityLabel="UPC or Barcode"
                         style={[styles.input, styles.skuInput]}
                         placeholder="Scan or type barcode"
-                        placeholderTextColor="#8C8C96"
+                        placeholderTextColor={COLORS.textSoft}
                         value={upc}
                         onChangeText={setUpc}
                         keyboardType="numeric"
@@ -619,7 +619,7 @@ export default function AddItemScreen() {
                             accessibilityLabel="Size"
                             style={styles.input}
                             placeholder="10"
-                            placeholderTextColor="#8C8C96"
+                            placeholderTextColor={COLORS.textSoft}
                             value={size}
                             onChangeText={setSize}
                         />
@@ -630,7 +630,7 @@ export default function AddItemScreen() {
                             accessibilityLabel="Color"
                             style={styles.input}
                             placeholder="red/black"
-                            placeholderTextColor="#8C8C96"
+                            placeholderTextColor={COLORS.textSoft}
                             value={color}
                             onChangeText={setColor}
                         />
@@ -642,7 +642,7 @@ export default function AddItemScreen() {
                     accessibilityLabel="Condition"
                     style={styles.input}
                     placeholder="new, used, refurbished"
-                    placeholderTextColor="#8C8C96"
+                    placeholderTextColor={COLORS.textSoft}
                     value={condition}
                     onChangeText={setCondition}
                 />
@@ -656,7 +656,7 @@ export default function AddItemScreen() {
                             accessibilityLabel="Buy Price"
                             style={styles.input}
                             placeholder="0.00"
-                            placeholderTextColor="#8C8C96"
+                            placeholderTextColor={COLORS.textSoft}
                             value={buyPrice}
                             onChangeText={setBuyPrice}
                             keyboardType="decimal-pad"
@@ -668,7 +668,7 @@ export default function AddItemScreen() {
                             accessibilityLabel="Expected Sell Price"
                             style={styles.input}
                             placeholder="0.00"
-                            placeholderTextColor="#8C8C96"
+                            placeholderTextColor={COLORS.textSoft}
                             value={expectedPrice}
                             onChangeText={setExpectedPrice}
                             keyboardType="decimal-pad"
@@ -684,7 +684,7 @@ export default function AddItemScreen() {
                     accessibilityLabel="Platform"
                     style={styles.input}
                     placeholder="eBay, StockX, Mercari…"
-                    placeholderTextColor="#8C8C96"
+                    placeholderTextColor={COLORS.textSoft}
                     value={platform}
                     onChangeText={setPlatform}
                 />
@@ -694,7 +694,7 @@ export default function AddItemScreen() {
                     accessibilityLabel="Vendor or Supplier"
                     style={styles.input}
                     placeholder="e.g. Nike, local thrift, auction"
-                    placeholderTextColor="#8C8C96"
+                    placeholderTextColor={COLORS.textSoft}
                     value={vendorName}
                     onChangeText={setVendorName}
                 />
@@ -704,7 +704,7 @@ export default function AddItemScreen() {
                     accessibilityLabel="Notes"
                     style={[styles.input, { height: 90, textAlignVertical: "top" }]}
                     placeholder="Any extra details about this item…"
-                    placeholderTextColor="#8C8C96"
+                    placeholderTextColor={COLORS.textSoft}
                     value={notes}
                     onChangeText={setNotes}
                     multiline
@@ -736,7 +736,7 @@ export default function AddItemScreen() {
                                 accessibilityLabel="New Size"
                                 style={styles.sizeInput}
                                 placeholder="e.g. M, 32x32, 10.5"
-                                placeholderTextColor="#8C8C96"
+                                placeholderTextColor={COLORS.textSoft}
                                 value={newVariantSize}
                                 onChangeText={setNewVariantSize}
                                 onSubmitEditing={addVariant}
@@ -825,7 +825,7 @@ const { width: SCREEN_W } = Dimensions.get("window");
 const PHOTO_SIZE = (SCREEN_W - 60) / 2;
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#0E0E11" },
+    container: { flex: 1, backgroundColor: COLORS.bg },
     content: { padding: 20, paddingBottom: 40 },
 
     sectionTitle: {
@@ -836,21 +836,21 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     label: {
-        color: "#A6A6B0",
+        color: COLORS.textMuted,
         fontSize: 11,
         fontWeight: "600",
         marginBottom: 6,
         marginTop: 8,
     },
     input: {
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 10,
         paddingHorizontal: 14,
         paddingVertical: 12,
-        color: "#FFFFFF",
+        color: COLORS.text,
         fontSize: 15,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
     },
     row: { flexDirection: "row", gap: 12 },
     halfField: { flex: 1, minWidth: 0 },
@@ -863,24 +863,24 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         overflow: "hidden",
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
     },
     photoThumb: { width: "100%", height: "100%" },
     photoPlaceholder: {
         flex: 1,
-        backgroundColor: "#141418",
+        backgroundColor: COLORS.bgElevated,
         justifyContent: "center",
         alignItems: "center",
         gap: 6,
     },
     photoIcon: { fontSize: 32 },
-    photoLabel: { color: "#8C8C96", fontSize: 12, fontWeight: "600" },
+    photoLabel: { color: COLORS.textSoft, fontSize: 12, fontWeight: "600" },
 
     // SKU row with auto-button
     skuRow: { flexDirection: "row", gap: 8, alignItems: "center" },
     skuInput: { flex: 1, minWidth: 0 },
     autoButton: {
-        backgroundColor: "#2A1B4E",
+        backgroundColor: COLORS.primarySoft,
         borderWidth: 1,
         borderColor: COLORS.primary,
         borderRadius: 10,
@@ -891,9 +891,9 @@ const styles = StyleSheet.create({
 
     // Scan button
     scanButton: {
-        backgroundColor: "#1A2E1A",
+        backgroundColor: TONES.success.bg,
         borderWidth: 1,
-        borderColor: "#4CC38A",
+        borderColor: COLORS.success,
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 12,
@@ -909,7 +909,7 @@ const styles = StyleSheet.create({
         marginTop: 28,
     },
     buttonDisabled: { opacity: 0.6 },
-    buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" },
+    buttonText: { color: BRAND.onPrimary, fontSize: 16, fontWeight: "600" },
 
     // Scanner modal
     submitButton: { marginTop: 24 },
@@ -966,30 +966,30 @@ const styles = StyleSheet.create({
     cancelScanText: { color: "#FFF", fontSize: 15, fontWeight: "600" },
 
     // Variants / Sizes section
-    sizeHint: { color: "#8C8C96", fontSize: 12, marginBottom: 8, marginTop: 4 },
+    sizeHint: { color: COLORS.textSoft, fontSize: 12, marginBottom: 8, marginTop: 4 },
     variantRow: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 8,
         marginBottom: 6,
     },
-    variantSize: { flex: 1, color: "#FFF", fontSize: 14, fontWeight: "600" },
+    variantSize: { flex: 1, color: COLORS.text, fontSize: 14, fontWeight: "600" },
     qtyControls: { flexDirection: "row", alignItems: "center", gap: 10 },
     qtyBtn: {
         width: 30,
         height: 30,
         borderRadius: 8,
-        backgroundColor: "#2C2C34",
+        backgroundColor: COLORS.cardAlt,
         justifyContent: "center",
         alignItems: "center",
     },
-    qtyBtnText: { color: "#FFF", fontSize: 18, fontWeight: "600", lineHeight: 22 },
-    qtyValue: { color: "#FFF", fontSize: 15, fontWeight: "600", minWidth: 26, textAlign: "center" },
+    qtyBtnText: { color: COLORS.text, fontSize: 18, fontWeight: "600", lineHeight: 22 },
+    qtyValue: { color: COLORS.text, fontSize: 15, fontWeight: "600", minWidth: 26, textAlign: "center" },
     removeBtn: { marginLeft: 10, padding: 4 },
-    removeBtnText: { color: "#E5584D", fontSize: 14, fontWeight: "600" },
+    removeBtnText: { color: COLORS.danger, fontSize: 14, fontWeight: "600" },
     addSizeRow: {
         flexDirection: "row",
         gap: 8,
@@ -998,14 +998,14 @@ const styles = StyleSheet.create({
     },
     sizeInput: {
         flex: 1,
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 10,
-        color: "#FFF",
+        color: COLORS.text,
         fontSize: 14,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
     },
     addSizeBtn: {
         backgroundColor: COLORS.primary,
@@ -1013,7 +1013,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         paddingVertical: 10,
     },
-    addSizeBtnText: { color: "#FFF", fontSize: 13, fontWeight: "600" },
+    addSizeBtnText: { color: BRAND.onPrimary, fontSize: 13, fontWeight: "600" },
 
     // Quantity stepper (non-clothing)
     qtyRow: {
@@ -1021,7 +1021,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         gap: 20,
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 12,
         padding: 14,
         marginBottom: 6,
@@ -1030,10 +1030,10 @@ const styles = StyleSheet.create({
         width: 42,
         height: 42,
         borderRadius: 12,
-        backgroundColor: "#2C2C34",
+        backgroundColor: COLORS.cardAlt,
         justifyContent: "center",
         alignItems: "center",
     },
-    qtyBtnLargeText: { color: "#FFF", fontSize: 22, fontWeight: "600" },
-    qtyValueLarge: { color: "#FFF", fontSize: 28, fontWeight: "600", minWidth: 50, textAlign: "center" },
+    qtyBtnLargeText: { color: COLORS.text, fontSize: 22, fontWeight: "600" },
+    qtyValueLarge: { color: COLORS.text, fontSize: 28, fontWeight: "600", minWidth: 50, textAlign: "center" },
 });

@@ -10,20 +10,21 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { View, ActivityIndicator, Platform, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { COLORS } from "../theme/tokens";
+import { COLORS, IS_LIGHT } from "../theme/tokens";
+import { useSchemeReload } from "../theme/useSchemeReload";
 import { identify, initCrashReporting, track } from "../services/telemetry";
 import { maybePromptSaleAlerts, syncPushToken } from "../services/pushAlerts";
 // react-navigation is vendored inside expo-router in SDK 57.
-import { DarkTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
+import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
 
 initCrashReporting();
-// Navigation theme: dark everywhere, so wide screens (iPad) and screen
-// transitions never show the default light background behind content.
-
+// Navigation theme follows the phone's light/dark setting, painted with our
+// tokens so screen transitions never flash a mismatched background.
+const BASE_NAV = IS_LIGHT ? DefaultTheme : DarkTheme;
 const NAV_THEME = {
-    ...DarkTheme,
+    ...BASE_NAV,
     colors: {
-        ...DarkTheme.colors,
+        ...BASE_NAV.colors,
         primary: COLORS.primary,
         background: COLORS.bg,
         card: COLORS.bgElevated,
@@ -70,7 +71,8 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-    // Web: paint the page itself dark, so the area beside the capped-width
+    useSchemeReload();
+    // Web: paint the page itself in the app background, so the area beside the capped-width
     // content on wide screens matches the app instead of showing white.
     useEffect(() => {
         if (Platform.OS === "web" && typeof document !== "undefined") {
@@ -83,7 +85,7 @@ export default function RootLayout() {
             <AuthProvider>
                 <NetworkProvider>
                     <ThemeProvider value={NAV_THEME}>
-                        <StatusBar style="light" />
+                        <StatusBar style={IS_LIGHT ? "dark" : "light"} />
                         <OfflineBanner />
                         <RootLayoutNav />
                     </ThemeProvider>
@@ -98,6 +100,6 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        backgroundColor: "#0E0E11",
+        backgroundColor: COLORS.bg,
     },
 });
