@@ -117,6 +117,10 @@ def _freeze_cost(mapper, connection, target):  # noqa: ARG001 - SQLAlchemy signa
     """Every way a sale is created (POS, order, invoice, integrations) gets its cost."""
     if target.cost_amount is not None:
         return
+    if target.invoice_id is not None and not target.is_refund:
+        # Invoice payments allocate cost from the first payment's snapshot.
+        # A missing cost stays missing even if inventory is edited later.
+        return
     if target.is_refund and target.original_transaction_id is not None:
         original_cost = connection.execute(
             sa.select(Transaction.__table__.c.cost_amount).where(

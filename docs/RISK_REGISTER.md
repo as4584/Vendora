@@ -114,6 +114,18 @@ Recalculate profit on refund
 
 Test refund webhook path
 
+1.5 Invoice installment or checkout reconciliation
+
+Impact: High
+Likelihood: Medium
+Priority: High
+
+- Invoice payments record only pre-tax revenue, with collected tax separate. Historical ledger rows are unchanged; reconcile previously booked tax and already-open installments before using those reports for filing or reconciliation.
+- The first invoice payment and legacy sale fail closed when stock changes. A captured Stripe payment with unavailable stock can remain unbooked while retries fail. Reconcile it against Stripe and either resolve the stock discrepancy or refund through the processor. Do not record a second payment to clear it.
+- Generic sale refunds do not settle invoices; an invoice credit/refund workflow is separate.
+- Quick Sale can browse later inventory pages and search remotely, but typo-tolerant search on the API ranks only the newest 5,000 eligible items. An older item outside that set can still be reached through paginated browsing, exact barcode scan or its item page. Offline search only sees cached stock.
+- An unchanged checkout retry reuses the same request ID while the screen stays open. Preserving that ID through an offline fallback also requires the offline journal fix. If the app is terminated before the attempt is journaled, inspect sale history before creating a replacement order.
+
 🟧 2. MOBILE & BARCODE RISKS
 2.1 Barcode Misreads
 

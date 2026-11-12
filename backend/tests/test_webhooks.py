@@ -198,6 +198,42 @@ class TestWebhookStockDeduction:
       → deduct_stock (idempotency key) → InventoryStockLedger entry written
     """
 
+    def test_stock_conflict_rolls_back_and_releases_captured_payment_for_retry(self, client, auth_headers, db):
+        from app.models.subscription import WebhookEvent
+        from app.models.transaction import Transaction
+
+        item = client.post("/api/v1/inventory", json={
+            "name": "Last pair", "quantity": 1,
+        }, headers=auth_headers).json()
+        invoice = client.post("/api/v1/invoices", json={
+            "customer_name": "Synthetic buyer",
+            "items": [{"inventory_item_id": item["id"], "description": item["name"], "unit_price": "50.00"}],
+        }, headers=auth_headers).json()
+        path = f"/api/v1/invoices/{invoice['id']}"
+        assert client.patch(f"{path}/status", json={"status": "sent"}, headers=auth_headers).status_code == 200
+        sale = client.post("/api/v1/transactions", json={
+            "item_id": item["id"], "method": "cash", "gross_amount": "50.00",
+        }, headers=auth_headers)
+        assert sale.status_code == 201, sale.text
+        event = _paid_event(client, invoice)
+        conflict = client.post("/api/v1/webhooks/stripe", content=json.dumps(event))
+        assert conflict.status_code == 409, conflict.text
+        assert db.query(WebhookEvent).filter(WebhookEvent.event_id == event["id"]).count() == 0
+        assert db.query(Transaction).filter(Transaction.invoice_id == invoice["id"]).count() == 0
+        untouched = client.get(path, headers=auth_headers).json()
+        assert untouched["status"] == "sent"
+        assert untouched["payments"] == []
+
+        refunded = client.post(f"/api/v1/transactions/{sale.json()['id']}/refund", json={}, headers=auth_headers)
+        assert refunded.status_code == 201, refunded.text
+        retried = client.post("/api/v1/webhooks/stripe", content=json.dumps(event))
+        assert retried.status_code == 200, retried.text
+        assert retried.json()["status"] == "processed"
+        paid = client.get(path, headers=auth_headers).json()
+        assert paid["status"] == "paid"
+        assert len(paid["payments"]) == 1
+        assert db.query(Transaction).filter(Transaction.invoice_id == invoice["id"]).count() == 1
+
     def _fire_paid_webhook(self, client, auth_headers, quantity=1, item_qty=5):
         """Helper: create item, create+send invoice, fire webhook, return state."""
         item = client.post("/api/v1/inventory", json={
