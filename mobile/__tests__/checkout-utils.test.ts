@@ -1,4 +1,5 @@
 import {
+  autoBalance,
   allocateCents,
   buildReceiptText,
   centsToString,
@@ -114,4 +115,18 @@ it('canUndoSale requires a synced cash sale with lines', () => {
   expect(canUndoSale(null)).toBe(false);
   expect(canUndoSale({ ...base, transactionIds: [] })).toBe(false);
   expect(canUndoSale({ ...base, payments: [{ method: 'cash', cents: 1 }, { method: 'card', cents: 1 }] })).toBe(false);
+});
+
+describe('autoBalance (cash + card)', () => {
+  const rows = [{ key: 'a', amount: '200' }, { key: 'b', amount: '0' }];
+  it('fills the other payment with what is left', () => {
+    expect(autoBalance(rows, 'a', 34000)[1].amount).toBe('140.00');
+  });
+  it('never goes negative when the typed amount exceeds the total', () => {
+    expect(autoBalance([{ key: 'a', amount: '500' }, { key: 'b', amount: '' }], 'a', 34000)[1].amount).toBe('0.00');
+  });
+  it('leaves 3+ payments for the seller to balance', () => {
+    const three = [...rows, { key: 'c', amount: '5' }];
+    expect(autoBalance(three, 'a', 34000)).toBe(three);
+  });
 });

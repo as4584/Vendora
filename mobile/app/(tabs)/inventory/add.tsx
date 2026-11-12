@@ -30,7 +30,7 @@ import * as api from "../../../services/api";
 import { isTempId } from "../../../services/offline";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 import { StockxPriceHint } from "../../../components/Stockx";
-import { Button, IconButton } from "../../../components/Button";
+import { Button, IconButton, triggerHaptic } from "../../../components/Button";
 import { EbayCompsCard } from "../../../components/EbayCompsCard";
 import { LiveBoxScanner, type LiveScanResult } from "../../../components/LiveBoxScanner";
 import {
@@ -46,6 +46,7 @@ import {
 } from "../../../services/smartScan";
 
 import { BRAND, COLORS, FONT_SCALE, TONES } from "../../../theme/tokens";
+import { playSound } from "../../../services/sounds";
 const CATEGORY_PREFIXES: Record<string, string> = {
     sneakers: "SNK",
     clothing: "CLO",
@@ -453,6 +454,8 @@ export default function AddItemScreen() {
                 }
             }
 
+            triggerHaptic("success");
+            playSound("sale");
             Alert.alert(
                 queuedOffline ? "Saved offline" : "Added",
                 queuedOffline

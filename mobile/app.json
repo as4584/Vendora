@@ -176,7 +176,14 @@
       "expo-web-browser",
       "expo-font",
       "expo-notifications",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "extra": {
       "router": {},

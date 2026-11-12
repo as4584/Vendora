@@ -23,6 +23,8 @@ jest.mock('expo-router', () => ({
 
 let mockPermission: { granted: boolean } | null = { granted: true };
 const mockRequestPermission = jest.fn(async () => ({ granted: false }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('../services/sounds', () => ({ playSound: jest.fn() }));
 let mockOnScan: ((e: { data: string }) => void) | undefined;
 jest.mock('expo-camera', () => {
   const { View } = require('react-native');
@@ -257,18 +259,19 @@ describe('QuickSaleScreen (checkout)', () => {
     expect(screen.getByText(/Log Sale · \$340\.00/)).toBeTruthy();
   });
 
-  it('splits a payment across cash and card and requires an exact total', async () => {
+  it('cash + card: typing the cash fills the card with the rest', async () => {
     const screen = await ready();
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));
     fireEvent.press(screen.getByLabelText('Split payment'));
-    expect(screen.getByText('Paid in full · $340.00')).toBeTruthy();
+    expect(screen.getByLabelText('Payment 1 amount').props.value).toBe('');
+    expect(screen.getByLabelText('Payment 2 amount').props.value).toBe('340.00');
     fireEvent.changeText(screen.getByLabelText('Payment 1 amount'), '200');
-    fireEvent.changeText(screen.getByLabelText('Payment 2 amount'), '100');
-    expect(screen.getByText('$40.00 left to pay')).toBeTruthy();
-    fireEvent.press(screen.getByText(/Log Sale/));
-    expect(Alert.alert).toHaveBeenLastCalledWith('Payments don\'t add up', expect.stringContaining('$40.00 is still unpaid'));
-
-    fireEvent.press(screen.getByText('Make this $140.00'));
+    expect(screen.getByLabelText('Payment 2 amount').props.value).toBe('140.00');
+    expect(screen.getByText('Paid in full · $340.00')).toBeTruthy();
+    // Editing the card side balances the cash side too.
+    fireEvent.changeText(screen.getByLabelText('Payment 2 amount'), '40');
+    expect(screen.getByLabelText('Payment 1 amount').props.value).toBe('300.00');
+    fireEvent.changeText(screen.getByLabelText('Payment 1 amount'), '200');
     fireEvent.press(screen.getByLabelText('Payment 2 Venmo'));
     fireEvent.press(screen.getByText(/Log Sale/));
     await waitFor(() =>
@@ -285,13 +288,16 @@ describe('QuickSaleScreen (checkout)', () => {
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));
     fireEvent.press(screen.getByLabelText('Split payment'));
     fireEvent.changeText(screen.getByLabelText('Payment 1 amount'), '300');
-    fireEvent.changeText(screen.getByLabelText('Payment 2 amount'), '100');
+    fireEvent.changeText(screen.getByLabelText('Payment 2 amount'), '20');
+    // Two payments always balance; with a third, the seller balances them.
+    expect(screen.getByLabelText('Payment 1 amount').props.value).toBe('320.00');
+    fireEvent.press(screen.getByLabelText('Add payment'));
+    // Already paid in full, so the new payment starts empty.
+    expect(screen.getByLabelText('Payment 3 amount').props.value).toBe('');
+    fireEvent.changeText(screen.getByLabelText('Payment 3 amount'), '60');
     expect(screen.getByText('$60.00 over the total')).toBeTruthy();
     fireEvent.press(screen.getByText(/Log Sale/));
     expect(Alert.alert).toHaveBeenLastCalledWith('Payments don\'t add up', expect.stringContaining('$60.00 over'));
-    fireEvent.changeText(screen.getByLabelText('Payment 2 amount'), '20');
-    fireEvent.press(screen.getByLabelText('Add payment'));
-    expect(screen.getByLabelText('Payment 3 amount').props.value).toBe('20.00');
     fireEvent.press(screen.getByLabelText('Remove payment 3'));
     expect(screen.queryByLabelText('Payment 3 amount')).toBeNull();
     fireEvent.press(screen.getByLabelText('Remove payment 2'));
@@ -326,14 +332,17 @@ describe('QuickSaleScreen (checkout)', () => {
     await act(async () => mockOnScan!({ data: '12345678905' })); // EAN/UPC leading zero
     expect(screen.getByText(/Cart · 1 item/)).toBeTruthy();
 
+    // The scanner stays open; the same box read twice in a row is added once.
+    expect(screen.getByTestId('scan-note')).toBeTruthy();
+    await act(async () => mockOnScan!({ data: '12345678905' }));
+    expect(screen.getByText(/Cart · 1 item/)).toBeTruthy();
+
     (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [], total: 0, page: 1, per_page: 5, pages: 0 });
-    fireEvent.press(screen.getByLabelText('Scan barcode to add'));
     await act(async () => mockOnScan!({ data: '999' }));
     expect(apiMock.listItems).toHaveBeenLastCalledWith({ upc: '999', perPage: 5, availableOnly: true });
-    const [title, , buttons] = (Alert.alert as jest.Mock).mock.calls.at(-1);
-    expect(title).toBe('Not in your inventory');
-    buttons[1].onPress();
-    expect(mockPush).toHaveBeenCalledWith('/inventory/add');
+    // Unknown codes are explained inline; no popup interrupts scanning.
+    expect(screen.getByText('Not in stock: 999. Add it in Add Stock first.')).toBeTruthy();
+    expect(Alert.alert).not.toHaveBeenCalled();
   });
 
   it('finds scanned items on the server when not loaded, and survives lookup errors', async () => {
@@ -345,9 +354,8 @@ describe('QuickSaleScreen (checkout)', () => {
     expect(screen.getByLabelText('Remove Far Item')).toBeTruthy();
 
     (apiMock.listItems as jest.Mock).mockRejectedValueOnce(new Error('down'));
-    fireEvent.press(screen.getByLabelText('Scan barcode to add'));
     await act(async () => mockOnScan!({ data: '555' }));
-    expect(Alert.alert).toHaveBeenLastCalledWith('Not in your inventory', expect.any(String), expect.any(Array));
+    expect(screen.getByText('Not in stock: 555. Add it in Add Stock first.')).toBeTruthy();
   });
 
   it('asks for camera permission before scanning', async () => {

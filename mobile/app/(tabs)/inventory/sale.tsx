@@ -23,6 +23,7 @@ import { maybeAskForRating, recordSale } from "../../../services/rating";
 import { BRAND, COLORS, FONT_SCALE, RADII, SPACING, TYPE } from "../../../theme/tokens";
 import { formatCurrency, resolveQty } from "../../../utils/inventory";
 import {
+  autoBalance,
   centsToString,
   computeCheckout,
   formatCents,
@@ -36,6 +37,9 @@ import {
   type ReceiptData,
 } from "../../../utils/checkout";
 import { errorMessage } from "../../../services/errors";
+import { playSound } from "../../../services/sounds";
+import { REPEAT_COOLDOWN_MS } from "../../../services/batchScan";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Cash and card first: that is how almost every show sale is paid.
 const PRIMARY_METHODS = ["cash", "card"];
@@ -58,6 +62,7 @@ const newRow = (method: string, amount = ""): PaymentRow => ({ key: `p${++rowSeq
 export default function QuickSaleScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ add?: string }>();
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<api.InventoryItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
   const [itemsError, setItemsError] = useState(false);
@@ -79,6 +84,10 @@ export default function QuickSaleScreen() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanLock = useRef(false);
+  // Scan-to-cart stays open: remember the last code so one box isn't added twice.
+  const lastScan = useRef<{ code: string; at: number } | null>(null);
+  const [scanNote, setScanNote] = useState<{ text: string; ok: boolean } | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefilled = useRef(false);
 
   const addToCart = useCallback((item: api.InventoryItem) => {
@@ -180,13 +189,16 @@ export default function QuickSaleScreen() {
     });
   };
 
+  // Cash + card: type the cash you were handed; the card covers the rest.
   const startSplit = () => {
-    const half = Math.floor(totals.total / 2);
-    setSplit([newRow("cash", centsToString(totals.total - half)), newRow("card", centsToString(half))]);
+    setSplit([newRow("cash", ""), newRow("card", centsToString(totals.total))]);
   };
 
   const updateRow = (key: string, patch: Partial<PaymentRow>) =>
-    setSplit((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+    setSplit((rows) => {
+      const next = rows.map((row) => (row.key === key ? { ...row, ...patch } : row));
+      return patch.amount !== undefined ? autoBalance(next, key, totals.total) : next;
+    });
 
   const removeRow = (key: string) =>
     setSplit((rows) => (rows.length <= 2 ? [] : rows.filter((row) => row.key !== key)));
@@ -216,13 +228,23 @@ export default function QuickSaleScreen() {
       }
     }
     scanLock.current = false;
+    lastScan.current = null;
+    setScanNote(null);
     setScannerOpen(true);
   };
 
+  const showScanNote = (text: string, ok: boolean) => {
+    setScanNote({ text, ok });
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setScanNote(null), 2500);
+  };
+
   const onBarcodeScanned = async ({ data }: { data: string }) => {
+    const now = Date.now();
     if (scanLock.current) return;
+    if (lastScan.current && lastScan.current.code === data && now - lastScan.current.at < REPEAT_COOLDOWN_MS) return;
     scanLock.current = true;
-    setScannerOpen(false);
+    lastScan.current = { code: data, at: now };
     let hit = items.find((item) => sameBarcode(item.upc, data));
     if (!hit) {
       try {
@@ -234,19 +256,17 @@ export default function QuickSaleScreen() {
       }
     }
     if (hit) {
+      const found = hit;
       triggerHaptic("success");
-      addToCart(hit);
+      playSound("scan");
+      addToCart(found);
+      const inCart = (cart[found.id]?.qty ?? 0) + 1;
+      showScanNote(`Added ${found.name}${inCart > 1 ? ` · ${inCart} in cart` : ""}`, true);
     } else {
       triggerHaptic("warning");
-      Alert.alert(
-        "Not in your inventory",
-        `Nothing in stock has barcode ${data}. Add it in Add Stock first, or search for it by name.`,
-        [
-          { text: "OK" },
-          { text: "Add item", onPress: () => router.push("/inventory/add") },
-        ]
-      );
+      showScanNote(`Not in stock: ${data}. Add it in Add Stock first.`, false);
     }
+    scanLock.current = false;
   };
 
   const resetSale = () => {
@@ -317,6 +337,7 @@ export default function QuickSaleScreen() {
       const order = await api.createSaleOrder(payload);
       const offline = !!order.pending || !isOnline();
       triggerHaptic("success");
+      playSound("sale");
       if (!offline) void recordSale();
       setReceipt({
         businessName,
@@ -585,7 +606,7 @@ export default function QuickSaleScreen() {
                 {OTHER_METHODS.map((entry) => (
                   <Chip key={entry} label={paymentLabel(entry)} active={method === entry} onPress={() => setMethod(entry)} />
                 ))}
-                <Chip label="Split" accessibilityLabel="Split payment" icon="layers-outline" active={false} onPress={startSplit} />
+                <Chip label="Cash + card" accessibilityLabel="Split payment" icon="layers-outline" active={false} onPress={startSplit} />
               </View>
             </>
           ) : (
@@ -689,7 +710,21 @@ export default function QuickSaleScreen() {
             barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] }}
             onBarcodeScanned={onBarcodeScanned}
           />
-          <ScannerOverlay hint="Scan an item to add it to the sale" onCancel={() => setScannerOpen(false)} />
+          <ScannerOverlay
+            hint={cartLines.length ? `${cartLines.reduce((n, l) => n + l.qty, 0)} in cart · keep scanning` : "Scan items to add them to the sale"}
+            onCancel={() => setScannerOpen(false)}
+            cancelLabel="Done"
+          />
+          {scanNote ? (
+            <View
+              testID="scan-note"
+              accessibilityLiveRegion="polite"
+              style={[styles.scanNote, { top: insets.top + SPACING.md }, !scanNote.ok && styles.scanNoteWarn]}
+            >
+              <Icon name={scanNote.ok ? "checkmark-circle" : "alert-circle"} size={18} color={scanNote.ok ? COLORS.success : COLORS.warning} />
+              <Text numberOfLines={2} style={styles.scanNoteText}>{scanNote.text}</Text>
+            </View>
+          ) : null}
         </View>
       </Modal>
 
@@ -887,4 +922,21 @@ const styles = StyleSheet.create({
   splitActions: { flexDirection: "row", gap: SPACING.sm },
   notesInput: { minHeight: 72, textAlignVertical: "top" },
   scanner: { flex: 1, backgroundColor: COLORS.canvas },
+  // Always over the camera, so a fixed dark pill reads in both modes.
+  scanNote: {
+    position: "absolute",
+    left: SPACING.md,
+    right: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADII.pill,
+    backgroundColor: "rgba(14,14,17,0.82)",
+    borderWidth: 1,
+    borderColor: "rgba(95,214,156,0.5)",
+  },
+  scanNoteWarn: { borderColor: "rgba(237,191,98,0.6)" },
+  scanNoteText: { color: "#FFFFFF", fontSize: 14, fontWeight: "600", flex: 1 },
 });

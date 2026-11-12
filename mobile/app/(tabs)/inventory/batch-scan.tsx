@@ -32,6 +32,7 @@ import {
 import { Button, triggerHaptic } from "../../../components/Button";
 import { Icon } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
+import { playSound } from "../../../services/sounds";
 
 const BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"] as const;
 
@@ -62,6 +63,7 @@ export default function BatchScanScreen() {
       const { tray: next, added } = addScan(trayRef.current, code, trayRef.current.find((e) => e.barcode === code)!.fields, true, now);
       if (added) {
         triggerHaptic("success");
+        playSound("scan");
         trayRef.current = next;
         setTray(next);
       }
@@ -77,6 +79,7 @@ export default function BatchScanScreen() {
       const { tray: next, added } = addScan(trayRef.current, code, hit?.fields ?? {}, known, Date.now(), existing);
       if (added) {
         triggerHaptic(known ? "success" : "light");
+        playSound("scan");
         trayRef.current = next;
         setTray(next);
       }
@@ -120,6 +123,7 @@ export default function BatchScanScreen() {
       return;
     }
     triggerHaptic("success");
+    playSound("sale");
     const parts = [created && `${created} new item${created === 1 ? "" : "s"}`, added && `${added} restocked`].filter(Boolean);
     Alert.alert("Saved", `${parts.join(", ")}.`);
     router.replace("/inventory");

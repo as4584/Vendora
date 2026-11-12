@@ -258,3 +258,16 @@ export function sameBarcode(a?: string | null, b?: string | null): boolean {
   const norm = (s: string) => s.trim().replace(/^0+/, "");
   return norm(a) !== "" && norm(a) === norm(b);
 }
+
+/**
+ * Two-way split (e.g. cash + card): when one amount is typed, the other
+ * becomes whatever is left of the total, so the payments always add up.
+ * Splits with 3+ payments are left alone (the user balances those).
+ */
+export function autoBalance<T extends { key: string; amount: string }>(rows: T[], editedKey: string, totalCents: number): T[] {
+  if (rows.length !== 2) return rows;
+  const edited = rows.find((r) => r.key === editedKey);
+  if (!edited) return rows;
+  const rest = centsToString(Math.max(0, totalCents - toCents(edited.amount)));
+  return rows.map((r) => (r.key === editedKey ? r : { ...r, amount: rest }));
+}
