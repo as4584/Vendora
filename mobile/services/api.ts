@@ -777,6 +777,8 @@ export interface Transaction {
   /** Sales tax collected on this line; not revenue, not profit. */
   tax_amount?: string;
   variant_size?: string | null;
+  /** Cost of goods frozen on the sale (refunds carry negative cost). */
+  cost_amount?: string | null;
   created_at: string;
   updated_at: string;
 }
