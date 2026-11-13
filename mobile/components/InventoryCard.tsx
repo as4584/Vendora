@@ -7,7 +7,6 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as api from "../services/api";
 import { Card, Icon, Pill } from "./ui";
 import { BRAND, COLORS, FONT_SCALE, SPACING } from "../theme/tokens";
-import { staleBadge } from "../utils/inventorySort";
 import { formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../utils/inventory";
 
 export const STATUS_TONES: Record<string, "success" | "warning" | "danger" | "info" | "neutral" | "primary"> = {
@@ -49,8 +48,6 @@ export interface InventoryCardProps {
   flagged?: boolean;
   accessibilityLabel?: string;
   testID?: string;
-  /** Tap the "Nd in stock" badge (e.g. to show all stale stock). */
-  onStalePress?: () => void;
 }
 
 export default function InventoryCard({
@@ -64,9 +61,7 @@ export default function InventoryCard({
   flagged = false,
   accessibilityLabel,
   testID,
-  onStalePress,
 }: InventoryCardProps) {
-  const stale = staleBadge(item);
   const qty = resolveQty(item);
   const condition = item.condition?.trim();
   const grade = condition?.toLowerCase();
@@ -128,21 +123,6 @@ export default function InventoryCard({
                 {lowStock ? `Low stock ${qty}` : `Stock ${qty}`}
               </Text>
               {item._pending ? <Pill label="Sync pending" tone="warning" /> : null}
-              {stale ? (
-                onStalePress ? (
-                  <TouchableOpacity
-                    testID="stale-badge"
-                    accessibilityRole="button"
-                    accessibilityLabel={`${stale.label}. Show all stale stock`}
-                    onPress={onStalePress}
-                    hitSlop={8}
-                  >
-                    <Pill label={stale.label} tone={stale.tone} />
-                  </TouchableOpacity>
-                ) : (
-                  <Pill label={stale.label} tone={stale.tone} />
-                )
-              ) : null}
             </View>
 
             {conditionLabel ? (

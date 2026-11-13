@@ -69,7 +69,3 @@ def test_pages_never_overlap_on_ties(client, auth_headers):
         seen += [i["id"] for i in r.json()["items"]]
     assert len(seen) == len(set(seen)) == 6
 
-
-def test_stale_filter_only_old_in_stock(client, auth_headers, seeded):
-    r = client.get("/api/v1/inventory?min_age_days=30&sort=oldest", headers=auth_headers)
-    assert [i["name"] for i in r.json()["items"]] == ["Delta No Price", "alpha Samba"]

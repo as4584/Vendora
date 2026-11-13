@@ -469,9 +469,9 @@ describe('API endpoint contracts', () => {
     await api.listItems({ upc: '012345678905', perPage: 5 });
     expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/inventory?page=1&per_page=5&upc=012345678905');
 
-    // Sort menu + stale stock; the default sort is left off the URL.
-    await api.listItems({ sort: 'profit', minAgeDays: 30 });
-    expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/inventory?page=1&per_page=20&sort=profit&min_age_days=30');
+    // Sort menu; the default sort is left off the URL.
+    await api.listItems({ sort: 'profit' });
+    expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/inventory?page=1&per_page=20&sort=profit');
     await api.listItems({ sort: 'newest' });
     expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/inventory?page=1&per_page=20');
 

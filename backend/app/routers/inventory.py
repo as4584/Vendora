@@ -13,7 +13,7 @@ import socket
 import uuid
 from decimal import Decimal
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Literal, Optional
 from uuid import UUID
 from urllib.parse import urljoin, urlparse
@@ -467,9 +467,6 @@ def list_items(
         pattern="^(newest|oldest|price_high|price_low|profit|qty|name)$",
         description="Order: newest, oldest (longest in stock), price_high, price_low, profit, qty, name",
     ),
-    min_age_days: Optional[int] = Query(
-        None, ge=1, le=3650, description="Stale stock: only in-stock items added at least this many days ago"
-    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -497,14 +494,6 @@ def list_items(
         base_query = base_query.filter(
             InventoryItem.status.in_(["in_stock", "listed"]),
             InventoryItem.quantity > 0,
-        )
-
-    if min_age_days:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=min_age_days)
-        base_query = base_query.filter(
-            InventoryItem.status.in_(["in_stock", "listed"]),
-            InventoryItem.quantity > 0,
-            InventoryItem.created_at <= cutoff,
         )
 
     if q and q.strip():

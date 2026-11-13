@@ -37,7 +37,7 @@ import {
   tempId,
   isTempId,
 } from "./store";
-import { compareItems, daysInStock } from "../../utils/inventorySort";
+import { compareItems } from "../../utils/inventorySort";
 
 // ─── Mirror types ────────────────────────────────────
 // A mirror item is a normal InventoryItem plus optional local-only markers.
@@ -104,10 +104,6 @@ export async function offlineListItems(
   if (params.source) items = items.filter((i) => i.source === params.source);
   if (params.availableOnly) items = items.filter((i) => i.quantity > 0);
   if (params.upc) items = items.filter((i) => sameBarcode(i.upc, params.upc));
-  if (params.minAgeDays) {
-    const minAge = params.minAgeDays;
-    items = items.filter((i) => (daysInStock(i) ?? -1) >= minAge);
-  }
 
   // Same order as the server's sort menu; a search then ranks best match first.
   items.sort(compareItems(params.sort ?? "newest"));

@@ -30,7 +30,7 @@ import { peekSnapshot, saveSnapshot } from "../../../services/offline/snapshot";
 import { SkeletonList } from "../../../components/Skeleton";
 import { SwipeRow, SWIPE_COLORS } from "../../../components/SwipeRow";
 import { UndoBar, useUndo } from "../../../components/UndoBar";
-import { SORT_OPTIONS, STALE_DAYS, sortLabel, type SortKey } from "../../../utils/inventorySort";
+import { SORT_OPTIONS, sortLabel, type SortKey } from "../../../utils/inventorySort";
 
 type ListSnapshot = { items: api.InventoryItem[]; total: number; pages: number; sort: SortKey };
 const LIST_SNAPSHOT = "inventory:list";
@@ -60,7 +60,6 @@ export default function InventoryListScreen() {
   const [pages, setPages] = useState(snap?.pages ?? 0);
   const [loading, setLoading] = useState(!snap);
   const [sort, setSort] = useState<SortKey>(snap?.sort ?? "newest");
-  const [staleOnly, setStaleOnly] = useState(false);
   // The list as it was before searching: "Did you mean" suggests from this.
   const [baseItems, setBaseItems] = useState<api.InventoryItem[]>(snap?.items ?? []);
   const undo = useUndo();
@@ -108,8 +107,7 @@ export default function InventoryListScreen() {
     status: string | null;
     source: string | null;
     sort: SortKey;
-    stale: boolean;
-  }>({ query: "", status: null, source: null, sort: snap?.sort ?? "newest", stale: false });
+  }>({ query: "", status: null, source: null, sort: snap?.sort ?? "newest" });
 
   const fetchItems = useCallback(
     async (options: { page?: number; refresh?: boolean; query?: string; status?: string | null; source?: string | null } = {}) => {
@@ -117,7 +115,7 @@ export default function InventoryListScreen() {
       const nextQuery = options.query ?? filtersRef.current.query;
       const nextStatus = options.status !== undefined ? options.status : filtersRef.current.status;
       const nextSource = options.source !== undefined ? options.source : filtersRef.current.source;
-      const { sort: nextSort, stale } = filtersRef.current;
+      const { sort: nextSort } = filtersRef.current;
 
       try {
         const result = await api.listItems({
@@ -127,11 +125,10 @@ export default function InventoryListScreen() {
           status: nextStatus ?? undefined,
           source: nextSource ?? undefined,
           sort: nextSort,
-          minAgeDays: stale ? STALE_DAYS : undefined,
         });
         setItems((previous) => (options.refresh === false ? [...previous, ...result.items] : result.items));
         if (!nextQuery && options.refresh !== false) setBaseItems(result.items);
-        if (nextPage === 1 && !nextQuery && !nextStatus && !nextSource && !stale) {
+        if (nextPage === 1 && !nextQuery && !nextStatus && !nextSource) {
           saveSnapshot(LIST_SNAPSHOT, { items: result.items, total: result.total, pages: result.pages, sort: nextSort });
         }
         setTotal(result.total);
@@ -271,30 +268,16 @@ export default function InventoryListScreen() {
     fetchItems({ page: 1, refresh: true });
   };
 
-  const applyStale = (next: boolean) => {
-    setStaleOnly(next);
-    filtersRef.current.stale = next;
-    // Stale view reads best oldest-first.
-    if (next && filtersRef.current.sort === "newest") {
-      setSort("oldest");
-      filtersRef.current.sort = "oldest";
-    }
-    setLoading(true);
-    fetchItems({ page: 1, refresh: true });
-  };
-
   const clearFilters = () => {
     setStatusFilter(null);
     setSourceFilter(null);
-    setStaleOnly(false);
     filtersRef.current.status = null;
     filtersRef.current.source = null;
-    filtersRef.current.stale = false;
     setLoading(true);
     fetchItems({ page: 1, refresh: true, status: null, source: null });
   };
 
-  const activeFilterCount = (statusFilter ? 1 : 0) + (sourceFilter ? 1 : 0) + (staleOnly ? 1 : 0);
+  const activeFilterCount = (statusFilter ? 1 : 0) + (sourceFilter ? 1 : 0);
 
   const availableSources = useMemo(() => {
     const seen = new Set<string>();
@@ -341,7 +324,6 @@ export default function InventoryListScreen() {
               selectMode={selectMode}
               selected={selectedIds.has(item.id)}
               onToggleSelect={() => toggleSelect(item.id)}
-              onStalePress={staleOnly ? undefined : () => applyStale(true)}
             />
           </SwipeRow>
         )}
@@ -418,15 +400,9 @@ export default function InventoryListScreen() {
                 >
                   <Pill label={`Sort: ${sortLabel(sort)}`} tone={sort === "newest" ? "neutral" : "primary"} />
                 </TouchableOpacity>
-                {!staleOnly ? (
-                  <TouchableOpacity testID="stale-chip" accessibilityRole="button" accessibilityLabel={`Show items in stock ${STALE_DAYS} days or more`} onPress={() => applyStale(true)} hitSlop={10}>
-                    <Pill label={`Sitting ${STALE_DAYS}d+`} tone="neutral" />
-                  </TouchableOpacity>
-                ) : null}
               </View>
               {activeFilterCount ? (
                 <View style={styles.activeFilters}>
-                  {staleOnly ? <Pill label={`In stock ${STALE_DAYS}d+`} tone="warning" /> : null}
                   {statusFilter ? <Pill label={STATUS_LABELS[statusFilter] || statusFilter} tone={STATUS_TONES[statusFilter] || "primary"} /> : null}
                   {sourceFilter ? <Pill label={SOURCE_LABELS[sourceFilter] || sourceFilter} tone="info" /> : null}
                   <TouchableOpacity accessibilityLabel="Clear filters" onPress={clearFilters}><Pill label="Clear" tone="neutral" /></TouchableOpacity>

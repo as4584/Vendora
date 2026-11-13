@@ -319,23 +319,15 @@ describe('InventoryListScreen', () => {
     }
   });
 
-  it('sorts from the sort chip and shows stale stock from the chip or a card badge', async () => {
-    const old = makeItem({ id: 'old', name: 'Old Dunk', created_at: new Date(Date.now() - 50 * 86_400_000).toISOString() });
-    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [old], total: 1 });
+  it('sorts from the sort chip', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [makeItem({ id: 'a', name: 'Old Dunk' })], total: 1 });
     const screen = render(<InventoryListScreen />);
     await screen.findByText('Old Dunk');
-    expect(screen.getByText('50d in stock')).toBeTruthy();
-
+    expect(screen.queryByText(/in stock$/)).toBeNull();
     fireEvent.press(screen.getByTestId('sort-button'));
     fireEvent.press(screen.getByLabelText('Most profit'));
     await waitFor(() => expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'profit' })));
     await screen.findByText('Sort: Most profit');
-
-    fireEvent.press(screen.getByTestId('stale-badge'));
-    await waitFor(() => expect(apiMock.listItems).toHaveBeenLastCalledWith(expect.objectContaining({ minAgeDays: 30, sort: 'profit' })));
-    await screen.findByText('In stock 30d+');
-    // Already filtered: the badge no longer offers the same filter, and the chip hides.
-    expect(screen.queryByTestId('stale-chip')).toBeNull();
   });
 
   it('filters by status and source through the dropdown, and clears them', async () => {

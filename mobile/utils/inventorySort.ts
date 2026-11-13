@@ -1,5 +1,5 @@
 /**
- * Inventory sort menu + stale-stock rules. The server sorts paged results
+ * Inventory sort menu. The server sorts paged results
  * (GET /inventory?sort=...); compareItems mirrors it for the offline list.
  */
 import type { InventoryItem } from "../services/api";
@@ -47,21 +47,4 @@ export function compareItems(sort: SortKey): (a: InventoryItem, b: InventoryItem
     name: (a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
   };
   return (a, b) => primary[sort](a, b) || tie(a, b);
-}
-
-// ─── Stale stock ─────────────────────────────────────
-export const STALE_DAYS = 30;
-
-/** Whole days an available item has been sitting, or null if it isn't for sale. */
-export function daysInStock(item: InventoryItem, now: Date = new Date()): number | null {
-  if (!["in_stock", "listed"].includes(item.status) || (item.quantity ?? 0) <= 0 || !item.created_at) return null;
-  const ms = now.getTime() - new Date(item.created_at).getTime();
-  return ms < 0 ? 0 : Math.floor(ms / 86_400_000);
-}
-
-/** Badge for items sitting 30+ days: amber at 30, red at 90. */
-export function staleBadge(item: InventoryItem, now?: Date): { label: string; tone: "warning" | "danger" } | null {
-  const d = daysInStock(item, now);
-  if (d == null || d < STALE_DAYS) return null;
-  return { label: `${d}d in stock`, tone: d >= 90 ? "danger" : "warning" };
 }

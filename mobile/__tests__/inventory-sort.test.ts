@@ -1,4 +1,4 @@
-import { compareItems, daysInStock, staleBadge, type SortKey } from '../utils/inventorySort';
+import { compareItems, type SortKey } from '../utils/inventorySort';
 import type { InventoryItem } from '../services/api';
 
 const NOW = new Date('2026-11-12T12:00:00Z');
@@ -24,20 +24,6 @@ it.each<[SortKey, string[]]>([
   ['name', ['alpha', 'Bravo', 'Charlie', 'Delta']],
 ])('sort %s', (sort, expected) => {
   expect([...ITEMS].sort(compareItems(sort)).map((i) => i.name)).toEqual(expected);
-});
-
-describe('stale stock', () => {
-  it('counts whole days for available items only', () => {
-    expect(daysInStock(item('a', { created_at: daysAgo(45) }), NOW)).toBe(45);
-    expect(daysInStock(item('b', { status: 'sold', created_at: daysAgo(45) }), NOW)).toBeNull();
-    expect(daysInStock(item('c', { quantity: 0, created_at: daysAgo(45) }), NOW)).toBeNull();
-  });
-
-  it('badges at 30 days (amber) and 90 days (red), not before', () => {
-    expect(staleBadge(item('a', { created_at: daysAgo(29) }), NOW)).toBeNull();
-    expect(staleBadge(item('a', { created_at: daysAgo(30) }), NOW)).toEqual({ label: '30d in stock', tone: 'warning' });
-    expect(staleBadge(item('a', { created_at: daysAgo(120) }), NOW)).toEqual({ label: '120d in stock', tone: 'danger' });
-  });
 });
 
 import { didYouMean } from '../services/smartSearch';
