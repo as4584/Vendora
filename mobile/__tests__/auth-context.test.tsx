@@ -3,6 +3,7 @@ import { Text } from 'react-native';
 import { act, render, waitFor } from '@testing-library/react-native';
 import { AuthProvider, useAuth } from '../context/auth';
 import * as api from '../services/api';
+import { replaceSession } from '../services/session';
 
 jest.mock('../services/api', () => ({
   ApiError: class ApiError extends Error {
@@ -21,6 +22,7 @@ jest.mock('../services/api', () => ({
   setSession: jest.fn(),
   register: jest.fn(),
   logoutSession: jest.fn(),
+  activateAccount: jest.fn(),
 }));
 
 const mockedApi = api as jest.Mocked<typeof api>;
@@ -58,11 +60,13 @@ async function renderProvider() {
 
 describe('AuthProvider', () => {
   beforeEach(() => {
+    replaceSession();
     jest.resetAllMocks();
     mockedApi.getToken.mockResolvedValue(null);
     mockedApi.clearToken.mockResolvedValue(undefined);
     mockedApi.setSession.mockResolvedValue(undefined);
-    mockedApi.logoutSession.mockResolvedValue(undefined);
+    mockedApi.logoutSession.mockImplementation(async () => { replaceSession(); });
+    mockedApi.activateAccount.mockImplementation((owner) => { replaceSession(owner); });
     mockedApi.register.mockResolvedValue(USER);
     mockedApi.login.mockResolvedValue({
       access_token: 'access-token',
@@ -133,7 +137,7 @@ describe('AuthProvider', () => {
     const screen = await renderProvider();
     await act(async () => currentAuth.signIn('owner@vendora.test', 'secret123'));
     expect(mockedApi.login).toHaveBeenCalledWith('owner@vendora.test', 'secret123');
-    expect(mockedApi.setSession).toHaveBeenCalledWith('access-token', 'refresh-token');
+    expect(mockedApi.setSession).toHaveBeenCalledWith('access-token', 'refresh-token', expect.objectContaining({ ownerId: null }));
     expect(screen.getByTestId('state').props.children).toBe(USER.email);
   });
 

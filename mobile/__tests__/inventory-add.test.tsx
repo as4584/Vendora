@@ -354,7 +354,7 @@ describe('add inventory screen', () => {
     fireEvent.press(screen.getByText('Add to Inventory'));
     await waitFor(() => expect(mockRememberScan).toHaveBeenCalledWith('195866137738', expect.objectContaining({
       name: 'Nike Dunk Low Panda', style_code: 'DD1391-100', buy_price: '110.00',
-    })));
+    }), expect.any(Object)));
   });
 
   it('reads the box label for a new barcode without overwriting typed fields', async () => {
@@ -371,7 +371,7 @@ describe('add inventory screen', () => {
       fireEvent.press(screen.getByText('Read label'));
     });
     await waitFor(() => expect(mockReadLabel).toHaveBeenCalledWith('file:///label.jpg'));
-    expect(mockResolveScan).toHaveBeenLastCalledWith('197862948123', 'FV5029-006');
+    expect(mockResolveScan).toHaveBeenLastCalledWith('197862948123', 'FV5029-006', expect.any(Object));
     expect(screen.getByLabelText('Item Name').props.value).toBe('My own name');
     expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Read from the box label/);
   });
@@ -422,7 +422,7 @@ describe('add inventory screen', () => {
       await act(async () => {
         fireEvent.press(screen.getByTestId('mock-live-finish'));
       });
-      expect(mockResolveScan).toHaveBeenCalledWith('197862948123', 'FV5029-006');
+      expect(mockResolveScan).toHaveBeenCalledWith('197862948123', 'FV5029-006', expect.any(Object));
       expect(screen.getByLabelText('UPC or Barcode').props.value).toBe('197862948123');
       expect(screen.getByLabelText('Item Name').props.value).toBe('Jordan 4 Retro');
       expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Read live/);

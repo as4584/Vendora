@@ -3,6 +3,7 @@ import { View, StyleSheet, Text, TouchableOpacity, GestureResponderEvent } from 
 import { COLORS, FONT_SCALE } from "../../theme/tokens";
 import { Icon, type IconName } from "../../components/ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "../../context/auth";
 
 function renderTabIcon(name: IconName, nameActive: IconName) {
   const TabIcon = ({ focused }: { focused: boolean }) => (
@@ -24,11 +25,16 @@ function AddFab({ onPress }: { onPress?: (e: GestureResponderEvent) => void }) {
 }
 
 export default function TabsLayout() {
+  const { isAuthenticated, user } = useAuth();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 10);
+  // Keep the root navigator mounted for redirect, but do not retain the
+  // private tab tree (drafts, customer rows, and scan UI) across accounts.
+  if (!isAuthenticated || !user?.id) return null;
 
   return (
     <Tabs
+      key={user.id}
       screenOptions={{
         headerStyle: { backgroundColor: COLORS.bg },
         headerShadowVisible: false,

@@ -3,6 +3,7 @@ import { Alert, Share } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as apiMock from '../services/api';
 import QuickSaleScreen from '../app/(tabs)/inventory/sale';
+import { replaceSession } from '../services/session';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
@@ -71,6 +72,7 @@ async function ready() {
 
 describe('QuickSaleScreen (checkout)', () => {
   beforeEach(() => {
+    replaceSession('seller');
     jest.clearAllMocks();
     mockParams = {};
     mockPermission = { granted: true };
@@ -202,6 +204,24 @@ describe('QuickSaleScreen (checkout)', () => {
     expect(apiMock.refundTransaction).toHaveBeenLastCalledWith('t1', 'Undone at checkout');
     expect(Alert.alert).toHaveBeenLastCalledWith('Sale undone', 'Items are back in stock.');
     await waitFor(() => expect(screen.queryByText('Sale complete')).toBeNull());
+  });
+
+  it('stops a multi-line undo when the active account changes', async () => {
+    let finishFirst!: (value: object) => void;
+    (apiMock.createSaleOrder as jest.Mock).mockResolvedValue({ ...ORDER, transactions: [{ id: 'a1' }, { id: 'a2' }] });
+    (apiMock.refundTransaction as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }));
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await screen.findByText('Sale complete');
+    fireEvent.press(screen.getByTestId('undo-sale'));
+    const buttons = (Alert.alert as jest.Mock).mock.calls.at(-1)[2];
+    const undo = buttons.find((button: { text: string }) => button.text === 'Undo sale').onPress();
+    expect(apiMock.refundTransaction).toHaveBeenCalledWith('a1', 'Undone at checkout');
+    replaceSession('other-seller');
+    await act(async () => { finishFirst({}); await undo; });
+    expect(apiMock.refundTransaction).toHaveBeenCalledTimes(1);
+    expect(Alert.alert).not.toHaveBeenCalledWith('Sale undone', expect.any(String));
   });
 
   it('applies a dollar or percent discount and validates it', async () => {

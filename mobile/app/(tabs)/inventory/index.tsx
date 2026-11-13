@@ -17,6 +17,7 @@ import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
 import { smartSearch } from "../../../services/smartSearch";
 import { addRecentSearch, clearRecentSearches, getRecentSearches } from "../../../services/recentSearches";
+import { captureSession, isCurrentSession } from "../../../services/session";
 import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
 import { ProUpsell, graceMessage } from "../../../components/ProUpsell";
 import { useAuth } from "../../../context/auth";
@@ -61,6 +62,7 @@ export default function InventoryListScreen() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const session = captureSession();
   const filtersRef = useRef<{
     query: string;
     status: string | null;
@@ -74,6 +76,7 @@ export default function InventoryListScreen() {
       const nextStatus = options.status !== undefined ? options.status : filtersRef.current.status;
       const nextSource = options.source !== undefined ? options.source : filtersRef.current.source;
 
+      if (!isCurrentSession(session)) return;
       try {
         const result = await api.listItems({
           page: nextPage,
@@ -82,19 +85,20 @@ export default function InventoryListScreen() {
           status: nextStatus ?? undefined,
           source: nextSource ?? undefined,
         });
+        if (!isCurrentSession(session)) return;
         setItems((previous) => (options.refresh === false ? [...previous, ...result.items] : result.items));
         setTotal(result.total);
         setPage(result.page);
         setPages(result.pages);
       } catch (err) {
-        Alert.alert("Inventory unavailable", errorMessage(err, "Could not load inventory."));
+        if (isCurrentSession(session)) Alert.alert("Inventory unavailable", errorMessage(err, "Could not load inventory."));
       } finally {
         setLoading(false);
         setRefreshing(false);
         setLoadingMore(false);
       }
     },
-    []
+    [session]
   );
 
   useFocusEffect(
@@ -104,14 +108,20 @@ export default function InventoryListScreen() {
   );
 
   const onSearchChange = (text: string) => {
+    if (!isCurrentSession(session)) return;
     setSearchQuery(text);
     filtersRef.current.query = text;
     if (searchTimer.current) clearTimeout(searchTimer.current);
     // Fetch more matches from the server in the background — no full-screen
     // spinner, so the instant client-side filter stays visible while typing.
     searchTimer.current = setTimeout(() => {
+      if (!isCurrentSession(session)) return;
       fetchItems({ page: 1, refresh: true, query: text });
-      if (text.trim().length >= 2) void addRecentSearch(text).then(setRecent);
+      if (text.trim().length >= 2) {
+        void addRecentSearch(text, session).then((recent) => {
+          if (isCurrentSession(session)) setRecent(recent);
+        }).catch(() => undefined);
+      }
     }, 250);
   };
 
@@ -295,7 +305,12 @@ export default function InventoryListScreen() {
                     accessibilityLabel="Search inventory"
                     style={styles.searchInputFlex}
                     placeholder="Search name, SKU, size, card…"
-                    onFocus={() => { setSearchFocused(true); void getRecentSearches().then(setRecent); }}
+                    onFocus={() => {
+                      setSearchFocused(true);
+                      void getRecentSearches(session).then((recent) => {
+                        if (isCurrentSession(session)) setRecent(recent);
+                      }).catch(() => undefined);
+                    }}
                     onBlur={() => setSearchFocused(false)}
                     returnKeyType="search"
                     clearButtonMode="while-editing"
@@ -316,7 +331,10 @@ export default function InventoryListScreen() {
                       <Pill label={r} tone="neutral" />
                     </TouchableOpacity>
                   ))}
-                  <TouchableOpacity accessibilityLabel="Clear recent searches" onPress={() => { void clearRecentSearches(); setRecent([]); }}>
+                  <TouchableOpacity accessibilityLabel="Clear recent searches" onPress={() => {
+                    void clearRecentSearches(session).catch(() => undefined);
+                    setRecent([]);
+                  }}>
                     <Pill label="Clear" tone="neutral" />
                   </TouchableOpacity>
                 </View>

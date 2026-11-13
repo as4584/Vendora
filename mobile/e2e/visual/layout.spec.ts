@@ -159,7 +159,9 @@ async function openScreen(page: Page, screen: Screen, size: { width: number; hei
   await stubApi(page);
   await page.goto('/');
   if (screen.authed !== false) {
-    await page.evaluate(() => localStorage.setItem('vendora_access_token', 'demo'));
+    await page.evaluate((sub) => {
+      localStorage.setItem('vendora_access_token', `x.${btoa(JSON.stringify({ sub })).replace(/=+$/, '')}.x`);
+    }, fixtures.me.id);
   } else {
     await page.evaluate(() => localStorage.clear());
   }

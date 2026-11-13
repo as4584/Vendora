@@ -5,12 +5,21 @@
  */
 let AsyncStorage: any;
 
-const OUTBOX = "offline:outbox";
-const PENDING = "offline:pending_invoices";
-const FAILED = "offline:failed";
+const OUTBOX = "outbox";
+const PENDING = "pendingInvoices";
+const FAILED = "failed";
 
+const JOURNAL_KEY = "account:v1:seller:offline:journal";
 async function read(key: string) {
-  return JSON.parse((await AsyncStorage.getItem(key)) ?? "null");
+  return JSON.parse((await AsyncStorage.getItem(JOURNAL_KEY)) ?? "null")?.[key] ?? null;
+}
+
+async function seed(key: string, value: string) {
+  const prior = JSON.parse((await AsyncStorage.getItem(JOURNAL_KEY)) ?? "null");
+  await AsyncStorage.setItem(JOURNAL_KEY, JSON.stringify({
+    mirror: {}, outbox: [], remap: {}, pendingInvoices: [], failed: [], lastSync: null,
+    ...prior, [key]: JSON.parse(value),
+  }));
 }
 
 function apiError(status: number, message: string) {
@@ -33,6 +42,7 @@ describe("offline invoices", () => {
     jest.resetModules();
     AsyncStorage = require("@react-native-async-storage/async-storage").default;
     await AsyncStorage.clear();
+    require("../services/session").replaceSession("seller");
   });
 
   it("keeps a pending local copy with totals and queues one create", async () => {
@@ -77,7 +87,7 @@ describe("offline invoices", () => {
 
   it("replays after the item it uses is created, then drops the local copy", async () => {
     const offline = require("../services/offline/inventory");
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify([
+    await seed(OUTBOX, JSON.stringify([
       { id: "ob_c", kind: "create_item", path: "/inventory", method: "POST",
         body: { name: "Dunk" }, tempId: "local_item1", createdAt: "t", attempts: 0 },
     ]));
@@ -92,7 +102,7 @@ describe("offline invoices", () => {
     expect(send).toHaveBeenLastCalledWith("/invoices", "POST", expect.objectContaining({
       items: [expect.objectContaining({ inventory_item_id: "srv_item" }), expect.objectContaining({ description: "Laces" })],
       client_request_id: expect.any(String),
-    }));
+    }), expect.objectContaining({ ownerId: "seller" }));
     expect(await read(OUTBOX)).toEqual([]);
     expect(await read(PENDING)).toEqual([]);
     expect(inv._pending).toBe(true);
@@ -121,7 +131,7 @@ describe("offline invoices", () => {
 
   it("drops a dependent invoice when the item it uses is rejected", async () => {
     const offline = require("../services/offline/inventory");
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify([
+    await seed(OUTBOX, JSON.stringify([
       { id: "ob_c", kind: "create_item", path: "/inventory", method: "POST",
         body: { name: "Dunk" }, tempId: "local_item1", createdAt: "t", attempts: 0 },
     ]));
@@ -133,11 +143,14 @@ describe("offline invoices", () => {
     expect((await read(FAILED)).map((f: any) => f.kind)).toEqual(["create_item", "create_invoice"]);
   });
 
-  it("is wiped on sign-out", async () => {
+  it("retains a pending invoice without exposing it after sign-out", async () => {
     const offline = require("../services/offline/inventory");
-    await offline.queueCreateInvoice(PAYLOAD);
-    await require("../services/offline/store").clearOfflineData();
-    expect(await read(PENDING)).toBeNull();
+    const { replaceSession } = require("../services/session");
+    const pending = await offline.queueCreateInvoice(PAYLOAD);
+    replaceSession();
+    await expect(offline.getPendingInvoices()).resolves.toEqual([]);
+    replaceSession("seller");
+    await expect(offline.getPendingInvoices()).resolves.toEqual([pending]);
   });
 });
 
@@ -167,6 +180,10 @@ describe("invoice API offline behaviour", () => {
     (global as any).fetch = fetchMock;
     fetchMock.mockReset();
     api = require("../services/api");
+    const { captureSession } = require("../services/session");
+    const token = `x.${Buffer.from(JSON.stringify({ sub: "seller" })).toString("base64url")}.x`;
+    await api.setSession(token, "test-refresh");
+    api.activateAccount("seller", captureSession());
   });
 
   afterAll(() => {

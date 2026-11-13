@@ -4,6 +4,7 @@
  */
 import { isOnline } from "../offline";
 import { request } from "../api";
+import { captureSession } from "../session";
 import {
   getLiveScannerView,
   isLabelReaderAvailable,
@@ -51,22 +52,22 @@ export const scanRemote: ScanRemote = {
   },
 };
 
-export function resolveScan(barcode: string, styleCode?: string) {
-  return resolveWith(barcode, { styleCode, online: isOnline(), remote: scanRemote });
+export function resolveScan(barcode: string, styleCode?: string, session = captureSession()) {
+  return resolveWith(barcode, { styleCode, online: isOnline(), remote: scanRemote }, session);
 }
 
-export function rememberScan(barcode: string, fields: ScanFields) {
-  return rememberWith(barcode, fields, { online: isOnline(), remote: scanRemote });
+export function rememberScan(barcode: string, fields: ScanFields, session = captureSession()) {
+  return rememberWith(barcode, fields, { online: isOnline(), remote: scanRemote }, session);
 }
 
-export function syncScanMemory() {
-  return syncWith(scanRemote);
+export function syncScanMemory(session = captureSession()) {
+  return syncWith(scanRemote, session);
 }
 
-/** Once per device: seed account memory from existing inventory UPCs. */
-export async function backfillScanMemoryOnce() {
+/** Once per account on this device: seed memory from existing inventory UPCs. */
+export async function backfillScanMemoryOnce(session = captureSession()) {
   if (!isOnline()) return false;
-  return backfillWith(scanRemote);
+  return backfillWith(scanRemote, session);
 }
 
 /** Read a label photo on the phone and merge it under anything remembered. */
