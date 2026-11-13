@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { Link } from "expo-router";
 import { useAuth } from "../../context/auth";
-import { COLORS } from "../../theme/tokens";
+import { BRAND, COLORS } from "../../theme/tokens";
 import { Icon } from "../../components/ui";
 
 import { Button } from "../../components/Button";
@@ -66,7 +66,7 @@ export default function LoginScreen() {
                         accessibilityLabel="Email"
                         style={styles.input}
                         placeholder="you@example.com"
-                        placeholderTextColor="#8C8C96"
+                        placeholderTextColor={COLORS.textSoft}
                         value={email}
                         onChangeText={setEmail}
                         keyboardType="email-address"
@@ -80,7 +80,7 @@ export default function LoginScreen() {
                             accessibilityLabel="Password"
                             style={[styles.input, styles.inputInRow]}
                             placeholder="••••••••"
-                            placeholderTextColor="#8C8C96"
+                            placeholderTextColor={COLORS.textSoft}
                             value={password}
                             onChangeText={setPassword}
                             secureTextEntry={!showPassword}
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     brandName: {
         fontSize: 36,
         fontWeight: "600",
-        color: "#FFFFFF",
+        color: COLORS.text,
     },
     tagline: {
         fontSize: 15,
@@ -156,31 +156,31 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     label: {
-        color: "#A6A6B0",
+        color: COLORS.textMuted,
         fontSize: 13,
         fontWeight: "600",
         marginBottom: 6,
         marginTop: 12,
     },
     input: {
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
-        color: "#FFFFFF",
+        color: COLORS.text,
         fontSize: 16,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
     },
     // The row draws the border; the field inside must not draw a second one.
     inputInRow: { flex: 1, marginBottom: 0, borderWidth: 0, backgroundColor: "transparent" },
     passwordRow: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
         paddingRight: 4,
     },
     eyeBtn: {
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
         paddingLeft: 16,
     },
     forgotPasswordText: {
-        color: "#8F82FF",
+        color: COLORS.primaryBright,
         fontSize: 14,
         fontWeight: "600",
     },
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
         opacity: 0.6,
     },
     buttonText: {
-        color: "#FFFFFF",
+        color: BRAND.onPrimary,
         fontSize: 16,
         fontWeight: "600",
     },
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
         marginTop: 20,
     },
     linkText: {
-        color: "#A6A6B0",
+        color: COLORS.textMuted,
         fontSize: 14,
     },
     linkHighlight: {

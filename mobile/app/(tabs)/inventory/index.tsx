@@ -10,21 +10,30 @@ import {
   TextInput,
   Alert,
   Modal,
+  ScrollView,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Icon, IconCircle, Pill } from "../../../components/ui";
-import { smartSearch } from "../../../services/smartSearch";
+import { didYouMean, smartSearch } from "../../../services/smartSearch";
 import { addRecentSearch, clearRecentSearches, getRecentSearches } from "../../../services/recentSearches";
 import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
 import { ProUpsell, graceMessage } from "../../../components/ProUpsell";
 import { useAuth } from "../../../context/auth";
-import { COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
+import { BRAND, COLORS, FONT_SCALE, SPACING } from "../../../theme/tokens";
 import { SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import InventoryCard, { STATUS_TONES } from "../../../components/InventoryCard";
 import { downloadTextFile, downloadAndShareRemote } from "../../../utils/fileActions";
 import { errorMessage } from "../../../services/errors";
+import { peekSnapshot, saveSnapshot } from "../../../services/offline/snapshot";
+import { SkeletonList } from "../../../components/Skeleton";
+import { SwipeRow, SWIPE_COLORS } from "../../../components/SwipeRow";
+import { UndoBar, useUndo } from "../../../components/UndoBar";
+import { SORT_OPTIONS, sortLabel, type SortKey } from "../../../utils/inventorySort";
+
+type ListSnapshot = { items: api.InventoryItem[]; total: number; pages: number; sort: SortKey };
+const LIST_SNAPSHOT = "inventory:list";
 
 /** Mirrors backend TIER_LIMITS['free'] in app/dependencies/tier_limiter.py. */
 export const FREE_ITEM_LIMIT = 25;
@@ -43,11 +52,43 @@ export default function InventoryListScreen() {
     return () => { live = false; };
   }, [freeLimit]));
   const insets = useSafeAreaInsets();
-  const [items, setItems] = useState<api.InventoryItem[]>([]);
-  const [total, setTotal] = useState(0);
+  // Paint the last list instantly (default view), then refresh quietly.
+  const [snap] = useState(() => peekSnapshot<ListSnapshot>(LIST_SNAPSHOT));
+  const [items, setItems] = useState<api.InventoryItem[]>(snap?.items ?? []);
+  const [total, setTotal] = useState(snap?.total ?? 0);
   const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [pages, setPages] = useState(snap?.pages ?? 0);
+  const [loading, setLoading] = useState(!snap);
+  const [sort, setSort] = useState<SortKey>(snap?.sort ?? "newest");
+  // The list as it was before searching: "Did you mean" suggests from this.
+  const [baseItems, setBaseItems] = useState<api.InventoryItem[]>(snap?.items ?? []);
+  const undo = useUndo();
+
+  // Swipe delete: gone at once, sent to the server only if not undone.
+  const deleteWithUndo = (item: api.InventoryItem) => {
+    let index = -1;
+    undo.run({
+      message: `Deleted ${item.name}`,
+      apply: () => {
+        setItems((prev) => {
+          index = prev.findIndex((i) => i.id === item.id);
+          return prev.filter((i) => i.id !== item.id);
+        });
+        setTotal((t) => Math.max(0, t - 1));
+      },
+      revert: () => {
+        setItems((prev) => {
+          if (prev.some((i) => i.id === item.id)) return prev;
+          const next = [...prev];
+          next.splice(index < 0 ? 0 : Math.min(index, next.length), 0, item);
+          return next;
+        });
+        setTotal((t) => t + 1);
+      },
+      commit: () => api.deleteItem(item.id),
+      onCommitError: (err) => Alert.alert("Couldn't delete", errorMessage(err, `${item.name} is back in your list.`)),
+    });
+  };
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,7 +106,8 @@ export default function InventoryListScreen() {
     query: string;
     status: string | null;
     source: string | null;
-  }>({ query: "", status: null, source: null });
+    sort: SortKey;
+  }>({ query: "", status: null, source: null, sort: snap?.sort ?? "newest" });
 
   const fetchItems = useCallback(
     async (options: { page?: number; refresh?: boolean; query?: string; status?: string | null; source?: string | null } = {}) => {
@@ -73,6 +115,7 @@ export default function InventoryListScreen() {
       const nextQuery = options.query ?? filtersRef.current.query;
       const nextStatus = options.status !== undefined ? options.status : filtersRef.current.status;
       const nextSource = options.source !== undefined ? options.source : filtersRef.current.source;
+      const { sort: nextSort } = filtersRef.current;
 
       try {
         const result = await api.listItems({
@@ -81,8 +124,13 @@ export default function InventoryListScreen() {
           q: nextQuery || undefined,
           status: nextStatus ?? undefined,
           source: nextSource ?? undefined,
+          sort: nextSort,
         });
         setItems((previous) => (options.refresh === false ? [...previous, ...result.items] : result.items));
+        if (!nextQuery && options.refresh !== false) setBaseItems(result.items);
+        if (nextPage === 1 && !nextQuery && !nextStatus && !nextSource) {
+          saveSnapshot(LIST_SNAPSHOT, { items: result.items, total: result.total, pages: result.pages, sort: nextSort });
+        }
         setTotal(result.total);
         setPage(result.page);
         setPages(result.pages);
@@ -213,6 +261,13 @@ export default function InventoryListScreen() {
     fetchItems({ page: 1, refresh: true, source: next });
   };
 
+  const applySort = (next: SortKey) => {
+    setSort(next);
+    filtersRef.current.sort = next;
+    setLoading(true);
+    fetchItems({ page: 1, refresh: true });
+  };
+
   const clearFilters = () => {
     setStatusFilter(null);
     setSourceFilter(null);
@@ -235,11 +290,16 @@ export default function InventoryListScreen() {
   // Instant on-device ranking over loaded items (same rules as the server), while the
   // debounced server search pulls in matches that aren't loaded yet.
   const displayedItems = useMemo(() => smartSearch(items, searchQuery.trim()), [items, searchQuery]);
+  // Nothing matched: offer the closest item ("Did you mean Jordan 4 Bred?").
+  const suggestion = useMemo(
+    () => (searchQuery.trim() && displayedItems.length === 0 ? didYouMean(baseItems, searchQuery.trim()) : null),
+    [baseItems, searchQuery, displayedItems.length],
+  );
 
   if (loading) {
     return (
-      <View testID="inventory-loading" style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={[styles.container, { paddingTop: insets.top + SPACING.sm }]}>
+        <SkeletonList testID="inventory-loading" rows={7} />
       </View>
     );
   }
@@ -250,13 +310,22 @@ export default function InventoryListScreen() {
         data={displayedItems}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <InventoryCard
-            item={item}
-            onPress={() => router.push(`/inventory/${item.id}`)}
-            selectMode={selectMode}
-            selected={selectedIds.has(item.id)}
-            onToggleSelect={() => toggleSelect(item.id)}
-          />
+          <SwipeRow
+            enabled={!selectMode}
+            left={(item.quantity ?? 0) > 0 ? [{ key: "sell", label: "Sell", icon: "cash-outline", color: SWIPE_COLORS.sell, onPress: () => router.push(`/inventory/sale?add=${item.id}`) }] : []}
+            right={[
+              { key: "edit", label: "Edit", icon: "create-outline", color: SWIPE_COLORS.edit, onPress: () => router.push(`/inventory/edit?id=${item.id}`) },
+              { key: "delete", label: "Delete", icon: "trash-outline", color: SWIPE_COLORS.delete, onPress: () => deleteWithUndo(item) },
+            ]}
+          >
+            <InventoryCard
+              item={item}
+              onPress={() => router.push(`/inventory/${item.id}`)}
+              selectMode={selectMode}
+              selected={selectedIds.has(item.id)}
+              onToggleSelect={() => toggleSelect(item.id)}
+            />
+          </SwipeRow>
         )}
         contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.sm }]}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
@@ -321,6 +390,17 @@ export default function InventoryListScreen() {
                   </TouchableOpacity>
                 </View>
               ) : null}
+              <View style={styles.activeFilters}>
+                <TouchableOpacity
+                  testID="sort-button"
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort: ${sortLabel(sort)}. Change sort`}
+                  onPress={() => setFilterOpen(true)}
+                  hitSlop={10}
+                >
+                  <Pill label={`Sort: ${sortLabel(sort)}`} tone={sort === "newest" ? "neutral" : "primary"} />
+                </TouchableOpacity>
+              </View>
               {activeFilterCount ? (
                 <View style={styles.activeFilters}>
                   {statusFilter ? <Pill label={STATUS_LABELS[statusFilter] || statusFilter} tone={STATUS_TONES[statusFilter] || "primary"} /> : null}
@@ -342,7 +422,20 @@ export default function InventoryListScreen() {
           <Card>
             <View style={styles.empty}>
               <IconCircle name="cube-outline" size={56} />
-              <Text style={styles.emptyTitle}>No inventory matches this view.</Text>
+              <Text style={styles.emptyTitle}>{searchQuery.trim() ? `Nothing matches "${searchQuery.trim()}"` : "No inventory matches this view."}</Text>
+              {suggestion ? (
+                <TouchableOpacity
+                  testID="did-you-mean"
+                  accessibilityRole="button"
+                  accessibilityLabel={`Did you mean ${suggestion.name}? Search for it`}
+                  onPress={() => onSearchChange(suggestion.name)}
+                  hitSlop={8}
+                >
+                  <Text style={styles.emptyText}>
+                    Did you mean <Text style={styles.suggestion}>{suggestion.name}</Text>?
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
               <Text style={styles.emptyText}>Change the filters or add a new stock item to continue.</Text>
               <View style={styles.emptyCta}>
                 <ActionButton label="Add an item" onPress={() => router.push("/inventory/add")} />
@@ -352,6 +445,7 @@ export default function InventoryListScreen() {
           </Card>
         }
       />
+      <UndoBar state={undo} />
       {selectMode && selectedIds.size > 0 ? (
         <View style={styles.bulkBar}>
           <Text style={styles.bulkCount}>{selectedIds.size} selected</Text>
@@ -379,9 +473,15 @@ export default function InventoryListScreen() {
         <TouchableOpacity testID="filter-backdrop" style={styles.modalBackdrop} activeOpacity={1} onPress={() => setFilterOpen(false)}>
           <TouchableOpacity activeOpacity={1} style={styles.filterSheet}>
             <View style={styles.filterSheetHead}>
-              <Text style={styles.filterSheetTitle}>Filter inventory</Text>
+              <Text style={styles.filterSheetTitle}>Sort and filter</Text>
               <TouchableOpacity accessibilityLabel="Close filters" onPress={() => setFilterOpen(false)}><Icon name="close" size={20} color={COLORS.textMuted} /></TouchableOpacity>
             </View>
+            <ScrollView contentContainerStyle={styles.filterScroll}>
+
+            <Text style={styles.filterGroupLabel}>Sort by</Text>
+            {SORT_OPTIONS.map(({ key, label }) => (
+              <FilterOption key={key} label={label} active={sort === key} onPress={() => { applySort(key); setFilterOpen(false); }} />
+            ))}
 
             <Text style={styles.filterGroupLabel}>Status</Text>
             <FilterOption label="All statuses" active={!statusFilter} onPress={() => { applyStatus(null); setFilterOpen(false); }} />
@@ -398,6 +498,7 @@ export default function InventoryListScreen() {
                 ))}
               </>
             ) : null}
+            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -454,15 +555,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  filterBadgeText: { color: "#fff", fontSize: 10, fontWeight: "600" },
+  filterBadgeText: { color: BRAND.onPrimary, fontSize: 10, fontWeight: "600" },
+  suggestion: { color: COLORS.primaryBright, fontWeight: "600" },
   activeFilters: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs, marginTop: SPACING.sm },
   exportOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: SPACING.xl },
   exportCard: { backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.xl, alignItems: "center", gap: SPACING.md, maxWidth: 320 },
   exportTitle: { color: COLORS.text, fontSize: 16, fontWeight: "600", textAlign: "center" },
   exportHint: { color: COLORS.textMuted, fontSize: 13, textAlign: "center", lineHeight: 19 },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
+  filterScroll: { gap: 4 },
   filterSheet: {
-    backgroundColor: COLORS.card,
+    maxHeight: "85%",
+    backgroundColor: COLORS.bgElevated,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     borderWidth: 1,

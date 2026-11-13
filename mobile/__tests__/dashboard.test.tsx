@@ -21,6 +21,11 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('../components/GetStarted', () => ({ GetStarted: () => null }));
+jest.mock('../services/offline/snapshot', () => ({
+  peekSnapshot: () => undefined,
+  loadSnapshot: async () => undefined,
+  saveSnapshot: () => undefined,
+}));
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -211,7 +216,7 @@ describe('DashboardScreen', () => {
     });
   });
 
-  it('refreshes through the native refresh control and retries a failed load', async () => {
+  it('refreshes through the native refresh control and keeps numbers on a failed refresh', async () => {
     setupMocks();
     const screen = render(<DashboardScreen />);
     await screen.findByTestId('dashboard-content');
@@ -222,10 +227,10 @@ describe('DashboardScreen', () => {
 
     (apiMock.getDashboard as jest.Mock).mockRejectedValueOnce(new Error('offline'));
     await act(async () => control.props.onRefresh());
-    await screen.findByTestId('dashboard-error');
-    (apiMock.getDashboard as jest.Mock).mockResolvedValueOnce(MOCK_DASHBOARD);
-    fireEvent.press(screen.getByText('Retry'));
-    await screen.findByTestId('dashboard-content');
+    await waitFor(() => expect(apiMock.getDashboard).toHaveBeenCalledTimes(3));
+    // Stale-but-visible: the last numbers stay up instead of an error page.
+    expect(screen.getByTestId('dashboard-content')).toBeTruthy();
+    expect(screen.queryByTestId('dashboard-error')).toBeNull();
   });
 
   it('renders low-stock state derived from inventory', async () => {

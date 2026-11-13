@@ -26,7 +26,14 @@ export {
   readCachedDashboard,
   isTempId,
 } from "./inventory";
-export { clearOfflineData } from "./store";
+import { clearOfflineData as clearStore } from "./store";
+import { clearSnapshots } from "./snapshot";
+export { peekSnapshot, loadSnapshot, saveSnapshot } from "./snapshot";
+
+/** Wipe all offline state (mirror, outbox, caches, screen snapshots) on sign-out. */
+export async function clearOfflineData(): Promise<void> {
+  await Promise.all([clearStore(), clearSnapshots()]);
+}
 export { setSender } from "./sender";
 
 let _started = false;

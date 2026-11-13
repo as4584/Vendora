@@ -469,6 +469,24 @@ describe('API endpoint contracts', () => {
     await api.listItems({ upc: '012345678905', perPage: 5 });
     expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/inventory?page=1&per_page=5&upc=012345678905');
 
+    // Sort menu; the default sort is left off the URL.
+    await api.listItems({ sort: 'profit' });
+    expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/inventory?page=1&per_page=20&sort=profit');
+    await api.listItems({ sort: 'newest' });
+    expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/inventory?page=1&per_page=20');
+
+    // Last sold price; quiet null when the server can't say.
+    fetchMock.mockResolvedValueOnce(response({ unit_price: '240.00', sold_at: '2026-11-01T00:00:00Z', quantity: 1, match: 'this_item' }));
+    await expect(api.getLastSale('item-1')).resolves.toMatchObject({ unit_price: '240.00' });
+    expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/inventory/item-1/last-sale');
+    fetchMock.mockResolvedValueOnce(response({ detail: 'boom' }, 500));
+    await expect(api.getLastSale('item-1')).resolves.toBeNull();
+    await expect(api.getLastSale('local_abc')).resolves.toBeNull();
+    fetchMock.mockResolvedValueOnce(response([]));
+    await expect(api.getLastSale('item-1')).resolves.toBeNull();
+    fetchMock.mockResolvedValueOnce(response({ unit_price: '0.00', sold_at: 'nope' }));
+    await expect(api.getLastSale('item-1')).resolves.toBeNull();
+
     await api.listTransactions(2, 40);
     expectPath(lastRequest(fetchMock as unknown as jest.Mock).url, '/transactions?page=2&per_page=40');
     await api.listTransactions({ page: 3, perPage: 5, itemId: 'item-1' });

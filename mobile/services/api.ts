@@ -25,6 +25,7 @@ import {
   cacheDashboard,
   readCachedDashboard,
 } from "./offline";
+import type { SortKey } from "../utils/inventorySort";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://vendora.lexmakesit.com/api/v1";
@@ -452,6 +453,8 @@ export interface ListItemsParams {
   availableOnly?: boolean;
   /** Exact barcode match (scan to sell). */
   upc?: string;
+  /** Sort menu order; server default is newest. */
+  sort?: SortKey;
 }
 
 export async function listItems(
@@ -480,6 +483,7 @@ export async function listItems(
   if (params.source) qs.set("source", params.source);
   if (params.availableOnly) qs.set("available_only", "true");
   if (params.upc) qs.set("upc", params.upc);
+  if (params.sort && params.sort !== "newest") qs.set("sort", params.sort);
 
   if (!isOnline()) return offlineListItems(normalized);
   try {
@@ -507,6 +511,29 @@ export async function getItem(id: string): Promise<InventoryItem> {
       if (cached) return cached;
     }
     throw e;
+  }
+}
+
+export interface LastSale {
+  unit_price: string;
+  sold_at: string;
+  quantity: number;
+  /** this_item, or the same product sold as another item (SKU, then name). */
+  match: "this_item" | "same_sku" | "same_name";
+}
+
+/** What this product last sold for (your own sales). null if never, or offline. */
+export async function getLastSale(id: string): Promise<LastSale | null> {
+  if (!isOnline() || isTempId(id)) return null;
+  try {
+    const sale = await request<LastSale | null>(`/inventory/${id}/last-sale`);
+    // Only trust a real price and date; anything else (old server, proxy page) means "unknown".
+    const valid =
+      !!sale && typeof sale === "object" && !Number.isNaN(Number(sale.unit_price)) && Number(sale.unit_price) > 0 &&
+      !Number.isNaN(new Date(sale.sold_at).getTime());
+    return valid ? sale : null;
+  } catch {
+    return null;
   }
 }
 

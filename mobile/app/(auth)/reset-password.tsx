@@ -13,7 +13,7 @@ import { Link, router, useLocalSearchParams } from "expo-router";
 
 import { resetPassword } from "../../services/api";
 
-import { COLORS } from "../../theme/tokens";
+import { BRAND, COLORS } from "../../theme/tokens";
 import { Button } from "../../components/Button";
 export default function ResetPasswordScreen() {
     const params = useLocalSearchParams<{ token?: string | string[] }>();
@@ -84,7 +84,7 @@ export default function ResetPasswordScreen() {
                     accessibilityLabel="New Password"
                     style={styles.input}
                     placeholder="New password"
-                    placeholderTextColor="#8C8C96"
+                    placeholderTextColor={COLORS.textSoft}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -96,7 +96,7 @@ export default function ResetPasswordScreen() {
                     accessibilityLabel="Confirm Password"
                     style={styles.input}
                     placeholder="Re-enter new password"
-                    placeholderTextColor="#8C8C96"
+                    placeholderTextColor={COLORS.textSoft}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry
@@ -110,27 +110,27 @@ export default function ResetPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#0E0E11" },
+    container: { flex: 1, backgroundColor: COLORS.bg },
     centered: { justifyContent: "center", paddingHorizontal: 32 },
     content: { flex: 1, justifyContent: "center", paddingHorizontal: 32 },
-    title: { color: "#FFFFFF", fontSize: 30, fontWeight: "600", marginBottom: 12 },
-    subtitle: { color: "#A6A6B0", fontSize: 16, lineHeight: 23, marginBottom: 28 },
+    title: { color: COLORS.text, fontSize: 30, fontWeight: "600", marginBottom: 12 },
+    subtitle: { color: COLORS.textMuted, fontSize: 16, lineHeight: 23, marginBottom: 28 },
     label: {
-        color: "#A6A6B0",
+        color: COLORS.textMuted,
         fontSize: 13,
         fontWeight: "600",
         marginBottom: 8,
         marginTop: 12,
     },
     input: {
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
-        color: "#FFFFFF",
+        color: COLORS.text,
         fontSize: 16,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
     },
     button: {
         backgroundColor: COLORS.primary,
@@ -141,5 +141,5 @@ const styles = StyleSheet.create({
     },
     buttonSpacing: { marginTop: 24 },
     buttonDisabled: { opacity: 0.6 },
-    buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" },
+    buttonText: { color: BRAND.onPrimary, fontSize: 16, fontWeight: "600" },
 });

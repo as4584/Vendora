@@ -36,6 +36,11 @@ jest.mock('../context/auth', () => {
   };
 });
 
+jest.mock('../services/onboarding', () => ({
+  checkOnboarding: jest.fn(async () => 'done'),
+  subscribeOnboarding: jest.fn(() => () => undefined),
+  allowedDuringOnboarding: jest.fn(() => true),
+}));
 jest.mock('../services/pushAlerts', () => ({
   syncPushToken: jest.fn(async () => false),
   maybePromptSaleAlerts: jest.fn(async () => undefined),

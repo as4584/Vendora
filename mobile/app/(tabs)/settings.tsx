@@ -633,6 +633,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: "100%",
     maxWidth: 520,
+    backgroundColor: COLORS.bgElevated,
     gap: SPACING.sm,
   },
   inputLabel: { color: COLORS.textSoft, fontSize: 12, fontWeight: "600", marginTop: SPACING.xs },

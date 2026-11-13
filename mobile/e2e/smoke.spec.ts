@@ -100,6 +100,8 @@ test.describe('Completed product surfaces', () => {
     await page.addInitScript(() => {
       window.localStorage.setItem('vendora_access_token', 'e2e-access-token');
       window.localStorage.setItem('vendora_refresh_token', 'e2e-refresh-token');
+      // Existing seller: skip the new-seller setup screen.
+      window.localStorage.setItem('vendora.onboarded.user-1', '1');
     });
     await page.route('**/api/v1/**', async (route) => {
       const path = new URL(route.request().url()).pathname;

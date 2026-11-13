@@ -2,7 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 import fixtures from './visual/fixtures.json';
 
 async function openCheckout(page: Page, inventory: () => unknown | null) {
-  await page.addInitScript(() => localStorage.setItem('vendora_access_token', 'local-test-token'));
+  // Existing seller: skip the new-seller setup screen.
+  await page.addInitScript(() => { localStorage.setItem('vendora_access_token', 'local-test-token'); localStorage.setItem('vendora.onboarded.72696639-c194-442f-9c4b-8c131ffa6763', '1'); localStorage.setItem('vendora.onboarded.user-1', '1'); });
   await page.route('**/api/v1/**', route => {
     const path = new URL(route.request().url()).pathname;
     const body = path.endsWith('/auth/me') ? fixtures.me

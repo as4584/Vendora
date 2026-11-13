@@ -153,3 +153,34 @@ export function smartSearch<T extends Searchable>(items: T[], raw?: string | nul
     .sort((a, b) => b.s - a.s || a.i - b.i)
     .map((x) => x.item);
 }
+
+/**
+ * "Did you mean…" for a search that found nothing: the item whose name is the
+ * closest loose match (each word allowed a bigger typo than the main search),
+ * or null when nothing is reasonably close.
+ */
+export function didYouMean<T extends Searchable>(items: T[], raw?: string | null): T | null {
+  const q = words(raw ?? "").filter((w) => w.length >= 3);
+  if (!q.length) return null;
+  let best: T | null = null;
+  let bestScore = 0;
+  for (const item of items) {
+    const ws = words([item.name, item.sku].filter(Boolean).join(" "));
+    if (!ws.length) continue;
+    let total = 0;
+    for (const t of q) {
+      const s = Math.max(0, ...ws.map((w) => (w.startsWith(t) ? 1 : similar(t, w))));
+      if (s < 0.55) {
+        total = 0;
+        break;
+      }
+      total += s;
+    }
+    const score = total / q.length;
+    if (score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return bestScore >= 0.6 ? best : null;
+}

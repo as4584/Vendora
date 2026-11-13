@@ -339,8 +339,8 @@ const styles = StyleSheet.create({
   hint: { ...TYPE.footnote, color: COLORS.textMuted, marginTop: SPACING.xxs },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs },
   linkRow: { gap: SPACING.xxs, paddingVertical: SPACING.xs, borderTopWidth: 1, borderTopColor: COLORS.border },
-  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: COLORS.bg },
-  sheet: { backgroundColor: COLORS.card, padding: SPACING.md, gap: SPACING.sm, borderTopLeftRadius: RADII.xl, borderTopRightRadius: RADII.xl },
+  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: COLORS.canvas },
+  sheet: { backgroundColor: COLORS.bgElevated, padding: SPACING.md, gap: SPACING.sm, borderTopLeftRadius: RADII.xl, borderTopRightRadius: RADII.xl },
   input: {
     ...TYPE.body, color: COLORS.text, backgroundColor: COLORS.cardAlt, borderRadius: RADII.md,
     borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.sm, minHeight: 48,
