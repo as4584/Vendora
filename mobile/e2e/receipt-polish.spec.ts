@@ -8,6 +8,7 @@ test('confirmed sale shows a readable receipt with reduced motion', async ({ pag
     const path = new URL(route.request().url()).pathname;
     const body = path.endsWith('/auth/me') ? fixtures.me
       : path.endsWith('/inventory') ? fixtures.inventory
+      : path.endsWith(`/inventory/${fixtures.item_id}`) ? fixtures.item
       : path.endsWith('/transactions/order') ? { order_id: 'receipt-test-order', transactions: [] }
       : path.endsWith('/dashboard') ? fixtures.dashboard : [];
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });

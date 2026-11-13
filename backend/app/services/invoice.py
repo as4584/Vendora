@@ -12,7 +12,6 @@ Rules:
     Cancelled invoices cannot be paid.
     Stripe webhook triggers paid transition.
 """
-import logging
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -22,9 +21,7 @@ from sqlalchemy.orm import Session
 from app.models.invoice import Invoice, InvoiceItem, InvoicePayment
 from app.models.inventory import InventoryItem
 from app.models.transaction import Transaction
-from app.services.inventory import deduct_stock
-
-logger = logging.getLogger(__name__)
+from app.services.inventory import check_availability, deduct_stock
 
 
 VALID_INVOICE_TRANSITIONS: dict[str, list[str]] = {
@@ -68,10 +65,15 @@ def transition_invoice(invoice: Invoice, new_status: str, db: Session) -> Invoic
             },
         )
 
-    invoice.status = new_status
-    db.add(invoice)
-    db.commit()
-    db.refresh(invoice)
+    if new_status == "paid":
+        # The payment, stock and status must commit together. A stock conflict
+        # leaves the invoice in its previous state, still payable.
+        process_invoice_payment(invoice, db)
+    else:
+        invoice.status = new_status
+        db.add(invoice)
+        db.commit()
+        db.refresh(invoice)
     return invoice
 
 
@@ -105,8 +107,6 @@ def _variant_rows(item: InventoryItem) -> list[dict]:
 
 def check_invoice_item_availability(item: InventoryItem, requested_qty: int, size_label: str | None = None) -> None:
     if not size_label:
-        from app.services.inventory import check_availability
-
         check_availability(item, requested_qty)
         return
 
@@ -170,60 +170,68 @@ def _money(value) -> Decimal:
 
 
 def allocate(amount: Decimal, weights: list[Decimal]) -> list[Decimal]:
-    """Split ``amount`` across lines by weight; the last line absorbs rounding."""
+    """Split nonnegative cents across lines without a negative remainder."""
     if not weights:
         return []
     total_weight = sum(weights, Decimal("0"))
-    parts: list[Decimal] = []
-    for weight in weights[:-1]:
-        share = (amount * weight / total_weight).quantize(CENT) if total_weight > 0 else Decimal("0.00")
-        parts.append(share)
-    parts.append(amount - sum(parts, Decimal("0.00")))
+    parts = [Decimal("0.00")] * len(weights)
+    last = max((i for i, weight in enumerate(weights) if weight > 0), default=len(weights) - 1)
+    remaining = amount
+    for i in range(last):
+        share = (amount * weights[i] / total_weight).quantize(CENT) if total_weight > 0 else Decimal("0.00")
+        parts[i] = min(remaining, share)
+        remaining -= parts[i]
+    parts[last] = remaining
     return parts
 
 
 def _deduct_invoice_stock(invoice: Invoice, items: list[InvoiceItem], db: Session) -> None:
     """Hand the goods over. Runs once, on the invoice's first payment, and
     freezes each line's cost of goods at that moment."""
+    item_ids = {line.inventory_item_id for line in items if line.inventory_item_id}
+    stock = {
+        item.id: item
+        for item in db.query(InventoryItem).filter(
+            InventoryItem.id.in_(item_ids),
+            InventoryItem.user_id == invoice.user_id,
+            InventoryItem.deleted_at.is_(None),
+        ).order_by(InventoryItem.id).populate_existing().with_for_update().all()
+    } if item_ids else {}
+
     for inv_item in items:
         if not inv_item.inventory_item_id:
             continue
-        item = db.query(InventoryItem).filter(
-            InventoryItem.id == inv_item.inventory_item_id,
-            InventoryItem.deleted_at.is_(None),
-        ).first()
+        item = stock.get(inv_item.inventory_item_id)
         if not item:
-            continue
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "invoice_item_unavailable",
+                    "message": "An inventory item on this invoice is no longer available.",
+                    "item_id": str(inv_item.inventory_item_id),
+                },
+            )
+        # Both the aggregate and the selected size must still have stock.
+        # Earlier lines in this same payment may already have consumed some.
+        check_availability(item, inv_item.quantity)
+        if inv_item.size_label:
+            check_invoice_item_availability(item, inv_item.quantity, inv_item.size_label)
         if item.buy_price is not None:
-            inv_item.cost_amount = _money(Decimal(str(item.buy_price)) * inv_item.quantity)
+            inv_item.cost_amount = _money(item.buy_price) * inv_item.quantity
             db.add(inv_item)
-        # Set actual sell price regardless of stock path taken
         item.actual_sell_price = inv_item.unit_price
         db.add(item)
         idem_key = f"invoice:{invoice.id}:invitem:{inv_item.id}:pay"
-        try:
-            _deduct_variant_quantity(item, inv_item.size_label, inv_item.quantity)
-            deduct_stock(
-                db,
-                item,
-                quantity=inv_item.quantity,
-                event_type="sale",
-                source_type="invoice",
-                source_id=str(invoice.id),
-                idempotency_key=idem_key,
-            )
-        except HTTPException:
-            # Migration compatibility: item may already be in 'sold' state from
-            # a prior flow that didn't track quantity.  Fall back to a direct
-            # status flip so existing data keeps working.
-            logger.warning(
-                "deduct_stock failed for item %s on invoice %s — "
-                "falling back to direct status transition.",
-                item.id, invoice.id,
-            )
-            if item.status in ("in_stock", "listed"):
-                item.status = "sold"
-                db.add(item)
+        _deduct_variant_quantity(item, inv_item.size_label, inv_item.quantity)
+        deduct_stock(
+            db,
+            item,
+            quantity=inv_item.quantity,
+            event_type="sale",
+            source_type="invoice",
+            source_id=str(invoice.id),
+            idempotency_key=idem_key,
+        )
 
 
 def record_invoice_payment(
@@ -236,9 +244,9 @@ def record_invoice_payment(
 ) -> InvoicePayment:
     """Record a partial or full payment and the sale transactions it books.
 
-    Each payment writes one transaction per line, splitting the amount by
-    line value (so per-item and per-category reports keep working). Cost of
-    goods is booked by the same paid fraction using cumulative rounding:
+    Each payment writes one transaction per line, splitting revenue and tax
+    separately by line value. Tax and cost of goods are booked by the paid
+    fraction using cumulative rounding:
     cost_this_payment = round(line_cost * paid_after / total)
                       - round(line_cost * paid_before / total)
     which telescopes, so when the invoice is paid in full the cost on its
@@ -294,8 +302,14 @@ def record_invoice_payment(
         _deduct_invoice_stock(invoice, items, db)
 
     paid_after = paid_before + amount
-    grosses = allocate(amount, [_money(i.line_total) for i in items])
-    for inv_item, gross in zip(items, grosses):
+    # Legacy invoices allow a discount larger than pretax charges. Never
+    # book more tax than the total collected or turn a sale negative.
+    total_tax = min(_money(invoice.tax), total)
+    tax = _money(total_tax * paid_after / total) - _money(total_tax * paid_before / total)
+    weights = [_money(i.line_total) for i in items]
+    grosses = allocate(amount - tax, weights)
+    taxes = allocate(tax, weights)
+    for inv_item, gross, line_tax in zip(items, grosses, taxes, strict=True):
         cost = None
         if inv_item.cost_amount is not None:
             line_cost = _money(inv_item.cost_amount)
@@ -311,6 +325,7 @@ def record_invoice_payment(
             gross_amount=gross,
             fee_amount=Decimal("0.00"),
             net_amount=gross,
+            tax_amount=line_tax,
             # Units count once: on the payment that handed the goods over.
             quantity=inv_item.quantity if first_payment else 0,
             # Explicit cost (possibly 0.00 on a later payment) so the
@@ -356,7 +371,8 @@ def process_invoice_payment(invoice: Invoice, db: Session) -> None:
         db.add(invoice)
         db.commit()
         return
-    # Undo a caller's early "paid" so the payable check passes; the payment
-    # sets the final status.
-    invoice.status = "partially_paid" if paid_before > 0 else "sent"
+    # The Stripe handler can pass an in-memory "paid" invoice; the payment
+    # sets the final status. Manual transitions have already been validated.
+    if invoice.status == "paid":
+        invoice.status = "partially_paid" if paid_before > 0 else "sent"
     record_invoice_payment(invoice, balance, method, db)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -41,19 +41,30 @@ import { errorMessage } from "../../../services/errors";
 const PRIMARY_METHODS = ["cash", "card"];
 const OTHER_METHODS = ["venmo", "cashapp", "paypal", "zelle", "other"];
 const PART_METHODS = [...PRIMARY_METHODS, ...OTHER_METHODS];
+const CATALOG_PAGE_SIZE = 12;
 
 // price: the agreed per-unit price as typed (defaults to the list price, editable to haggle).
 type CartLine = { item: api.InventoryItem; qty: number; price: string; size?: string };
 type PaymentRow = { key: string; method: string; amount: string };
 
 const listPrice = (item: api.InventoryItem) => centsToString(toCents(item.expected_sell_price || "0"));
-const lineMax = (line: CartLine) => {
+const cartKey = (itemId: string, size?: string) => size ? `${itemId}:${size.trim().toLowerCase()}` : itemId;
+const lineMax = (line: CartLine, cart: Record<string, CartLine>, key: string) => {
   const sizes = sizeOptions(line.item);
-  if (line.size) return Math.max(1, sizes.find((s) => s.size === line.size)?.quantity ?? 1);
-  return Math.max(1, resolveQty(line.item));
+  const otherQty = Object.entries(cart).reduce(
+    (sum, [id, other]) => id !== key && other.item.id === line.item.id ? sum + other.qty : sum,
+    0,
+  );
+  const available = Math.max(0, resolveQty(line.item) - otherQty);
+  if (!sizes.length) return available;
+  if (!line.size) return Math.min(1, available);
+  return Math.min(available, sizes.find((s) => s.size === line.size)?.quantity ?? 0);
 };
+const unselectedSizes = (item: api.InventoryItem, cart: Record<string, CartLine>) =>
+  sizeOptions(item).filter((s) => s.quantity > 0 && !cart[cartKey(item.id, s.size)]);
 let rowSeq = 0;
 const newRow = (method: string, amount = ""): PaymentRow => ({ key: `p${++rowSeq}`, method, amount });
+const newCheckoutId = () => `checkout_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 
 export default function QuickSaleScreen() {
   const router = useRouter();
@@ -62,6 +73,8 @@ export default function QuickSaleScreen() {
   const [loadingItems, setLoadingItems] = useState(true);
   const [itemsError, setItemsError] = useState(false);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [pages, setPages] = useState(0);
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const [method, setMethod] = useState("cash");
   const [split, setSplit] = useState<PaymentRow[]>([]);
@@ -79,45 +92,80 @@ export default function QuickSaleScreen() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanLock = useRef(false);
-  const prefilled = useRef(false);
+  const catalogRequest = useRef(0);
+  const submissionInFlight = useRef(false);
+  const checkoutAttempt = useRef<{ fingerprint: string; id: string } | null>(null);
 
   const addToCart = useCallback((item: api.InventoryItem) => {
     setCart((prev) => {
-      const existing = prev[item.id];
-      if (existing) {
-        return { ...prev, [item.id]: { ...existing, qty: Math.min(lineMax(existing), existing.qty + 1) } };
-      }
-      const sizes = sizeOptions(item).filter((s) => s.quantity > 0);
-      return {
-        ...prev,
-        [item.id]: { item, qty: 1, price: listPrice(item), size: sizes.length === 1 ? sizes[0].size : undefined },
-      };
+      const variants = sizeOptions(item);
+      const sizes = variants.filter((s) => s.quantity > 0);
+      if (variants.length && !sizes.length) return prev;
+      const options = unselectedSizes(item, prev);
+      if (sizes.length > 1 && (!options.length || prev[item.id])) return prev;
+      const size = options.length === 1 ? options[0].size : sizes.length === 1 ? sizes[0].size : undefined;
+      const key = cartKey(item.id, size);
+      const existing = prev[key];
+      const line = existing ? { ...existing, qty: existing.qty + 1 } : { item, qty: 1, price: listPrice(item), size };
+      const qty = Math.min(lineMax(line, prev, key), line.qty);
+      if (!qty) return prev;
+      return { ...prev, [key]: { ...line, qty } };
     });
   }, []);
 
-  const addParam = params.add;
-  const loadItems = useCallback(() => {
-    return api
-      .listItems({ perPage: 100, availableOnly: true })
-      .then((result) => {
-        setItemsError(false);
-        setItems(result.items);
-        // Deep link from an item ("Sell this"): /inventory/sale?add=<item id>.
-        const hit = addParam && !prefilled.current ? result.items.find((i) => i.id === addParam) : undefined;
-        if (hit) {
-          prefilled.current = true;
-          addToCart(hit);
-        }
-      })
-      .catch(() => setItemsError(true))
-      .finally(() => setLoadingItems(false));
-  }, [addParam, addToCart]);
+  const loadItems = useCallback(async (term: string, nextPage = 1) => {
+    const request = ++catalogRequest.current;
+    setLoadingItems(true);
+    setItemsError(false);
+    try {
+      const result = await api.listItems({
+        perPage: CATALOG_PAGE_SIZE,
+        availableOnly: true,
+        ...(nextPage > 1 ? { page: nextPage } : {}),
+        ...(term ? { q: term } : {}),
+      });
+      if (request !== catalogRequest.current) return;
+      if (nextPage === 1) setItems(result.items);
+      else {
+        setItems((prev) => Array.from(new Map([...prev, ...result.items].map((item) => [item.id, item])).values()));
+      }
+      setPage(nextPage);
+      setPages(result.pages);
+    } catch {
+      if (request === catalogRequest.current) setItemsError(true);
+    } finally {
+      if (request === catalogRequest.current) setLoadingItems(false);
+    }
+  }, []);
+
+  const term = query.trim();
+  useEffect(() => {
+    const timer = setTimeout(() => { void loadItems(term); }, term ? 200 : 0);
+    return () => {
+      clearTimeout(timer);
+      catalogRequest.current += 1;
+    };
+  }, [loadItems, term]);
 
   useEffect(() => {
-    loadItems();
+    const add = params.add;
+    if (!add) return;
+    let active = true;
+    // "Sell this" must work even when the item isn't on the first page.
+    api.getItem(add).then((item) => {
+      if (active && resolveQty(item) > 0 && (item.status === "in_stock" || item.status === "listed")) addToCart(item);
+    }).catch(() => {
+      if (active) Alert.alert("Item unavailable", "Search your inventory to add an item to this sale.");
+    });
+    return () => { active = false; };
+  }, [addToCart, params.add]);
+
+  useEffect(() => {
+    let active = true;
     api
       .getMe()
       .then((me) => {
+        if (!active) return;
         setBusinessName(me.business_name);
         const rate = me.sales_tax_rate ? String(Number(me.sales_tax_rate)) : "";
         if (rate && Number(rate) > 0) {
@@ -127,15 +175,20 @@ export default function QuickSaleScreen() {
         }
       })
       .catch(() => undefined);
-  }, [loadItems]);
+    return () => { active = false; };
+  }, []);
 
-  const filtered = useMemo(() => {
-    if (!query.trim()) return items;
-    const q = query.toLowerCase();
-    return items.filter((item) =>
-      [item.name, item.sku || "", item.category || "", item.upc || ""].some((value) => value.toLowerCase().includes(q))
-    );
-  }, [items, query]);
+  const changeSearch = (value: string) => {
+    if (value.trim() !== term) {
+      catalogRequest.current += 1;
+      setItems([]);
+      setPage(0);
+      setPages(0);
+      setLoadingItems(true);
+      setItemsError(false);
+    }
+    setQuery(value);
+  };
 
   const cartLines = Object.values(cart);
   const totals = computeCheckout({
@@ -149,22 +202,19 @@ export default function QuickSaleScreen() {
   const splitPaid = split.reduce((sum, row) => sum + toCents(row.amount), 0);
   const splitLeft = totals.total - splitPaid;
 
-  const toggleItem = (item: api.InventoryItem) => {
-    if (cart[item.id]) {
-      setCart((prev) => {
-        const next = { ...prev };
-        delete next[item.id];
-        return next;
-      });
-    } else {
-      addToCart(item);
-    }
+  const removeCartLine = (id: string) => {
+    setCart((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   const changeQty = (id: string, delta: number) => {
     setCart((prev) => {
       const line = prev[id];
-      const qty = Math.min(lineMax(line), Math.max(1, line.qty + delta));
+      if (!line) return prev;
+      const qty = Math.max(1, Math.min(lineMax(line, prev, id), line.qty + delta));
       return { ...prev, [id]: { ...line, qty } };
     });
   };
@@ -175,8 +225,16 @@ export default function QuickSaleScreen() {
 
   const pickSize = (id: string, size: string) => {
     setCart((prev) => {
+      if (!prev[id]) return prev;
       const line = { ...prev[id], size };
-      return { ...prev, [id]: { ...line, qty: Math.min(line.qty, lineMax(line)) } };
+      const key = cartKey(line.item.id, size);
+      if (key !== id && prev[key]) return prev;
+      const qty = Math.min(line.qty, lineMax(line, prev, id));
+      if (!qty) return prev;
+      // Retain cart order when replacing a placeholder with a sized line.
+      return Object.fromEntries(Object.entries(prev).map(([k, v]) =>
+        k === id ? [key, { ...line, qty }] : [k, v],
+      ));
     });
   };
 
@@ -228,7 +286,6 @@ export default function QuickSaleScreen() {
       try {
         const res = await api.listItems({ upc: data, perPage: 5, availableOnly: true });
         hit = res.items[0];
-        if (hit) setItems((prev) => (prev.some((i) => i.id === hit!.id) ? prev : [hit!, ...prev]));
       } catch {
         hit = undefined;
       }
@@ -250,17 +307,28 @@ export default function QuickSaleScreen() {
   };
 
   const resetSale = () => {
+    checkoutAttempt.current = null;
     setCart({});
+    setMethod("cash");
     setSplit([]);
     setFeeAmount("");
+    setDiscountMode("amount");
     setDiscountValue("");
+    setTaxRate(defaultTax);
+    setTaxOn(Number(defaultTax) > 0);
     setNotes("");
+    setCustomer(null);
     setReceipt(null);
-    setLoadingItems(true);
-    loadItems();
+    if (term) changeSearch("");
+    else {
+      setItems([]);
+      setPage(0);
+      void loadItems("");
+    }
   };
 
   const handleSubmit = async () => {
+    if (submissionInFlight.current) return;
     if (cartLines.length === 0) {
       Alert.alert("No items selected", "Tap items above to add them to this sale.");
       return;
@@ -287,6 +355,7 @@ export default function QuickSaleScreen() {
       );
       return;
     }
+    submissionInFlight.current = true;
     setSubmitting(true);
     try {
       // One request for the whole checkout: the server records every line or
@@ -314,6 +383,16 @@ export default function QuickSaleScreen() {
         else payload.discount_amount = centsToString(totals.discount);
       }
       if (totals.tax > 0) payload.tax_rate = taxRate.trim();
+      const fingerprint = JSON.stringify(payload);
+      // A retry after an ambiguous failure may be the same sale on the server.
+      // Keep its key until the sale resets or the operator changes the order.
+      if (checkoutAttempt.current?.fingerprint !== fingerprint) {
+        checkoutAttempt.current = {
+          fingerprint,
+          id: newCheckoutId(),
+        };
+      }
+      payload.client_request_id = checkoutAttempt.current.id;
       const order = await api.createSaleOrder(payload);
       const offline = !!order.pending || !isOnline();
       triggerHaptic("success");
@@ -338,6 +417,7 @@ export default function QuickSaleScreen() {
     } catch (err) {
       Alert.alert("Sale failed", errorMessage(err, "Could not log this sale."));
     } finally {
+      submissionInFlight.current = false;
       setSubmitting(false);
     }
   };
@@ -370,32 +450,38 @@ export default function QuickSaleScreen() {
               style={[styles.input, styles.flex]}
               placeholder="Search name, SKU or barcode"
               placeholderTextColor={COLORS.textSoft}
+              maxLength={200}
               value={query}
-              onChangeText={setQuery}
+              onChangeText={changeSearch}
             />
             <IconButton icon="barcode-outline" label="Scan barcode to add" variant="primary" onPress={openScanner} />
           </View>
-          {loadingItems ? (
+          {loadingItems && items.length === 0 ? (
             <View accessibilityRole="progressbar" accessibilityLabel="Loading sellable inventory" style={{ gap: SPACING.xs }}>
               <ActivityIndicator color={COLORS.primary} />
               <Text style={styles.helperText}>Getting your stock ready…</Text>
             </View>
-          ) : itemsError ? (
+          ) : itemsError && items.length === 0 ? (
             <View style={{ gap: SPACING.sm }}>
               <Text accessibilityRole="alert" style={styles.helperText}>{"Couldn't load your stock. Try again."}</Text>
-              <Button label="Try loading stock again" variant="secondary" onPress={() => { setLoadingItems(true); void loadItems(); }} />
+              <Button label="Try loading stock again" variant="secondary" onPress={() => { void loadItems(term); }} />
             </View>
           ) : (
             <View style={{ gap: SPACING.sm }}>
-              {filtered.slice(0, 12).map((item) => {
-                const added = !!cart[item.id];
+              {items.map((item) => {
+                const sized = sizeOptions(item).length > 0;
+                const added = cartLines.some((line) => line.item.id === item.id);
+                const anotherSize = sized && added && !cart[item.id] && unselectedSizes(item, cart).length > 0
+                  && lineMax({ item, qty: 1, price: "" }, cart, item.id) > 0;
+                const action = added ? sized ? (anotherSize ? "Add size" : "Added") : "Remove" : "Add";
                 return (
                   <TouchableOpacity
                     key={item.id}
                     activeOpacity={0.84}
-                    onPress={() => toggleItem(item)}
+                    onPress={() => added && !sized ? removeCartLine(item.id) : addToCart(item)}
+                    disabled={action === "Added"}
                     accessibilityRole="button"
-                    accessibilityLabel={`${added ? "Remove" : "Add"} ${item.name}`}
+                    accessibilityLabel={`${action} ${item.name}`}
                   >
                     <View style={[styles.itemOption, added && styles.itemOptionActive]}>
                       <View style={[styles.check, added && styles.checkOn]}>
@@ -405,20 +491,31 @@ export default function QuickSaleScreen() {
                         <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                         <Text style={styles.itemMeta}>Stock {resolveQty(item)} · {formatCurrency(item.expected_sell_price)}</Text>
                       </View>
-                      <Pill label={added ? "Added" : "Add"} tone={added ? "primary" : "neutral"} />
+                      <Pill label={added && !sized ? "Added" : action} tone={added ? "primary" : "neutral"} />
                     </View>
                   </TouchableOpacity>
                 );
               })}
-              {filtered.length === 0 ? (
+              {items.length === 0 ? (
                 <View style={{ gap: SPACING.sm }}>
-                  <Text style={styles.helperText}>{items.length === 0 ? "Table's empty — add stock to start a sale." : "No sellable items match that search."}</Text>
-                  {items.length === 0 ? (
+                  <Text style={styles.helperText}>{term ? "No sellable items match that search." : "Table's empty — add stock to start a sale."}</Text>
+                  {!term ? (
                     <Button testID="sale-empty-add-stock" label="Add stock" variant="secondary" leadingIcon="add" onPress={() => router.push("/inventory/add")} />
                   ) : (
-                    <Button label="Clear search" variant="secondary" onPress={() => setQuery("")} />
+                    <Button label="Clear search" variant="secondary" onPress={() => changeSearch("")} />
                   )}
                 </View>
+              ) : null}
+              {items.length > 0 && itemsError ? (
+                <Text accessibilityRole="alert" style={styles.helperText}>{"Couldn't load more stock. Try again."}</Text>
+              ) : null}
+              {page < pages ? (
+                <Button
+                  label={itemsError ? "Retry loading more stock" : "Show more stock"}
+                  variant="secondary"
+                  loading={loadingItems}
+                  onPress={() => { void loadItems(term, page + 1); }}
+                />
               ) : null}
             </View>
           )}
@@ -427,30 +524,33 @@ export default function QuickSaleScreen() {
         {cartLines.length > 0 ? (
           <Card style={{ gap: SPACING.sm }}>
             <SectionLabel>Cart · {cartLines.length} item{cartLines.length === 1 ? "" : "s"}</SectionLabel>
-            {cartLines.map((line) => {
+            {Object.entries(cart).map(([key, line]) => {
               const sizes = sizeOptions(line.item);
+              const sameItem = cartLines.filter((other) => other.item.id === line.item.id);
+              const lineLabel = sameItem.length > 1 ? `${line.item.name}, ${line.size ? `size ${line.size}` : "choose size"}` : line.item.name;
               return (
-                <View key={line.item.id} style={styles.cartLine}>
+                <View key={key} style={styles.cartLine}>
                   <View style={styles.cartTop}>
                     <View style={styles.flex}>
                       <Text style={styles.itemName} numberOfLines={2}>{line.item.name}</Text>
-                      <Text style={styles.itemMeta}>List {formatCurrency(line.item.expected_sell_price)}</Text>
+                      <Text style={styles.itemMeta}>{line.size ? `Size ${line.size} · ` : ""}List {formatCurrency(line.item.expected_sell_price)}</Text>
                     </View>
                     <Text style={styles.lineTotal}>{formatCents(toCents(line.price) * line.qty)}</Text>
+                    <IconButton icon="close" label={`Remove ${lineLabel} from cart`} onPress={() => removeCartLine(key)} />
                   </View>
                   {sizes.length > 0 ? (
-                    <View style={styles.chipWrap} accessibilityRole="radiogroup" accessibilityLabel={`Size for ${line.item.name}`}>
+                    <View style={styles.chipWrap} accessibilityRole="radiogroup" accessibilityLabel={`Size for ${lineLabel}`}>
                       {sizes.map((s) => {
                         const active = line.size === s.size;
-                        const out = s.quantity <= 0;
+                        const out = s.quantity <= 0 || (!active && !!cart[cartKey(line.item.id, s.size)]);
                         return (
                           <Chip
                             key={s.size}
                             label={`${s.size} · ${s.quantity}`}
-                            accessibilityLabel={`Size ${s.size}, ${s.quantity} in stock`}
+                            accessibilityLabel={`Size ${s.size}, ${s.quantity} in stock${sameItem.length > 1 ? `, for ${lineLabel}` : ""}`}
                             active={active}
                             disabled={out}
-                            onPress={() => pickSize(line.item.id, s.size)}
+                            onPress={() => pickSize(key, s.size)}
                           />
                         );
                       })}
@@ -461,8 +561,8 @@ export default function QuickSaleScreen() {
                       <TouchableOpacity
                         key={step}
                         accessibilityRole="button"
-                        accessibilityLabel={`${label} on ${line.item.name}`}
-                        onPress={() => changePrice(line.item.id, haggle(line.price, listPrice(line.item), step))}
+                        accessibilityLabel={`${label} on ${lineLabel}`}
+                        onPress={() => changePrice(key, haggle(line.price, listPrice(line.item), step))}
                         style={styles.haggleChip}
                         hitSlop={4}
                       >
@@ -474,20 +574,25 @@ export default function QuickSaleScreen() {
                     <View style={styles.priceField}>
                       <Text style={styles.currency}>$</Text>
                       <TextInput
-                        accessibilityLabel={`Sale price for ${line.item.name}`}
+                        accessibilityLabel={`Sale price for ${lineLabel}`}
                         style={styles.priceInput}
                         value={line.price}
-                        onChangeText={(value) => changePrice(line.item.id, value)}
+                        onChangeText={(value) => changePrice(key, value)}
                         keyboardType="decimal-pad"
                         selectTextOnFocus
                       />
                     </View>
                     <View style={styles.qtyStepper}>
-                      <IconButton icon="remove" label={`Decrease ${line.item.name}`} onPress={() => changeQty(line.item.id, -1)} />
+                      <IconButton icon="remove" label={`Decrease ${lineLabel}`} onPress={() => changeQty(key, -1)} />
                       <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.qtyValue}>{line.qty}</Text>
-                      <IconButton icon="add" label={`Increase ${line.item.name}`} onPress={() => changeQty(line.item.id, 1)} />
+                      <IconButton icon="add" label={`Increase ${lineLabel}`} onPress={() => changeQty(key, 1)} />
                     </View>
                   </View>
+                  {line.size && sameItem[0] === line && !cart[line.item.id]
+                    && unselectedSizes(line.item, cart).length > 0
+                    && lineMax({ ...line, size: undefined }, cart, line.item.id) > 0 ? (
+                    <Button label="Add another size" variant="secondary" onPress={() => addToCart(line.item)} />
+                  ) : null}
                 </View>
               );
             })}

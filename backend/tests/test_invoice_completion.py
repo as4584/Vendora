@@ -26,8 +26,7 @@ class TestInvoiceServiceEdges:
         invoice_service._deduct_variant_quantity(item, "L", 1)
         assert item.custom_attributes["variants"][0]["quantity"] == 1
 
-    def test_payment_fallback_and_deleted_item_paths(self, db, test_user, monkeypatch):
-        active = InventoryItem(user_id=test_user.id, name="Active", quantity=1, status="in_stock")
+    def test_payment_rejects_deleted_inventory(self, db, test_user):
         deleted = InventoryItem(
             user_id=test_user.id,
             name="Deleted",
@@ -35,45 +34,30 @@ class TestInvoiceServiceEdges:
             status="in_stock",
             deleted_at=datetime.now(timezone.utc),
         )
-        archived = InventoryItem(user_id=test_user.id, name="Archived", quantity=1, status="archived")
-        db.add_all([active, deleted, archived])
+        db.add(deleted)
         db.flush()
         invoice = Invoice(
             user_id=test_user.id,
             number=1,
             customer_name="Coverage Buyer",
-            status="paid",
-            subtotal=Decimal("20.00"),
-            total=Decimal("20.00"),
+            status="sent",
+            subtotal=Decimal("10.00"),
+            total=Decimal("10.00"),
         )
         db.add(invoice)
         db.flush()
-        db.add_all([
-            InvoiceItem(
-                invoice_id=invoice.id, inventory_item_id=active.id, description="Active",
-                quantity=1, unit_price=Decimal("10.00"), line_total=Decimal("10.00"),
-            ),
-            InvoiceItem(
-                invoice_id=invoice.id, inventory_item_id=deleted.id, description="Deleted",
-                quantity=1, unit_price=Decimal("10.00"), line_total=Decimal("10.00"),
-            ),
-            InvoiceItem(
-                invoice_id=invoice.id, inventory_item_id=archived.id, description="Archived",
-                quantity=1, unit_price=Decimal("10.00"), line_total=Decimal("10.00"),
-            ),
-        ])
+        db.add(InvoiceItem(
+            invoice_id=invoice.id, inventory_item_id=deleted.id, description="Deleted",
+            quantity=1, unit_price=Decimal("10.00"), line_total=Decimal("10.00"),
+        ))
         db.commit()
 
-        def fail(*args, **kwargs):
-            raise HTTPException(status_code=409, detail="stock failure")
-
-        monkeypatch.setattr(invoice_service, "deduct_stock", fail)
-        invoice_service.process_invoice_payment(invoice, db)
-        db.refresh(active)
-        assert active.status == "sold"
-        assert active.actual_sell_price == Decimal("10.00")
-        db.refresh(archived)
-        assert archived.status == "archived"
+        with pytest.raises(HTTPException) as conflict:
+            invoice_service.process_invoice_payment(invoice, db)
+        db.rollback()
+        assert conflict.value.detail["error"] == "invoice_item_unavailable"
+        assert invoice.status == "sent"
+        assert invoice.amount_paid == Decimal("0.00")
 
 
 class TestInvoiceCrudCompletion:

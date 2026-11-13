@@ -38,6 +38,8 @@ jest.mock('expo-camera', () => {
 
 jest.mock('../services/api', () => ({
   listItems: jest.fn(),
+  getItem: jest.fn(),
+  listCustomers: jest.fn(),
   createSaleOrder: jest.fn(),
   refundTransaction: jest.fn(),
   getMe: jest.fn(),
@@ -77,6 +79,8 @@ describe('QuickSaleScreen (checkout)', () => {
     jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' } as any);
     (apiMock.listItems as jest.Mock).mockResolvedValue({ items: [ITEM, ITEM2, SIZED], total: 3, page: 1, per_page: 100, pages: 1 });
+    (apiMock.getItem as jest.Mock).mockResolvedValue(ITEM2);
+    (apiMock.listCustomers as jest.Mock).mockResolvedValue([]);
     (apiMock.createSaleOrder as jest.Mock).mockResolvedValue(ORDER);
     (apiMock.getMe as jest.Mock).mockResolvedValue({ business_name: 'Kicks Co', sales_tax_rate: null });
     (apiMock.updateProfile as jest.Mock).mockResolvedValue({});
@@ -107,6 +111,7 @@ describe('QuickSaleScreen (checkout)', () => {
       method: 'cash',
       fee_amount: '0.00',
       notes: undefined,
+      client_request_id: expect.any(String),
     });
     await screen.findByText('Sale complete');
     fireEvent.press(screen.getByText('Share receipt'));
@@ -128,6 +133,31 @@ describe('QuickSaleScreen (checkout)', () => {
     fireEvent.press(screen.getByText('New sale'));
     await waitFor(() => expect(screen.queryByText(/Cart ·/)).toBeNull());
     expect(apiMock.listItems).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the previous customer and restores the saved tax and cash defaults', async () => {
+    (apiMock.getMe as jest.Mock).mockResolvedValue({ business_name: null, sales_tax_rate: '6' });
+    (apiMock.listCustomers as jest.Mock).mockResolvedValue([{ id: 'buyer-1', name: 'Test Buyer' }]);
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.press(screen.getByText('Pick customer'));
+    fireEvent.press(await screen.findByLabelText('Pick Test Buyer'));
+    fireEvent.changeText(screen.getByLabelText('Sales tax rate'), '9');
+    fireEvent.press(screen.getByLabelText('Pay with Card'));
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await screen.findByText('Sale complete');
+    expect(apiMock.createSaleOrder).toHaveBeenLastCalledWith(expect.objectContaining({
+      customer_id: 'buyer-1', tax_rate: '9', method: 'card',
+    }));
+    fireEvent.press(screen.getByText('New sale'));
+    fireEvent.press(await screen.findByText('Jordan 1 Retro High'));
+    expect(screen.queryByText('Test Buyer')).toBeNull();
+    expect(screen.getByLabelText('Sales tax rate').props.value).toBe('6');
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await waitFor(() => expect(apiMock.createSaleOrder).toHaveBeenCalledTimes(2));
+    const nextOrder = (apiMock.createSaleOrder as jest.Mock).mock.calls[1][0];
+    expect(nextOrder).toMatchObject({ tax_rate: '6', method: 'cash' });
+    expect(nextOrder).not.toHaveProperty('customer_id');
   });
 
   it('adjusts line quantity and applies card + fee', async () => {
@@ -316,7 +346,26 @@ describe('QuickSaleScreen (checkout)', () => {
         lines: [{ item_id: 'item-3', quantity: 1, unit_price: '120.00', size: '9' }],
       })),
     );
-    await screen.findByText(/Size 9/);
+    await screen.findByText('Size 9 · 1 x $120.00');
+  });
+
+  it('sells multiple sizes of the same item with independent prices and stock caps', async () => {
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Dunk Low Panda'));
+    fireEvent.press(screen.getByLabelText('Size 9, 1 in stock'));
+    fireEvent.press(screen.getByText('Add another size'));
+    fireEvent.press(screen.getByLabelText('Increase Dunk Low Panda, size 9'));
+    fireEvent.press(screen.getByLabelText('Increase Dunk Low Panda, size 10.5'));
+    fireEvent.press(screen.getByLabelText('Increase Dunk Low Panda, size 10.5'));
+    fireEvent.changeText(screen.getByLabelText('Sale price for Dunk Low Panda, size 10.5'), '110');
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await waitFor(() => expect(apiMock.createSaleOrder).toHaveBeenCalledWith(expect.objectContaining({
+      lines: [
+        { item_id: 'item-3', quantity: 1, unit_price: '120.00', size: '9' },
+        { item_id: 'item-3', quantity: 2, unit_price: '110.00', size: '10.5' },
+      ],
+    })));
+    await screen.findByText('Sale complete');
   });
 
   it('scans a barcode to add the item, and explains unknown codes', async () => {
@@ -342,7 +391,7 @@ describe('QuickSaleScreen (checkout)', () => {
     (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [FAR], total: 1, page: 1, per_page: 5, pages: 1 });
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
     await act(async () => mockOnScan!({ data: '777' }));
-    expect(screen.getByLabelText('Remove Far Item')).toBeTruthy();
+    expect(screen.getByLabelText('Remove Far Item from cart')).toBeTruthy();
 
     (apiMock.listItems as jest.Mock).mockRejectedValueOnce(new Error('down'));
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
@@ -360,10 +409,12 @@ describe('QuickSaleScreen (checkout)', () => {
     await waitFor(() => expect(screen.getByTestId('camera-view')).toBeTruthy());
   });
 
-  it('prefills the cart from a "sell this" link', async () => {
-    mockParams = { add: 'item-2' };
+  it('prefills the cart from a "sell this" link outside the first page', async () => {
+    mockParams = { add: 'item-1001' };
+    (apiMock.getItem as jest.Mock).mockResolvedValue({ ...ITEM2, id: 'item-1001', name: 'Older stock' });
     const screen = await ready();
-    await waitFor(() => expect(screen.getByLabelText('Remove Sony WH-1000XM5')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('Remove Older stock from cart')).toBeTruthy());
+    expect(apiMock.getItem).toHaveBeenCalledWith('item-1001');
   });
 
   it('rejects a fee larger than the sale', async () => {
@@ -401,14 +452,48 @@ describe('QuickSaleScreen (checkout)', () => {
     failed.unmount();
 
     const screen = await ready();
+    (apiMock.listItems as jest.Mock)
+      .mockResolvedValueOnce({ items: [ITEM2], pages: 1 })
+      .mockResolvedValueOnce({ items: [], pages: 0 });
     fireEvent.changeText(screen.getByLabelText('Search sale inventory'), 'sony');
     expect(screen.queryByText('Jordan 1 Retro High')).toBeNull();
-    expect(screen.getByText('Sony WH-1000XM5')).toBeTruthy();
+    expect(await screen.findByText('Sony WH-1000XM5')).toBeTruthy();
+    expect(apiMock.listItems).toHaveBeenLastCalledWith({ perPage: 12, availableOnly: true, q: 'sony' });
     fireEvent.changeText(screen.getByLabelText('Search sale inventory'), 'zzz');
-    expect(screen.getByText('No sellable items match that search.')).toBeTruthy();
+    expect(await screen.findByText('No sellable items match that search.')).toBeTruthy();
     fireEvent.press(screen.getByText('Clear search'));
-    expect(screen.getByText('Jordan 1 Retro High')).toBeTruthy();
+    expect(await screen.findByText('Jordan 1 Retro High')).toBeTruthy();
     expect(screen.getByLabelText('Search sale inventory').props.value).toBe('');
+  });
+
+  it('loads later pages and retries a page without clearing earlier stock', async () => {
+    const FAR = { ...ITEM2, id: 'item-1001', name: 'Older stock' };
+    (apiMock.listItems as jest.Mock)
+      .mockResolvedValueOnce({ items: [ITEM], pages: 2 })
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ items: [FAR], pages: 2 });
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Show more stock'));
+    fireEvent.press(await screen.findByText('Retry loading more stock'));
+    expect(screen.getByText('Jordan 1 Retro High')).toBeTruthy();
+    await screen.findByText('Older stock');
+    expect(apiMock.listItems).toHaveBeenLastCalledWith({ perPage: 12, availableOnly: true, page: 2 });
+  });
+
+  it('ignores an earlier inventory search that resolves after the latest one', async () => {
+    const FAR = { ...ITEM2, id: 'item-1001', name: 'Older stock' };
+    let resolveEarlier!: (value: unknown) => void;
+    const screen = await ready();
+    (apiMock.listItems as jest.Mock)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveEarlier = resolve; }))
+      .mockResolvedValueOnce({ items: [FAR], pages: 1 });
+    fireEvent.changeText(screen.getByLabelText('Search sale inventory'), 'first search');
+    await waitFor(() => expect(resolveEarlier).toBeDefined());
+    fireEvent.changeText(screen.getByLabelText('Search sale inventory'), 'Older stock');
+    await screen.findByText('Older stock');
+    await act(async () => resolveEarlier({ items: [ITEM], pages: 1 }));
+    expect(screen.queryByText('Jordan 1 Retro High')).toBeNull();
+    expect(screen.getByText('Older stock')).toBeTruthy();
   });
 
   it('offers Add stock when inventory is genuinely empty', async () => {
@@ -426,6 +511,7 @@ describe('QuickSaleScreen (checkout)', () => {
     const screen = render(<QuickSaleScreen />);
     expect(screen.getByLabelText('Loading sellable inventory')).toBeTruthy();
     expect(screen.queryByText("Table's empty — add stock to start a sale.")).toBeNull();
+    await waitFor(() => expect(resolve).toBeDefined());
     await act(async () => resolve({ items: [ITEM] }));
     expect(screen.queryByLabelText('Loading sellable inventory')).toBeNull();
     expect(screen.getByText('Jordan 1 Retro High')).toBeTruthy();
@@ -437,6 +523,27 @@ describe('QuickSaleScreen (checkout)', () => {
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));
     fireEvent.press(screen.getByText(/Log Sale/));
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Sale failed', 'payment down'));
+  });
+
+  it('reuses the sale key for an unchanged retry and changes it for an edited order', async () => {
+    (apiMock.createSaleOrder as jest.Mock)
+      .mockRejectedValueOnce(new Error('response lost'))
+      .mockRejectedValueOnce(new Error('try again'));
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Sale failed', 'response lost'));
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Sale failed', 'try again'));
+    fireEvent.changeText(screen.getByLabelText('Sale price for Jordan 1 Retro High'), '300');
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await screen.findByText('Sale complete');
+
+    const [first, retry, edited] = (apiMock.createSaleOrder as jest.Mock).mock.calls.map(([payload]) => payload);
+    expect(first.client_request_id).toEqual(expect.any(String));
+    expect(retry).toEqual(first);
+    expect(edited.client_request_id).not.toEqual(first.client_request_id);
+    expect(edited.lines[0].unit_price).toBe('300.00');
   });
 
   it('opens the end-of-show summary', async () => {
