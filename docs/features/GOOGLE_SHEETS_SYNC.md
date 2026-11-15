@@ -56,7 +56,7 @@ A blank `name` or `status` cell means "no opinion" and never clears the field. A
 
 - **Create a Resqlo sheet** is the recommended path, and the one the UI shows first.
 - **Use an existing sheet** accepts a pasted link. It works for sheets Resqlo created, for example to re-link after unlinking. A sheet the seller made elsewhere returns a clear message: "Resqlo can't open that sheet… Create a Resqlo sheet instead, or import this one first and then create a Resqlo sheet."
-- **Google Picker on web is not implemented yet.** It would grant drive.file access to an arbitrary existing sheet. It needs `GOOGLE_PICKER_API_KEY` (already a config key) and a small endpoint that hands the web client a short-lived access token. Until then, the workaround for an existing spreadsheet is: Import it (Import screen, link or file), then Create a Resqlo sheet.
+- **Link my existing sheet (Google Picker).** When `GOOGLE_PICKER_API_KEY` is set, Settings shows "Link my existing sheet". The app opens a one-off backend page (`GET /integrations/google/picker` returns its URL with a 10-minute signed ticket) that shows Google's own Picker. Picking a sheet grants `drive.file` access to that one file; the page posts the file id (`POST /picker/link` with the ticket), the server links and pulls it, and the page returns to the app (`vendora://settings…status=linked`) or closes the web popup. Without the key, the older paste-a-link option is shown instead (it only works for sheets Resqlo created).
 
 ## Owner setup
 
@@ -78,7 +78,7 @@ A blank `name` or `status` cell means "no opinion" and never clears the field. A
    - `GOOGLE_CLIENT_SECRET`: the client secret
    - `GOOGLE_REDIRECT_URI`: optional; defaults to the production URL above
    - The web return uses the shared `WEB_APP_URL` (default `https://vendora.lexmakesit.com`); nothing Google-specific to set.
-   - `GOOGLE_PICKER_API_KEY`: reserved for the future web Picker; leave unset.
+   - `GOOGLE_PICKER_API_KEY`: turns on "Link my existing sheet". In the same Cloud project: enable **Google Picker API**, then Credentials → Create credentials → API key, restricted to the Google Picker API (HTTP referrer `vendora.lexmakesit.com/*`).
 6. **Deploy and check.** After the backend restarts with the keys, `GET /api/v1/integrations/google/status` returns `configured: true`. Settings → Google Sheets → Connect Google → Create a Resqlo sheet.
 
 Without the keys, every endpoint answers `503 Google Sheets not configured` and the card shows "Not configured". Without a connected account, the endpoints answer `409`.

@@ -2064,6 +2064,8 @@ export interface GoogleSheetLink {
 
 export interface GoogleSheetsStatus {
   configured: boolean;
+  /** The seller can pick one of their own existing sheets (Google Picker). */
+  picker_available?: boolean;
   connected: boolean;
   email: string | null;
   sheet: GoogleSheetLink | null;
@@ -2087,6 +2089,9 @@ const GS = "/integrations/google";
 export const getGoogleSheetsStatus = () => request<GoogleSheetsStatus>(`${GS}/status`);
 export const getGoogleConnectUrl = (platform: "web" | "native") =>
   request<{ authorization_url: string }>(`${GS}/connect?platform=${platform}`);
+/** One-off page where the seller picks their own existing sheet with Google's picker. */
+export const getGooglePickerUrl = (platform: "web" | "native") =>
+  request<{ picker_url: string }>(`${GS}/picker?platform=${platform}`);
 export const disconnectGoogle = () => request<{ disconnected: boolean }>(GS, { method: "DELETE" });
 export const createGoogleSheet = () =>
   request<GoogleSheetsStatus>(`${GS}/sheet/create`, { method: "POST", body: JSON.stringify({}) });

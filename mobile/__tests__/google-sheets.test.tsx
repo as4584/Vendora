@@ -26,6 +26,7 @@ jest.mock('../services/api', () => ({
   updateGoogleSheetSettings: jest.fn(),
   unlinkGoogleSheet: jest.fn(),
   syncGoogleSheets: jest.fn(),
+  getGooglePickerUrl: jest.fn(),
 }));
 
 const m = api as jest.Mocked<typeof api>;
@@ -115,6 +116,28 @@ describe('GoogleSheetsSettingsCard', () => {
     fireEvent.press(screen.getByText('Use this sheet'));
     expect(await screen.findByText('Open in Sheets')).toBeTruthy();
     expect(m.linkGoogleSheet).toHaveBeenLastCalledWith('https://docs.google.com/spreadsheets/d/sid/edit');
+  });
+
+  it('links an existing sheet with the Google picker when the server supports it', async () => {
+    const PICKER: api.GoogleSheetsStatus = { ...CONNECTED, picker_available: true };
+    m.getGoogleSheetsStatus.mockResolvedValueOnce(PICKER).mockResolvedValueOnce(LINKED);
+    m.getGooglePickerUrl.mockResolvedValue({ picker_url: 'https://api.test/picker/page?ticket=t' });
+    mockOpen.mockResolvedValue('denied');
+    render(<GoogleSheetsSettingsCard />);
+    fireEvent.press(await screen.findByTestId('google-pick-sheet'));
+    await waitFor(() => expect(mockOpen).toHaveBeenCalledWith('https://api.test/picker/page?ticket=t'));
+    expect(await screen.findByText('Open in Sheets')).toBeTruthy();
+    expect(screen.queryByText('Use an existing sheet')).toBeNull();
+  });
+
+  it('says so when nothing was picked', async () => {
+    const PICKER: api.GoogleSheetsStatus = { ...CONNECTED, picker_available: true };
+    m.getGoogleSheetsStatus.mockResolvedValue(PICKER);
+    m.getGooglePickerUrl.mockResolvedValue({ picker_url: 'https://api.test/picker/page?ticket=t' });
+    mockOpen.mockResolvedValue('closed');
+    render(<GoogleSheetsSettingsCard />);
+    fireEvent.press(await screen.findByTestId('google-pick-sheet'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('No sheet linked', expect.any(String)));
   });
 
   it('cancels pasting a link', async () => {

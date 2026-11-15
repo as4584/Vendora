@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,7 @@ from app.services.google_sheets import (
     GoogleApiError,
     google_sheets_service,
 )
+from app.services import google_picker
 from app.services.oauth_return import finish_response, return_target_for
 from app.services.outbox import process_outbox
 
@@ -39,6 +41,8 @@ class LinkOut(BaseModel):
 
 class StatusOut(BaseModel):
     configured: bool
+    # Seller can pick one of their own existing sheets (Google Picker).
+    picker_available: bool = False
     connected: bool
     email: Optional[str] = None
     sheet: Optional[LinkOut] = None
@@ -62,6 +66,15 @@ class LinkIn(BaseModel):
 class SettingsIn(BaseModel):
     source_of_truth: Optional[bool] = None
     archive_missing: Optional[bool] = None
+
+
+class PickerUrlOut(BaseModel):
+    picker_url: str
+
+
+class PickedIn(BaseModel):
+    ticket: str = Field(min_length=20, max_length=4096)
+    spreadsheet_id: str = Field(min_length=10, max_length=200, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class SyncOut(BaseModel):
@@ -96,6 +109,7 @@ def _status(db: Session, user: User) -> StatusOut:
     jobs = db.query(ProviderOutbox).filter(ProviderOutbox.user_id == user.id, ProviderOutbox.provider == PROVIDER)
     return StatusOut(
         configured=google_sheets_service.is_configured(),
+        picker_available=google_picker.picker_configured(),
         connected=token is not None,
         email=token.email if token else None,
         sheet=_link_out(google_sheets_service.get_link(db, user.id)),
@@ -166,6 +180,39 @@ async def google_link_sheet(
     except GoogleApiError as exc:
         raise _api_error(exc) from exc
     return _status(db, current_user)
+
+
+@router.get("/picker", response_model=PickerUrlOut)
+def google_picker_url(
+    platform: Literal["web", "native"] = Query("native"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One-off page URL where the seller picks one of their own sheets."""
+    google_picker.ensure_configured()
+    google_sheets_service.require_token(db, current_user.id)
+    ticket = google_picker.make_ticket(current_user.id, return_target_for(platform))
+    return PickerUrlOut(picker_url=f"{google_picker.public_url('picker/page')}?ticket={ticket}")
+
+
+@router.get("/picker/page", name="google_picker_page", response_class=HTMLResponse)
+async def google_picker_page(ticket: str, db: Session = Depends(get_db)):
+    google_picker.ensure_configured()
+    claims = google_picker.read_ticket(ticket)
+    access = await google_picker.access_token_for(db, claims["user_id"])
+    page = google_picker.picker_page(ticket, access, claims["ret"], google_picker.public_url("picker/link"))
+    return HTMLResponse(page, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+
+
+@router.post("/picker/link", name="google_picker_link")
+async def google_picker_link(body: PickedIn, db: Session = Depends(get_db)):
+    """Called by the picker page: link the chosen sheet and pull it in."""
+    claims = google_picker.read_ticket(body.ticket)
+    try:
+        await google_picker.link_picked(db, claims["user_id"], body.spreadsheet_id)
+    except GoogleApiError as exc:
+        raise _api_error(exc) from exc
+    return {"linked": True}
 
 
 @router.patch("/sheet", response_model=StatusOut)
