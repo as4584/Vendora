@@ -81,6 +81,8 @@ describe('StockxSettingsCard', () => {
     render(<StockxSettingsCard />);
     fireEvent.press(await screen.findByText('Connect StockX'));
     await waitFor(() => expect(WebBrowser.openAuthSessionAsync).toHaveBeenCalledWith('https://accounts.stockx.test/authorize', 'vendora://settings'));
+    // Sign-in didn't finish: explain instead of silently staying disconnected.
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("StockX didn't connect", expect.stringContaining('Forgot password')));
     m.getStockxConnectUrl.mockRejectedValueOnce(new Error('StockX not configured'));
     fireEvent.press(screen.getByText('Connect StockX'));
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('StockX unavailable', 'StockX not configured'));

@@ -67,14 +67,24 @@ function useStockxStatus() {
 
 // ── Settings → Integrations ──────────────────────────────────────────────────
 
+export const STOCKX_CONNECT_HELP =
+  "Sign in with the same login you use on the StockX app or website, then tap Allow. " +
+  "If you made your StockX account with Google or Apple and that button doesn't work here, " +
+  "set a password on stockx.com (Log in, then Forgot password) and sign in with your email and that password.";
+
 export function StockxSettingsCard() {
   const { status, state, reload } = useStockxStatus();
 
   const connect = async () => {
     try {
       const { authorization_url } = await api.getStockxConnectUrl();
-      await openProviderConnect(authorization_url);
+      const outcome = await openProviderConnect(authorization_url);
       await reload();
+      // Never fail silently: if StockX didn't hand back a connection, say why and what to try.
+      if (outcome !== "connected") {
+        const now = await api.getStockxStatus().catch(() => null);
+        if (!now?.connected) Alert.alert("StockX didn't connect", STOCKX_CONNECT_HELP);
+      }
     } catch (err) {
       Alert.alert("StockX unavailable", errorText(err, "Could not open the StockX connect flow."));
     }
