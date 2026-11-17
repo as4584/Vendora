@@ -24,9 +24,9 @@ from app.models.subscription import Subscription
 from app.models.user import User
 
 PRODUCTS: dict[str, dict] = {
-    "com.vendora.pro.monthly": {"partner": False, "price": Decimal("19.99")},
-    "com.vendora.pro.yearly": {"partner": False, "price": Decimal("16.67")},
-    "com.vendora.partner.monthly": {"partner": True, "price": Decimal("24.99")},
+    "com.vendora.pro.monthly": {"partner": False, "price": Decimal("9.99")},
+    "com.vendora.pro.yearly": {"partner": False, "price": Decimal("6.67")},
+    "com.vendora.partner.monthly": {"partner": True, "price": Decimal("14.99")},
 }
 
 ACTIVATE = {"INITIAL_PURCHASE", "RENEWAL", "UNCANCELLATION", "PRODUCT_CHANGE", "SUBSCRIPTION_EXTENDED"}
