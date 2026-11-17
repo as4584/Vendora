@@ -3,12 +3,16 @@ import fixtures from './visual/fixtures.json';
 
 test('confirmed sale shows a readable receipt with reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  // Existing seller: skip the new-seller setup screen.
-  await page.addInitScript(() => { localStorage.setItem('vendora_access_token', 'local-test-token'); localStorage.setItem('vendora.onboarded.72696639-c194-442f-9c4b-8c131ffa6763', '1'); localStorage.setItem('vendora.onboarded.user-1', '1'); });
+  await page.addInitScript((sub) => {
+    localStorage.setItem('vendora_access_token', `x.${btoa(JSON.stringify({ sub })).replace(/=+$/, '')}.x`);
+    // Existing seller: skip the new-seller setup screen.
+    localStorage.setItem(`vendora.onboarded.${sub}`, '1');
+  }, fixtures.me.id);
   await page.route('**/api/v1/**', route => {
     const path = new URL(route.request().url()).pathname;
     const body = path.endsWith('/auth/me') ? fixtures.me
       : path.endsWith('/inventory') ? fixtures.inventory
+      : path.endsWith(`/inventory/${fixtures.item_id}`) ? fixtures.item
       : path.endsWith('/transactions/order') ? { order_id: 'receipt-test-order', transactions: [] }
       : path.endsWith('/dashboard') ? fixtures.dashboard : [];
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });

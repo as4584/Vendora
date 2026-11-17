@@ -68,7 +68,7 @@ it('scans boxes, names the unknown one in review, applies cost, and saves', asyn
 
   expect(api.createItem).toHaveBeenCalledTimes(2);
   expect(api.createItem).toHaveBeenCalledWith(expect.objectContaining({ name: 'Mystery Yeezy', upc: '222', buy_price: '110' }));
-  expect(scan.rememberScan).toHaveBeenCalledWith('111', expect.objectContaining({ name: 'Nike Dunk Low Panda' }));
+  expect(scan.rememberScan).toHaveBeenCalledWith('111', expect.objectContaining({ name: 'Nike Dunk Low Panda' }), expect.any(Object));
   expect(Alert.alert).toHaveBeenLastCalledWith('Saved', '2 new items.');
   expect(mockReplace).toHaveBeenCalledWith('/inventory');
 });

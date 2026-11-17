@@ -1,13 +1,16 @@
 import { test, expect, type Page } from '@playwright/test';
 import fixtures from './visual/fixtures.json';
 
-async function openCheckout(page: Page, inventory: () => unknown | null) {
-  // Existing seller: skip the new-seller setup screen.
-  await page.addInitScript(() => { localStorage.setItem('vendora_access_token', 'local-test-token'); localStorage.setItem('vendora.onboarded.72696639-c194-442f-9c4b-8c131ffa6763', '1'); localStorage.setItem('vendora.onboarded.user-1', '1'); });
+async function openCheckout(page: Page, inventory: (query: URLSearchParams) => unknown | null) {
+  await page.addInitScript((sub) => {
+    localStorage.setItem('vendora_access_token', `x.${btoa(JSON.stringify({ sub })).replace(/=+$/, '')}.x`);
+    // Existing seller: skip the new-seller setup screen.
+    localStorage.setItem(`vendora.onboarded.${sub}`, '1');
+  }, fixtures.me.id);
   await page.route('**/api/v1/**', route => {
-    const path = new URL(route.request().url()).pathname;
+    const { pathname: path, searchParams } = new URL(route.request().url());
     const body = path.endsWith('/auth/me') ? fixtures.me
-      : path.endsWith('/inventory') ? inventory()
+      : path.endsWith('/inventory') ? inventory(searchParams)
       : path.endsWith('/dashboard') ? fixtures.dashboard : [];
     return route.fulfill({ status: body === null ? 503 : 200, contentType: 'application/json', body: JSON.stringify(body ?? { detail: 'Temporarily unavailable' }) });
   });
@@ -21,7 +24,8 @@ async function openCheckout(page: Page, inventory: () => unknown | null) {
 
 test('failed inventory load recovers through retry rather than showing empty stock', async ({ page }) => {
   let failed = true;
-  await openCheckout(page, () => failed ? null : fixtures.inventory);
+  await openCheckout(page, query => failed ? null
+    : query.has('q') ? { ...fixtures.inventory, items: [], total: 0, pages: 0 } : fixtures.inventory);
   await expect(page.getByRole('alert')).toContainText("Couldn't load your stock");
   await expect(page.getByText("Table's empty — add stock to start a sale.")).toBeHidden();
   failed = false;
@@ -32,6 +36,19 @@ test('failed inventory load recovers through retry rather than showing empty sto
   await expect(page.getByText('No sellable items match that search.')).toBeVisible();
   await page.getByRole('button', { name: 'Clear search', exact: true }).click();
   await expect(page.getByText('Nike Dunk Low Retro White Black', { exact: true })).toBeVisible();
+});
+
+test('later catalog pages and remote search can add older stock', async ({ page }) => {
+  const older = { ...fixtures.inventory.items[0], id: 'older-stock', name: 'Older catalogue item' };
+  await openCheckout(page, query => query.get('q') || query.get('page') === '2'
+    ? { ...fixtures.inventory, items: [older], total: 1, pages: query.has('q') ? 1 : 2 }
+    : { ...fixtures.inventory, pages: 2 });
+  await page.getByRole('button', { name: 'Show more stock' }).click();
+  await expect(page.getByText(older.name, { exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Search sale inventory' }).fill(older.name);
+  await expect(page.getByRole('button', { name: `Add ${older.name}` })).toBeVisible();
+  await page.getByRole('button', { name: `Add ${older.name}` }).click();
+  await expect(page.getByText('Cart · 1 item', { exact: true })).toBeVisible();
 });
 
 test('empty stock has a clear next action on a small screen', async ({ page }) => {

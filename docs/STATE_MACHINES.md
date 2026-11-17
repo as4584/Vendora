@@ -63,7 +63,7 @@ Rules:
 
 Payments: POST /invoices/{id}/payments with amount, method (cash, card, zelle, venmo, cashapp, paypal, stripe, other) and an optional note. Overpayment is rejected; amount_paid and balance_due are on every invoice response.
 
-Each payment books one transaction per line, splitting the amount by line value. Cost of goods is frozen per line at the first payment and booked by the paid fraction with cumulative rounding, so it sums to exactly the line cost once paid in full. Stock leaves inventory on the first payment.
+Each payment books one transaction per line, splitting pre-tax revenue and collected tax by line value. Tax and frozen line cost use cumulative rounding across payments so the total balances exactly when fully paid. The first payment moves stock, records the payment and updates invoice status together. If stock (including the selected size) cannot be deducted, none of those changes commit. The generic sale-refund endpoint does not refund an invoice payment.
 
 Offline-created invoices carry a client_request_id; a replay returns the invoice the first request made. The number (INV0001) is only ever assigned by the server.
 

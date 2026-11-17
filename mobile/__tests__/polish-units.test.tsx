@@ -26,30 +26,38 @@ jest.mock('expo-blur', () => ({ BlurView: () => null }));
 
 describe('screen snapshots', () => {
   const snap = () => require('../services/offline/snapshot') as typeof import('../services/offline/snapshot');
+  const session = () => require('../services/session') as typeof import('../services/session');
+  const key = (owner: string, name: string) => `account:v1:${owner}:snap:${name}`;
 
-  it('reads from memory at once, from disk on a cold start, and clears on sign-out', async () => {
+  it('reads from memory at once, from disk on a cold start, per account', async () => {
     const s = snap();
-    expect(s.peekSnapshot('x')).toBeUndefined();
+    session().replaceSession(null);
+    s.saveSnapshot('x', { n: 0 });
+    expect(s.peekSnapshot('x')).toBeUndefined(); // signed out: nothing kept
+
+    session().replaceSession('seller-a');
     s.saveSnapshot('x', { n: 1 });
     expect(s.peekSnapshot('x')).toEqual({ n: 1 });
     await new Promise((r) => setTimeout(r, 0));
-    expect(JSON.parse(mockStore['offline:snap:x'])).toEqual({ n: 1 });
+    expect(JSON.parse(mockStore[key('seller-a', 'x')])).toEqual({ n: 1 });
 
-    mockStore['offline:snap:cold'] = JSON.stringify({ n: 2 });
+    mockStore[key('seller-a', 'cold')] = JSON.stringify({ n: 2 });
     await expect(s.loadSnapshot('cold')).resolves.toEqual({ n: 2 });
     expect(s.peekSnapshot('cold')).toEqual({ n: 2 });
     await expect(s.loadSnapshot('missing')).resolves.toBeUndefined();
 
-    mockStore['other'] = 'keep';
-    await s.clearSnapshots();
+    s.clearSnapshots();
     expect(s.peekSnapshot('x')).toBeUndefined();
-    expect(Object.keys(mockStore)).toEqual(['other']);
   });
 
-  it('sign-out wipes snapshots along with the offline store', async () => {
+  it("switching accounts never shows the other account's screens", async () => {
     const s = snap();
-    s.saveSnapshot('y', 1);
-    await require('../services/offline').clearOfflineData();
+    session().replaceSession('seller-a');
+    s.saveSnapshot('y', 'a-data');
+    session().replaceSession('seller-b');
+    expect(s.peekSnapshot('y')).toBeUndefined();
+    await expect(s.loadSnapshot('y')).resolves.toBeUndefined();
+    session().replaceSession(null);
     expect(s.peekSnapshot('y')).toBeUndefined();
   });
 });

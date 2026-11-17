@@ -69,6 +69,7 @@ describe("scan memory", () => {
     jest.resetModules();
     AsyncStorage = require("@react-native-async-storage/async-storage").default;
     await AsyncStorage.clear();
+    require("../services/session").replaceSession("seller");
     memory = require("../services/smartScan/memory");
   });
 
@@ -151,7 +152,7 @@ describe("scan memory", () => {
     expect((await memory.resolveScan("22222222", { online: false })).fields.name).toBe("Other phone");
   });
 
-  it("backfills from inventory once per device, then pulls the new memory", async () => {
+  it("backfills from inventory once per account, then pulls the new memory", async () => {
     const backfill = jest.fn(async () => ({ created: 1, updated: 0, skipped: 0 }));
     const download = jest.fn(async () => [
       { barcode: "33333333", match: "memory" as const, fields: { name: "From inventory" }, times_seen: 1 },

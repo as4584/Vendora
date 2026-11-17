@@ -1,6 +1,7 @@
 """Google Sheets sync endpoints under /integrations/google/…"""
 from __future__ import annotations
 
+import html
 import uuid
 from datetime import datetime
 from typing import Literal, Optional
@@ -25,6 +26,13 @@ from app.services.oauth_return import finish_response, return_target_for
 from app.services.outbox import process_outbox
 
 router = APIRouter(prefix="/integrations/google", tags=["integrations", "google_sheets"])
+
+# Picker tickets are signed JWTs: three URL-safe base64 segments.
+_TICKET_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.")
+
+
+def _ticket_shape_ok(ticket: str) -> bool:
+    return 0 < len(ticket) <= 4096 and ticket.count(".") == 2 and set(ticket) <= _TICKET_CHARS
 
 
 class LinkOut(BaseModel):
@@ -198,9 +206,14 @@ def google_picker_url(
 @router.get("/picker/page", name="google_picker_page", response_class=HTMLResponse)
 async def google_picker_page(ticket: str, db: Session = Depends(get_db)):
     google_picker.ensure_configured()
+    if not _ticket_shape_ok(ticket):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="This link expired. Open the picker again from Resqlo.")
     claims = google_picker.read_ticket(ticket)
     access = await google_picker.access_token_for(db, claims["user_id"])
-    page = google_picker.picker_page(ticket, access, claims["ret"], google_picker.public_url("picker/link"))
+    # A verified JWT is URL-safe base64; escaping is a no-op for it and a guard for anything else.
+    page = google_picker.picker_page(
+        html.escape(ticket), access, claims["ret"], google_picker.public_url("picker/link")
+    )
     return HTMLResponse(page, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
 
 

@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MAX_RECENT, addRecentSearch, clearRecentSearches, getRecentSearches } from '../services/recentSearches';
+import { replaceSession } from '../services/session';
 
-beforeEach(async () => { await AsyncStorage.clear(); jest.clearAllMocks(); });
+beforeEach(async () => { await AsyncStorage.clear(); jest.clearAllMocks(); replaceSession("seller"); });
 
 it('keeps newest first, dedupes case-insensitively, and caps the list', async () => {
   await addRecentSearch('jordan');
@@ -19,12 +20,12 @@ it('ignores one-letter searches and clears', async () => {
 });
 
 it('survives bad or unavailable storage', async () => {
-  await AsyncStorage.setItem('vendora.recentSearches', '{not json');
+  await AsyncStorage.setItem('account:v1:seller:inventory:recentSearches', '{not json');
   expect(await getRecentSearches()).toEqual([]);
-  await AsyncStorage.setItem('vendora.recentSearches', JSON.stringify({ a: 1 }));
+  await AsyncStorage.setItem('account:v1:seller:inventory:recentSearches', JSON.stringify({ a: 1 }));
   expect(await getRecentSearches()).toEqual([]);
   (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('full'));
   expect(await addRecentSearch('yeezy')).toEqual(['yeezy']);
-  (AsyncStorage.removeItem as jest.Mock).mockRejectedValueOnce(new Error('x'));
+  (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('x'));
   await expect(clearRecentSearches()).resolves.toBeUndefined();
 });

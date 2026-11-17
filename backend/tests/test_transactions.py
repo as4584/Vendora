@@ -22,7 +22,7 @@ class TestCreateTransaction:
         }, headers=auth_headers)
         assert resp.status_code == 404
 
-    def test_stock_service_failure_uses_status_fallback(self, client, auth_headers, monkeypatch):
+    def test_stock_service_failure_rolls_back_sale(self, client, auth_headers, monkeypatch):
         from app.routers import transactions
 
         item = client.post("/api/v1/inventory", json={"name": "Fallback Item", "quantity": 2}, headers=auth_headers).json()
@@ -34,9 +34,12 @@ class TestCreateTransaction:
         resp = client.post("/api/v1/transactions", json={
             "item_id": item["id"], "method": "cash", "gross_amount": "10.00",
         }, headers=auth_headers)
-        assert resp.status_code == 201
+        assert resp.status_code == 409
         updated = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
-        assert updated["status"] == "sold"
+        assert updated["status"] == "in_stock"
+        assert updated["quantity"] == 2
+        assert updated["actual_sell_price"] is None
+        assert client.get("/api/v1/transactions", headers=auth_headers).json()["total"] == 0
 
     def test_quick_sale_with_item(self, client, auth_headers):
         """Quick Sale: create item → log transaction → item auto-transitions to sold."""
@@ -419,3 +422,20 @@ class TestQuantityAndStockLedger:
         ).json()
         # Refund carries the same (null) invoice_id
         assert refund["invoice_id"] is None
+
+    def test_invoice_installment_cannot_be_refunded_as_a_sale(self, client, auth_headers):
+        item = client.post("/api/v1/inventory", json={"name": "Invoice item", "quantity": 2}, headers=auth_headers).json()
+        invoice = client.post("/api/v1/invoices", json={
+            "customer_name": "Example buyer",
+            "items": [{"inventory_item_id": item["id"], "description": item["name"], "unit_price": "40.00"}],
+        }, headers=auth_headers).json()
+        payment = client.post(f"/api/v1/invoices/{invoice['id']}/payments", json={
+            "amount": "20.00", "method": "cash",
+        }, headers=auth_headers)
+        assert payment.status_code == 201, payment.text
+        txn = client.get("/api/v1/transactions", headers=auth_headers).json()["items"][0]
+        refund = client.post(f"/api/v1/transactions/{txn['id']}/refund", json={}, headers=auth_headers)
+        assert refund.status_code == 409
+        assert refund.json()["detail"]["error"] == "invoice_refund_unsupported"
+        assert client.get("/api/v1/transactions", headers=auth_headers).json()["total"] == 1
+        assert client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()["quantity"] == 1

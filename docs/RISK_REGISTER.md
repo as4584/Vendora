@@ -114,6 +114,18 @@ Recalculate profit on refund
 
 Test refund webhook path
 
+1.5 Invoice installment or checkout reconciliation
+
+Impact: High
+Likelihood: Medium
+Priority: High
+
+- Invoice payments record only pre-tax revenue, with collected tax separate. Historical ledger rows are unchanged; reconcile previously booked tax and already-open installments before using those reports for filing or reconciliation.
+- The first invoice payment and legacy sale fail closed when stock changes. A captured Stripe payment with unavailable stock can remain unbooked while retries fail. Reconcile it against Stripe and either resolve the stock discrepancy or refund through the processor. Do not record a second payment to clear it.
+- Generic sale refunds do not settle invoices; an invoice credit/refund workflow is separate.
+- Quick Sale can browse later inventory pages and search remotely, but typo-tolerant search on the API ranks only the newest 5,000 eligible items. An older item outside that set can still be reached through paginated browsing, exact barcode scan or its item page. Offline search only sees cached stock.
+- An unchanged checkout retry reuses the same request ID while the screen stays open. Preserving that ID through an offline fallback also requires the offline journal fix. If the app is terminated before the attempt is journaled, inspect sale history before creating a replacement order.
+
 🟧 2. MOBILE & BARCODE RISKS
 2.1 Barcode Misreads
 
@@ -354,6 +366,24 @@ Confirmation prompts
 
 Delayed permanent deletion
 
+7.3 Offline sales lost or replayed for the wrong account
+
+Impact: High
+Likelihood: Reduced by session and journal isolation
+Priority: High
+
+Mitigation: Keep the outbox, local invoices, and temp-ID remaps in one
+account-scoped journal. Do not confirm a pending sale until storage commits.
+Recheck the initiating session before sending and applying responses. Retry
+sale orders and ordinary quick sales using the original request ID.
+
+Residual: Legacy journals with no trustworthy owner stay untouched but cannot
+be replayed. Device loss/storage erasure still loses pending local writes.
+Inventory creates/updates are not server-idempotent; a crash or a lost
+acknowledgment after the server applies one can leave an ambiguous retry.
+Journal mutations are serialized within one running app instance, not between
+two web tabs both writing the same account at once.
+
 🟨 8. USER TRUST RISKS
 8.1 Incorrect Profit Calculations
 
@@ -382,6 +412,17 @@ Enforce “3-minute onboarding” rule
 Reduce clutter
 
 Continuous UX review
+
+8.3 Shared device shows another account's private offline data
+
+Impact: High
+Priority: High
+
+Mitigation: Use a verified account namespace for offline customer lists,
+inventory, dashboard, pending invoices, scan learning, and search history.
+Discard stale request results on account change and do not read or delete
+legacy unknown-owner data. This isolates accounts inside the app; it does
+not add encryption to local storage.
 
 🧭 Review Policy
 
