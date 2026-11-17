@@ -237,6 +237,8 @@ class StockxService(ProviderAdapter):
                 "scope": SCOPES,
                 "audience": AUDIENCE,
                 "state": state,
+                # Open on StockX's log-in screen (not sign-up) every time.
+                "prompt": "login",
             }
         )
         return f"{AUTH_URL}?{params}"

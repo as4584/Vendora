@@ -1,7 +1,7 @@
 /**
  * Root layout — wraps entire app with AuthProvider and sets up routing.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "../context/auth";
@@ -10,20 +10,24 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { View, ActivityIndicator, Platform, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { COLORS } from "../theme/tokens";
+import { COLORS, IS_LIGHT } from "../theme/tokens";
+import { useSchemeReload } from "../theme/useSchemeReload";
+import { Backdrop } from "../components/Backdrop";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { identify, initCrashReporting, track } from "../services/telemetry";
 import { maybePromptSaleAlerts, syncPushToken } from "../services/pushAlerts";
+import { allowedDuringOnboarding, checkOnboarding, subscribeOnboarding, type OnboardingState } from "../services/onboarding";
 // react-navigation is vendored inside expo-router in SDK 57.
-import { DarkTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
+import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
 
 initCrashReporting();
-// Navigation theme: dark everywhere, so wide screens (iPad) and screen
-// transitions never show the default light background behind content.
-
+// Navigation theme follows the phone's light/dark setting, painted with our
+// tokens so screen transitions never flash a mismatched background.
+const BASE_NAV = IS_LIGHT ? DefaultTheme : DarkTheme;
 const NAV_THEME = {
-    ...DarkTheme,
+    ...BASE_NAV,
     colors: {
-        ...DarkTheme.colors,
+        ...BASE_NAV.colors,
         primary: COLORS.primary,
         background: COLORS.bg,
         card: COLORS.bgElevated,
@@ -36,6 +40,17 @@ function RootLayoutNav() {
     const segments = useSegments();
     const { replace } = useRouter();
     const userId = user?.id ? String(user.id) : null;
+    const [onboarding, setOnboarding] = useState<OnboardingState>("unknown");
+
+    useEffect(() => subscribeOnboarding(setOnboarding), []);
+    useEffect(() => {
+        let live = true;
+        if (!userId) return;
+        void checkOnboarding(userId).then((s) => live && setOnboarding(s));
+        return () => {
+            live = false;
+        };
+    }, [userId]);
 
     useEffect(() => {
         identify(userId);
@@ -52,11 +67,14 @@ function RootLayoutNav() {
 
         if (!isAuthenticated && !inAuthGroup && !inPublicSeller) {
             replace("/(auth)/login");
+        } else if (isAuthenticated && onboarding === "needed" && !allowedDuringOnboarding(segments as string[])) {
+            // New seller: setup (get inventory in) comes before the rest of the app.
+            replace("/onboarding");
         } else if (isAuthenticated && inAuthGroup && (segments as string[])[1] !== "reset-password") {
             // A reset link must open the reset screen even while signed in.
-            replace("/(tabs)/dashboard");
+            replace(onboarding === "needed" ? "/onboarding" : "/(tabs)/dashboard");
         }
-    }, [isAuthenticated, isLoading, replace, segments]);
+    }, [isAuthenticated, isLoading, onboarding, replace, segments]);
 
     if (isLoading) {
         return (
@@ -70,26 +88,31 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-    // Web: paint the page itself dark, so the area beside the capped-width
+    useSchemeReload();
+    // Web: paint the page itself in the app background, so the area beside the capped-width
     // content on wide screens matches the app instead of showing white.
     useEffect(() => {
         if (Platform.OS === "web" && typeof document !== "undefined") {
-            document.documentElement.style.backgroundColor = COLORS.bg;
-            document.body.style.backgroundColor = COLORS.bg;
+            document.documentElement.style.backgroundColor = COLORS.canvas;
+            document.body.style.backgroundColor = COLORS.canvas;
         }
     }, []);
     return (
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
+          <Backdrop>
             <AuthProvider>
                 <NetworkProvider>
                     <ThemeProvider value={NAV_THEME}>
-                        <StatusBar style="light" />
+                        <StatusBar style={IS_LIGHT ? "dark" : "light"} />
                         <OfflineBanner />
                         <RootLayoutNav />
                     </ThemeProvider>
                 </NetworkProvider>
             </AuthProvider>
+          </Backdrop>
         </SafeAreaProvider>
+        </GestureHandlerRootView>
     );
 }
 
@@ -98,6 +121,6 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        backgroundColor: "#0E0E11",
+        backgroundColor: COLORS.bg,
     },
 });

@@ -15,9 +15,12 @@ const RAY_BAND = 56; // height of the glowing band that travels
 export function ScannerOverlay({
   hint = "Point at a barcode to scan",
   onCancel,
+  cancelLabel = "Cancel",
 }: {
   hint?: string;
   onCancel?: () => void;
+  /** e.g. "Done" when scanning many items in a row. */
+  cancelLabel?: string;
 }) {
   const [travel] = useState(() => new Animated.Value(0));
 
@@ -93,7 +96,7 @@ export function ScannerOverlay({
 
       {onCancel ? (
         <View style={styles.cancel}>
-          <Button label="Cancel" variant="secondary" onPress={onCancel} />
+          <Button label={cancelLabel} variant="secondary" onPress={onCancel} />
         </View>
       ) : null}
     </View>

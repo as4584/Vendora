@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import { View, StyleSheet, Text, TouchableOpacity, GestureResponderEvent } from "react-native";
 import { COLORS, FONT_SCALE } from "../../theme/tokens";
+import { GlassBlur } from "../../components/Backdrop";
 import { Icon, type IconName } from "../../components/ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -35,9 +36,12 @@ export default function TabsLayout() {
         headerTintColor: COLORS.text,
         headerTitleStyle: { fontWeight: "600", fontSize: 17 },
         // iPad / wide screens: keep content at a readable phone-to-tablet width.
-        sceneStyle: { backgroundColor: COLORS.bg, width: "100%", maxWidth: 760, alignSelf: "center" },
+        sceneStyle: { backgroundColor: "transparent", width: "100%", maxWidth: 760, alignSelf: "center" },
+        // Frosted glass tab bar over the backdrop photo (not floating, so it
+        // never covers the end of a scrolling list).
+        tabBarBackground: () => <GlassBlur />,
         tabBarStyle: {
-          backgroundColor: COLORS.bgElevated,
+          backgroundColor: "transparent",
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
           height: 70 + bottomInset,
@@ -117,6 +121,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 3,
-    borderColor: COLORS.bg,
+    borderColor: COLORS.canvas,
   },
 });

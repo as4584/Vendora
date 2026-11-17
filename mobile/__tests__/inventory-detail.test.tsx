@@ -111,6 +111,19 @@ describe('ItemDetailScreen', () => {
     alertSpy.mockRestore();
   });
 
+  it('copies the SKU and UPC with a tap', async () => {
+    const Clipboard = require('expo-clipboard');
+    const copy = jest.spyOn(Clipboard, 'setStringAsync').mockResolvedValue(true);
+    (apiMock.getItem as jest.Mock).mockResolvedValue(makeItem({ upc: '197862948123' }));
+    const screen = render(<ItemDetailScreen />);
+    fireEvent.press(await screen.findByTestId('copy-sku'));
+    await waitFor(() => expect(copy).toHaveBeenCalledWith('J1-001'));
+    expect(await screen.findByText('Copied')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('copy-upc'));
+    await waitFor(() => expect(copy).toHaveBeenCalledWith('197862948123'));
+    copy.mockRestore();
+  });
+
   it('reports market and Lightspeed failures and updated publish', async () => {
     (apiMock.getItem as jest.Mock).mockResolvedValue(makeItem());
     (apiMock.getMarketPrice as jest.Mock).mockRejectedValue(new Error('market down'));

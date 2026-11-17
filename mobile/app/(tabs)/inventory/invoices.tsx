@@ -285,11 +285,11 @@ export default function InvoicesScreen() {
         right={<ActionButton label="X" onPress={handleClose} tone="ghost" compact />}
       />
 
-      <View style={styles.segmentRow}>
-        <TouchableOpacity onPress={() => setView("create")}>
+      <View style={styles.segmentRow} accessibilityRole="tablist">
+        <TouchableOpacity onPress={() => setView("create")} accessibilityRole="tab" accessibilityState={{ selected: view === "create" }} hitSlop={8}>
           <Pill label="Create Invoice" tone={view === "create" ? "primary" : "neutral"} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setView("history")}>
+        <TouchableOpacity onPress={() => setView("history")} accessibilityRole="tab" accessibilityState={{ selected: view === "history" }} hitSlop={8}>
           <Pill label="Recent Invoices" tone={view === "history" ? "primary" : "neutral"} />
         </TouchableOpacity>
       </View>

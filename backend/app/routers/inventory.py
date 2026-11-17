@@ -11,9 +11,10 @@ import ipaddress
 import math
 import socket
 import uuid
+from decimal import Decimal
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 from urllib.parse import urljoin, urlparse
 
@@ -433,6 +434,21 @@ def _sheet_push(db: Session, item: InventoryItem) -> None:
     enqueue_sheet_push(db, item)
 
 
+def _sort_order(sort: str) -> list:
+    """ORDER BY for the list's sort menu; id breaks ties so pages never overlap."""
+    price = InventoryItem.expected_sell_price
+    orders = {
+        "newest": [InventoryItem.created_at.desc()],
+        "oldest": [InventoryItem.created_at.asc()],
+        "price_high": [price.desc().nulls_last()],
+        "price_low": [price.asc().nulls_last()],
+        "profit": [(price - InventoryItem.buy_price).desc().nulls_last()],
+        "qty": [InventoryItem.quantity.desc()],
+        "name": [func.lower(InventoryItem.name).asc()],
+    }
+    return [*orders[sort], InventoryItem.id.asc()]
+
+
 @router.get("", response_model=PaginatedItems)
 def list_items(
     page: int = Query(1, ge=1, description="Page number"),
@@ -446,6 +462,11 @@ def list_items(
     source_filter: Optional[str] = Query(None, alias="source", description="Filter by source (e.g. lightspeed)"),
     available_only: bool = Query(False, description="Only items with quantity > 0 and status in (in_stock, listed)"),
     upc: Optional[str] = Query(None, max_length=50, description="Exact barcode (UPC/EAN) match, for scan-to-sell"),
+    sort: str = Query(
+        "newest",
+        pattern="^(newest|oldest|price_high|price_low|profit|qty|name)$",
+        description="Order: newest, oldest (longest in stock), price_high, price_low, profit, qty, name",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -496,7 +517,7 @@ def list_items(
     total = base_query.count()
     items = (
         base_query
-        .order_by(InventoryItem.created_at.desc())
+        .order_by(*_sort_order(sort))
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()
@@ -828,6 +849,52 @@ def get_item(
 ):
     """Get a single inventory item. Returns 404 if deleted or not owned."""
     return _get_active_item(item_id, current_user.id, db)
+
+
+class LastSaleResponse(_PydBase):
+    unit_price: Decimal
+    sold_at: datetime
+    quantity: int
+    # Where the price came from: this item, another item with the same SKU,
+    # or another item with the same name (case-insensitive).
+    match: Literal["this_item", "same_sku", "same_name"]
+
+
+@router.get("/{item_id}/last-sale", response_model=Optional[LastSaleResponse])
+def last_sale(
+    item_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """What this (or the same) product last sold for, to price with confidence at checkout."""
+    from app.models.transaction import Transaction
+
+    item = _get_active_item(item_id, current_user.id, db)
+    sales = (
+        db.query(Transaction)
+        .join(InventoryItem, InventoryItem.id == Transaction.item_id)
+        .filter(
+            Transaction.user_id == current_user.id,
+            Transaction.is_refund.is_(False),
+            Transaction.status == "completed",
+        )
+        .order_by(Transaction.created_at.desc())
+    )
+    tiers: list[tuple[str, object]] = [("this_item", Transaction.item_id == item.id)]
+    if item.sku and item.sku.strip():
+        tiers.append(("same_sku", func.lower(InventoryItem.sku) == item.sku.strip().lower()))
+    tiers.append(("same_name", func.lower(InventoryItem.name) == item.name.strip().lower()))
+    for match, condition in tiers:
+        txn = sales.filter(condition).first()
+        if txn:
+            qty = max(1, txn.quantity or 1)
+            return LastSaleResponse(
+                unit_price=(Decimal(txn.gross_amount) / qty).quantize(Decimal("0.01")),
+                sold_at=txn.created_at,
+                quantity=qty,
+                match=match,
+            )
+    return None
 
 
 @router.get("/{item_id}/activity", response_model=list[InventoryActivityEntry])

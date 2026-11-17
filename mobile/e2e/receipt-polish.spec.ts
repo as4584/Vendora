@@ -3,7 +3,8 @@ import fixtures from './visual/fixtures.json';
 
 test('confirmed sale shows a readable receipt with reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.addInitScript(() => localStorage.setItem('vendora_access_token', 'local-test-token'));
+  // Existing seller: skip the new-seller setup screen.
+  await page.addInitScript(() => { localStorage.setItem('vendora_access_token', 'local-test-token'); localStorage.setItem('vendora.onboarded.72696639-c194-442f-9c4b-8c131ffa6763', '1'); localStorage.setItem('vendora.onboarded.user-1', '1'); });
   await page.route('**/api/v1/**', route => {
     const path = new URL(route.request().url()).pathname;
     const body = path.endsWith('/auth/me') ? fixtures.me

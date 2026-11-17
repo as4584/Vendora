@@ -212,6 +212,7 @@ class TestOAuth:
         assert qs["response_type"] == ["code"]
         assert "offline_access" in qs["scope"][0]
         assert qs["redirect_uri"] == [settings.STOCKX_REDIRECT_URI]
+        assert qs["prompt"] == ["login"]  # log-in screen, not sign-up
 
     def test_state_round_trip_and_rejections(self):
         uid = uuid.uuid4()

@@ -11,6 +11,12 @@ import {
   readLabelText,
 } from "../../modules/label-reader";
 import { parseBoxLabel, type ScanFields } from "./parseLabel";
+import { looksLikeCard, parseCardLabel } from "./parseCard";
+
+/** Read text from a box label or a trading card/slab, whichever it is. */
+export function parseScanText(lines: string[]): ScanFields {
+  return looksLikeCard(lines) ? parseCardLabel(lines) : parseBoxLabel(lines);
+}
 
 export {
   createFieldVoter,
@@ -31,7 +37,7 @@ import {
   type ScanResolution,
 } from "./memory";
 
-export { parseBoxLabel, mergeFields, isLabelReaderAvailable };
+export { parseBoxLabel, parseCardLabel, looksLikeCard, mergeFields, isLabelReaderAvailable };
 export type { ScanFields, ScanResolution };
 
 export const scanRemote: ScanRemote = {
@@ -72,5 +78,5 @@ export async function backfillScanMemoryOnce() {
 /** Read a label photo on the phone and merge it under anything remembered. */
 export async function readLabel(photoUri: string, remembered: ScanFields = {}): Promise<ScanFields> {
   const lines = await readLabelText(photoUri);
-  return mergeFields(remembered, parseBoxLabel(lines));
+  return mergeFields(remembered, parseScanText(lines));
 }

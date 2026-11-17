@@ -67,14 +67,24 @@ function useStockxStatus() {
 
 // ── Settings → Integrations ──────────────────────────────────────────────────
 
+export const STOCKX_CONNECT_HELP =
+  "Sign in with the same login you use on the StockX app or website, then tap Allow. " +
+  "If you made your StockX account with Google or Apple and that button doesn't work here, " +
+  "set a password on stockx.com (Log in, then Forgot password) and sign in with your email and that password.";
+
 export function StockxSettingsCard() {
   const { status, state, reload } = useStockxStatus();
 
   const connect = async () => {
     try {
       const { authorization_url } = await api.getStockxConnectUrl();
-      await openProviderConnect(authorization_url);
+      const outcome = await openProviderConnect(authorization_url);
       await reload();
+      // Never fail silently: if StockX didn't hand back a connection, say why and what to try.
+      if (outcome !== "connected") {
+        const now = await api.getStockxStatus().catch(() => null);
+        if (!now?.connected) Alert.alert("StockX didn't connect", STOCKX_CONNECT_HELP);
+      }
     } catch (err) {
       Alert.alert("StockX unavailable", errorText(err, "Could not open the StockX connect flow."));
     }
@@ -339,8 +349,8 @@ const styles = StyleSheet.create({
   hint: { ...TYPE.footnote, color: COLORS.textMuted, marginTop: SPACING.xxs },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.xs },
   linkRow: { gap: SPACING.xxs, paddingVertical: SPACING.xs, borderTopWidth: 1, borderTopColor: COLORS.border },
-  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: COLORS.bg },
-  sheet: { backgroundColor: COLORS.card, padding: SPACING.md, gap: SPACING.sm, borderTopLeftRadius: RADII.xl, borderTopRightRadius: RADII.xl },
+  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: COLORS.canvas },
+  sheet: { backgroundColor: COLORS.bgElevated, padding: SPACING.md, gap: SPACING.sm, borderTopLeftRadius: RADII.xl, borderTopRightRadius: RADII.xl },
   input: {
     ...TYPE.body, color: COLORS.text, backgroundColor: COLORS.cardAlt, borderRadius: RADII.md,
     borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.sm, minHeight: 48,

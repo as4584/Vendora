@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: COLORS.overlay },
   sheet: {
     maxHeight: "92%",
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.bgElevated,
     borderTopLeftRadius: RADII.xl,
     borderTopRightRadius: RADII.xl,
     borderWidth: 1,

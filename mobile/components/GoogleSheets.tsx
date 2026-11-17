@@ -104,6 +104,16 @@ export function GoogleSheetsSettingsCard() {
       setUrl("");
     }, "Could not use that sheet");
 
+  // Google's own file picker: choosing a sheet there lets Resqlo open it.
+  const pick = () =>
+    run("pick", async () => {
+      const { picker_url } = await api.getGooglePickerUrl(Platform.OS === "web" ? "web" : "native");
+      await openProviderConnect(picker_url);
+      const next = await api.getGoogleSheetsStatus();
+      setStatus(next);
+      if (!next.sheet) Alert.alert("No sheet linked", "Nothing was picked. Try again, or create a Resqlo sheet.");
+    }, "Could not open your sheets");
+
   const toggle = (key: "source_of_truth" | "archive_missing", value: boolean) =>
     run(key, async () => {
       setStatus(await api.updateGoogleSheetSettings({ [key]: value }));
@@ -158,6 +168,16 @@ export function GoogleSheetsSettingsCard() {
                 <Button label="Cancel" onPress={() => setPasting(false)} variant="ghost" size="sm" />
               </View>
             </View>
+          ) : status?.picker_available ? (
+            <Button
+              testID="google-pick-sheet"
+              label="Link my existing sheet"
+              onPress={pick}
+              loading={busy === "pick"}
+              variant="secondary"
+              size="sm"
+              leadingIcon="folder-open-outline"
+            />
           ) : (
             <Button label="Use an existing sheet" onPress={() => setPasting(true)} variant="secondary" size="sm" />
           )}

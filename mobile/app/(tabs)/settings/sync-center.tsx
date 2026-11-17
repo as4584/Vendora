@@ -103,21 +103,13 @@ export default function SyncCenterScreen() {
     }
   };
 
-  const syncAll = async () => {
+  // Pull down = sync every connected provider now, quietly. Sync also runs
+  // automatically in the background, so there is no sync button.
+  const pullToSync = async () => {
+    setRefreshing(true);
     const connected = PROVIDERS.filter((p) => statuses[p.key]?.connected);
-    if (connected.length === 0) {
-      Alert.alert("Nothing to sync", "Connect a provider in Settings first.");
-      return;
-    }
-    setSyncing("all");
-    try {
-      const results = await Promise.allSettled(connected.map((p) => p.sync()));
-      const failed = results.filter((r) => r.status === "rejected").length;
-      await load();
-      if (failed > 0) Alert.alert("Partial sync", `${connected.length - failed} of ${connected.length} providers synced.`);
-    } finally {
-      setSyncing(null);
-    }
+    await Promise.allSettled(connected.map((p) => p.sync()));
+    await load();
   };
 
   const retryJob = async (job: api.OutboxJob) => {
@@ -169,7 +161,7 @@ export default function SyncCenterScreen() {
       testID="sync-content"
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={COLORS.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void pullToSync()} tintColor={COLORS.primary} />}
     >
       <HeaderTitle title="Sync Center" subtitle="Keep your POS and marketplace inventory in lockstep." />
 
@@ -203,12 +195,12 @@ export default function SyncCenterScreen() {
         })}
       </Card>
 
-      <ActionButton label={syncing === "all" ? "Syncing..." : "Sync All Now"} onPress={syncAll} disabled={syncing !== null} />
+      <Text style={styles.autoNote}>Everything syncs automatically every few minutes. Pull down to sync now.</Text>
 
       <SectionLabel>Sync History</SectionLabel>
       <Card style={styles.stack}>
         {runs.length === 0 ? (
-          <Text style={styles.emptyText}>No syncs have run yet. Sync a provider to see history here.</Text>
+          <Text style={styles.emptyText}>No syncs yet. History shows here once a connected store syncs.</Text>
         ) : (
           visibleRuns.map((run, i) => (
             <View key={run.id} style={[styles.histRow, i < visibleRuns.length - 1 && styles.intRowDivider]}>
@@ -310,5 +302,6 @@ const styles = StyleSheet.create({
   intText: { flex: 1, gap: 3 },
   intName: { color: COLORS.text, fontSize: 15, fontWeight: "600" },
   intMeta: { color: COLORS.textMuted, fontSize: 12 },
+  autoNote: { color: COLORS.textSoft, fontSize: 13, textAlign: "center", paddingHorizontal: SPACING.md },
   emptyText: { color: COLORS.textMuted, fontSize: 13, paddingVertical: SPACING.sm },
 });

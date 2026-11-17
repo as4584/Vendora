@@ -132,7 +132,7 @@ export function LiveBoxScanner({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1, backgroundColor: COLORS.canvas },
   top: {
     position: "absolute",
     left: 0,

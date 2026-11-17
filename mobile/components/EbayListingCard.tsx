@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.55)" },
   sheet: {
     maxHeight: "92%",
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.bgElevated,
     borderTopLeftRadius: RADII.xl,
     borderTopRightRadius: RADII.xl,
     borderWidth: 1,

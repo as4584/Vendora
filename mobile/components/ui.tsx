@@ -12,7 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Polyline, Polygon, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
-import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../theme/tokens";
+import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING, TONES } from "../theme/tokens";
 
 export type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -64,7 +64,7 @@ export function Sparkline({
   data,
   width = 300,
   height = 70,
-  stroke = "#FFFFFF",
+  stroke = COLORS.text,
   fillOpacity = 0.18,
 }: {
   data: number[];
@@ -177,11 +177,11 @@ export function Pill({
 }) {
   const palette = {
     neutral: { bg: COLORS.cardAlt, border: "transparent", text: COLORS.textMuted },
-    primary: { bg: "rgba(124,92,255,0.16)", border: "transparent", text: "#C4B6FF" },
-    success: { bg: "rgba(76,195,138,0.13)", border: "transparent", text: "#8FDDB6" },
-    warning: { bg: "rgba(229,176,74,0.13)", border: "transparent", text: "#EFCB85" },
-    danger: { bg: "rgba(229,88,77,0.14)", border: "transparent", text: "#F2A49D" },
-    info: { bg: "rgba(110,168,245,0.13)", border: "transparent", text: "#A9CBF8" },
+    primary: { bg: TONES.primary.bg, border: "transparent", text: TONES.primary.text },
+    success: { bg: TONES.success.bg, border: "transparent", text: TONES.success.text },
+    warning: { bg: TONES.warning.bg, border: "transparent", text: TONES.warning.text },
+    danger: { bg: TONES.danger.bg, border: "transparent", text: TONES.danger.text },
+    info: { bg: TONES.info.bg, border: "transparent", text: TONES.info.text },
   }[tone];
 
   return (

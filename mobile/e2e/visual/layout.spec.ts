@@ -9,6 +9,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import fixtures from './fixtures.json';
 
+// The app follows the phone's light/dark setting; this gate pins dark (the
+// original look). Light mode is checked with colorScheme: 'light'.
+test.use({ colorScheme: 'dark' });
+
 const SIZES = [
   { name: 'iphone-se', width: 375, height: 667 },
   { name: 'iphone-15', width: 393, height: 852 },
@@ -26,11 +30,15 @@ const SCREENS: {
   fullPage?: boolean;
   /** Pick a CSV through the file chooser (import review) before the steps. */
   upload?: boolean;
+  /** Brand-new account: the inventory list comes back empty. */
+  emptyInventory?: boolean;
 }[] = [
   { name: 'login', path: '/login', authed: false },
   { name: 'register', path: '/register', authed: false },
   { name: 'forgot-password', path: '/forgot-password', authed: false },
   { name: 'dashboard', path: '/dashboard' },
+  { name: 'onboarding-start', path: '/onboarding', ready: 'Import my spreadsheet', emptyInventory: true },
+  { name: 'onboarding', path: '/onboarding', ready: "You're set up" },
   { name: 'inventory', path: '/inventory', ready: 'Nike Dunk Low' },
   { name: 'item-detail', path: `/inventory/${fixtures.item_id}`, ready: 'Nike Dunk Low' },
   { name: 'add', path: '/inventory/add', ready: 'Scan a box' },
@@ -109,9 +117,16 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/customers(\?|$)/, fixtures.customers],
 ];
 
-async function stubApi(page: Page) {
+async function stubApi(page: Page, opts: { emptyInventory?: boolean } = {}) {
   await page.route('**/api/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname + new URL(route.request().url()).search;
+    if (opts.emptyInventory && /\/api\/v1\/inventory$/.test(path.split('?')[0])) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [], total: 0, page: 1, per_page: 24, pages: 0 }),
+      });
+    }
     const hit = ROUTES.find(([re]) => re.test(path.split('?')[0]) || re.test(path));
     return route.fulfill({
       status: 200,
@@ -156,7 +171,7 @@ type Screen = (typeof SCREENS)[number];
 
 async function openScreen(page: Page, screen: Screen, size: { width: number; height: number }) {
   await page.setViewportSize({ width: size.width, height: size.height });
-  await stubApi(page);
+  await stubApi(page, { emptyInventory: screen.emptyInventory });
   await page.goto('/');
   if (screen.authed !== false) {
     await page.evaluate(() => localStorage.setItem('vendora_access_token', 'demo'));

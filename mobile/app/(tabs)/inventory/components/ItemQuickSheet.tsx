@@ -27,7 +27,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as api from "../../../../services/api";
 
-import { COLORS } from "../../../../theme/tokens";
+import { BRAND, COLORS } from "../../../../theme/tokens";
 import { Button, IconButton } from "../../../../components/Button";
 // ─── Clothing / Size-variant detection ──────────────────────────────────────
 const CLOTHING_KEYWORDS = [
@@ -51,9 +51,9 @@ function computeMargin(buy: string | null, sell: string | null): number | null {
 }
 
 function marginColor(pct: number): string {
-    if (pct >= 30) return "#4CC38A";
-    if (pct >= 15) return "#E5B04A";
-    return "#E5584D";
+    if (pct >= 30) return COLORS.success;
+    if (pct >= 15) return COLORS.warning;
+    return COLORS.danger;
 }
 
 // ─── Variant helpers ─────────────────────────────────────────────────────────
@@ -68,12 +68,12 @@ function totalVariantQty(variants: api.SizeVariant[]): number {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-    in_stock: "#4CC38A",
-    listed: "#0984E3",
-    sold: "#E5584D",
-    shipped: "#E5B04A",
+    in_stock: COLORS.success,
+    listed: COLORS.info,
+    sold: COLORS.danger,
+    shipped: COLORS.warning,
     paid: COLORS.primary,
-    archived: "#8C8C96",
+    archived: COLORS.textSoft,
 };
 
 const SCREEN_H = Dimensions.get("window").height;
@@ -131,7 +131,7 @@ function ItemQuickSheetContent({
 
     const clothing = isClothingItem(item.category);
     const margin = computeMargin(item.buy_price, item.expected_sell_price);
-    const dotColor = STATUS_COLORS[item.status] ?? "#8C8C96";
+    const dotColor = STATUS_COLORS[item.status] ?? COLORS.textSoft;
     const normalizedBrand = brandDraft.trim().toLowerCase();
 
     // ── Variant helpers ──────────────────────────────────────────────────────
@@ -262,7 +262,7 @@ function ItemQuickSheetContent({
                             />
                         ) : (
                             <View style={[styles.photo, styles.photoPlaceholder]}>
-                                <Ionicons name="image-outline" size={26} color="#8C8C96" />
+                                <Ionicons name="image-outline" size={26} color={COLORS.textSoft} />
                             </View>
                         )}
 
@@ -279,7 +279,7 @@ function ItemQuickSheetContent({
                                     onSubmitEditing={() => setEditingName(false)}
                                     onBlur={() => setEditingName(false)}
                                     placeholder="Item name"
-                                    placeholderTextColor="#8C8C96"
+                                    placeholderTextColor={COLORS.textSoft}
                                 />
                             ) : (
                                 <TouchableOpacity
@@ -309,7 +309,7 @@ function ItemQuickSheetContent({
                                     onSubmitEditing={() => setEditingBrand(false)}
                                     onBlur={() => setEditingBrand(false)}
                                     placeholder="Brand"
-                                    placeholderTextColor="#8C8C96"
+                                    placeholderTextColor={COLORS.textSoft}
                                 />
                             ) : (
                                 <TouchableOpacity
@@ -392,7 +392,7 @@ function ItemQuickSheetContent({
                         </View>
                         <View style={styles.pricingCell}>
                             <Text style={styles.pricingLabel}>Expected</Text>
-                            <Text style={[styles.pricingValue, { color: "#4CC38A" }]}>
+                            <Text style={[styles.pricingValue, { color: COLORS.success }]}>
                                 {item.expected_sell_price
                                     ? `$${parseFloat(item.expected_sell_price).toFixed(2)}`
                                     : "—"}
@@ -450,7 +450,7 @@ function ItemQuickSheetContent({
                                     accessibilityLabel="New Size"
                                     style={styles.sizeInput}
                                     placeholder='e.g. M, 32x32, 10.5'
-                                    placeholderTextColor="#8C8C96"
+                                    placeholderTextColor={COLORS.textSoft}
                                     value={newSize}
                                     onChangeText={setNewSize}
                                     onSubmitEditing={addVariant}
@@ -506,7 +506,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: "#141418",
+        backgroundColor: COLORS.bgElevated,
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         maxHeight: SCREEN_H * 0.88,
@@ -515,7 +515,7 @@ const styles = StyleSheet.create({
     handle: {
         width: 40,
         height: 4,
-        backgroundColor: "#2C2C34",
+        backgroundColor: COLORS.cardAlt,
         borderRadius: 2,
         alignSelf: "center",
         marginTop: 10,
@@ -536,7 +536,7 @@ const styles = StyleSheet.create({
         width: 90,
         height: 90,
         borderRadius: 12,
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
     },
     photoPlaceholder: {
         justifyContent: "center",
@@ -544,42 +544,42 @@ const styles = StyleSheet.create({
     },
     photoIcon: { fontSize: 32 },
     titleBlock: { flex: 1, justifyContent: "center", gap: 4 },
-    itemName: { color: "#FFF", fontSize: 16, fontWeight: "600", lineHeight: 20 },
+    itemName: { color: COLORS.text, fontSize: 16, fontWeight: "600", lineHeight: 20 },
     itemNameInput: {
-        color: "#FFF",
+        color: COLORS.text,
         fontSize: 16,
         fontWeight: "600",
         lineHeight: 20,
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
         borderRadius: 8,
         paddingHorizontal: 10,
         paddingVertical: 7,
     },
     itemNameHint: {
-        color: "#8C8C96",
+        color: COLORS.textSoft,
         fontSize: 10,
         marginTop: 2,
     },
     brandText: {
-        color: "#A6A6B0",
+        color: COLORS.textMuted,
         fontSize: 11,
         fontWeight: "600",
         marginTop: 2,
     },
     brandHint: {
-        color: "#8C8C96",
+        color: COLORS.textSoft,
         fontSize: 10,
         marginTop: 1,
     },
     brandInput: {
-        color: "#FFF",
+        color: COLORS.text,
         fontSize: 12,
         fontWeight: "600",
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
         borderRadius: 8,
         paddingHorizontal: 10,
         paddingVertical: 7,
@@ -592,19 +592,19 @@ const styles = StyleSheet.create({
         marginTop: 6,
     },
     brandChip: {
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
         borderRadius: 999,
         paddingHorizontal: 10,
         paddingVertical: 5,
     },
     brandChipActive: {
         borderColor: COLORS.primary,
-        backgroundColor: "#24203A",
+        backgroundColor: COLORS.primarySoft,
     },
     brandChipText: {
-        color: "#A6A6B0",
+        color: COLORS.textMuted,
         fontSize: 11,
         fontWeight: "600",
     },
@@ -619,15 +619,15 @@ const styles = StyleSheet.create({
     // Pricing
     pricingRow: {
         flexDirection: "row",
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 12,
         padding: 12,
         marginBottom: 16,
         gap: 4,
     },
     pricingCell: { flex: 1, alignItems: "center" },
-    pricingLabel: { color: "#8C8C96", fontSize: 10, fontWeight: "600", marginBottom: 4 },
-    pricingValue: { color: "#FFF", fontSize: 15, fontWeight: "600" },
+    pricingLabel: { color: COLORS.textSoft, fontSize: 10, fontWeight: "600", marginBottom: 4 },
+    pricingValue: { color: COLORS.text, fontSize: 15, fontWeight: "600" },
 
     // Section
     section: {
@@ -644,33 +644,33 @@ const styles = StyleSheet.create({
         fontSize: 17,
         fontWeight: "600",
     },
-    sectionSub: { color: "#A6A6B0", fontSize: 11 },
-    emptyVariants: { color: "#8C8C96", fontSize: 13, textAlign: "center", paddingVertical: 8 },
+    sectionSub: { color: COLORS.textMuted, fontSize: 11 },
+    emptyVariants: { color: COLORS.textSoft, fontSize: 13, textAlign: "center", paddingVertical: 8 },
 
     // Variant row
     variantRow: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 8,
         marginBottom: 6,
     },
-    variantSize: { flex: 1, color: "#FFF", fontSize: 14, fontWeight: "600" },
+    variantSize: { flex: 1, color: COLORS.text, fontSize: 14, fontWeight: "600" },
     qtyControls: { flexDirection: "row", alignItems: "center", gap: 10 },
     qtyBtn: {
         width: 30,
         height: 30,
         borderRadius: 8,
-        backgroundColor: "#2C2C34",
+        backgroundColor: COLORS.cardAlt,
         justifyContent: "center",
         alignItems: "center",
     },
-    qtyBtnText: { color: "#FFF", fontSize: 18, fontWeight: "600", lineHeight: 22 },
-    qtyValue: { color: "#FFF", fontSize: 16, fontWeight: "600", minWidth: 28, textAlign: "center" },
+    qtyBtnText: { color: COLORS.text, fontSize: 18, fontWeight: "600", lineHeight: 22 },
+    qtyValue: { color: COLORS.text, fontSize: 16, fontWeight: "600", minWidth: 28, textAlign: "center" },
     removeBtn: { marginLeft: 10, padding: 4 },
-    removeBtnText: { color: "#E5584D", fontSize: 14, fontWeight: "600" },
+    removeBtnText: { color: COLORS.danger, fontSize: 14, fontWeight: "600" },
 
     // Add size row
     addSizeRow: {
@@ -681,14 +681,14 @@ const styles = StyleSheet.create({
     },
     sizeInput: {
         flex: 1,
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 10,
-        color: "#FFF",
+        color: COLORS.text,
         fontSize: 14,
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
     },
     addSizeBtn: {
         backgroundColor: COLORS.primary,
@@ -696,7 +696,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         paddingVertical: 10,
     },
-    addSizeBtnText: { color: "#FFF", fontSize: 13, fontWeight: "600" },
+    addSizeBtnText: { color: BRAND.onPrimary, fontSize: 13, fontWeight: "600" },
 
     // Non-clothing qty stepper
     qtyRow: {
@@ -704,7 +704,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         gap: 20,
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 12,
         padding: 12,
     },
@@ -712,12 +712,12 @@ const styles = StyleSheet.create({
         width: 42,
         height: 42,
         borderRadius: 12,
-        backgroundColor: "#2C2C34",
+        backgroundColor: COLORS.cardAlt,
         justifyContent: "center",
         alignItems: "center",
     },
-    qtyBtnLargeText: { color: "#FFF", fontSize: 22, fontWeight: "600" },
-    qtyValueLarge: { color: "#FFF", fontSize: 28, fontWeight: "600", minWidth: 50, textAlign: "center" },
+    qtyBtnLargeText: { color: COLORS.text, fontSize: 22, fontWeight: "600" },
+    qtyValueLarge: { color: COLORS.text, fontSize: 28, fontWeight: "600", minWidth: 50, textAlign: "center" },
 
     // Actions
     actions: { gap: 10, marginTop: 4 },
@@ -727,23 +727,23 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
         alignItems: "center",
     },
-    saveBtnText: { color: "#FFF", fontSize: 15, fontWeight: "600" },
+    saveBtnText: { color: BRAND.onPrimary, fontSize: 15, fontWeight: "600" },
     editBtn: {
-        backgroundColor: "#1C1C22",
+        backgroundColor: COLORS.card,
         borderRadius: 12,
         paddingVertical: 13,
         alignItems: "center",
         borderWidth: 1,
-        borderColor: "#2C2C34",
+        borderColor: COLORS.borderStrong,
     },
-    editBtnText: { color: "#CCC", fontSize: 15, fontWeight: "600" },
+    editBtnText: { color: COLORS.textMuted, fontSize: 15, fontWeight: "600" },
     deleteBtn: {
-        backgroundColor: "#33191A",
+        backgroundColor: BRAND.dangerSoft,
         borderRadius: 12,
         paddingVertical: 13,
         alignItems: "center",
         borderWidth: 1,
-        borderColor: "#E5584D",
+        borderColor: COLORS.danger,
     },
-    deleteBtnText: { color: "#E5584D", fontSize: 15, fontWeight: "600" },
+    deleteBtnText: { color: COLORS.danger, fontSize: 15, fontWeight: "600" },
 });

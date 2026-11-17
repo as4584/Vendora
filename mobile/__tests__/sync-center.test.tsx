@@ -96,10 +96,13 @@ describe('SyncCenterScreen', () => {
     }, { timeout: 3000 });
   });
 
-  it('syncs all connected providers when "Sync All Now" is pressed', async () => {
+  it('has no sync button; pull-to-refresh syncs connected providers only', async () => {
     const screen = render(<SyncCenterScreen />);
-    await screen.findByText('Sync All Now');
-    fireEvent.press(screen.getByText('Sync All Now'));
+    await screen.findByText('Integrations');
+    expect(screen.queryByText('Sync All Now')).toBeNull();
+    expect(screen.getByText(/syncs automatically/)).toBeTruthy();
+    const control = screen.UNSAFE_getByType(require('react-native').RefreshControl);
+    await act(async () => control.props.onRefresh());
     await waitFor(() => expect(apiMock.triggerLightspeedSync).toHaveBeenCalled());
     // Square/Clover/eBay are disconnected, so they are not synced.
     expect(apiMock.triggerSquareSync).not.toHaveBeenCalled();
@@ -149,21 +152,15 @@ describe('SyncCenterScreen', () => {
     expect(screen.getAllByText('Not connected').length).toBe(5);
   });
 
-  it('reports a partial result from Sync All Now', async () => {
+  it('pull-to-sync stays quiet when one provider fails and still reloads', async () => {
     (apiMock.getSquareStatus as jest.Mock).mockResolvedValue({ connected: true, last_synced_at: null });
     (apiMock.triggerSquareSync as jest.Mock).mockRejectedValue(new Error('sq down'));
     const screen = render(<SyncCenterScreen />);
-    await screen.findByText('Sync All Now');
-    fireEvent.press(screen.getByText('Sync All Now'));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Partial sync', expect.stringContaining('of 2 providers synced')));
-  });
-
-  it('warns when there is nothing to sync', async () => {
-    (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue(DISCONNECTED);
-    const screen = render(<SyncCenterScreen />);
-    await screen.findByText('Sync All Now');
-    fireEvent.press(screen.getByText('Sync All Now'));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Nothing to sync', expect.any(String)));
+    await screen.findByText('Integrations');
+    const control = screen.UNSAFE_getByType(require('react-native').RefreshControl);
+    await act(async () => control.props.onRefresh());
+    await waitFor(() => expect(apiMock.listSyncRuns).toHaveBeenCalledTimes(2));
+    expect(Alert.alert).not.toHaveBeenCalled();
   });
 
   it('refreshes via pull-to-refresh', async () => {
