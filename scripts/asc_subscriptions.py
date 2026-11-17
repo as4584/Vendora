@@ -1,9 +1,9 @@
 """Create Vendora's App Store auto-renewable subscriptions (idempotent).
 
 Group "Vendora Plans":
-  com.vendora.partner.monthly  Pro + Partner  $24.99/mo  (level 1, highest)
-  com.vendora.pro.monthly      Pro            $19.99/mo  (level 2)
-  com.vendora.pro.yearly       Pro            $199.99/yr (level 2)
+  com.vendora.partner.monthly  Pro + Partner  $14.99/mo  (level 1, highest)
+  com.vendora.pro.monthly      Pro            $9.99/mo   (level 2)
+  com.vendora.pro.yearly       Pro            $79.99/yr  (level 2)
 
 Usage: python scripts/asc_subscriptions.py [inspect|apply]
 """
@@ -18,13 +18,13 @@ APP_ID = asc.APP_ID
 GROUP_NAME = "Vendora Plans"
 PRODUCTS = [
     {"productId": "com.vendora.partner.monthly", "name": "Pro + Partner Monthly", "period": "ONE_MONTH", "level": 1,
-     "price": "24.99", "display": "Pro + Partner",
+     "price": "14.99", "display": "Pro + Partner",
      "description": "Pro plus storefront, badge, priority support"},
     {"productId": "com.vendora.pro.monthly", "name": "Pro Monthly", "period": "ONE_MONTH", "level": 2,
-     "price": "19.99", "display": "Vendora Pro",
+     "price": "9.99", "display": "Vendora Pro",
      "description": "Unlimited inventory, invoices and exports"},
     {"productId": "com.vendora.pro.yearly", "name": "Pro Yearly", "period": "ONE_YEAR", "level": 2,
-     "price": "199.99", "display": "Vendora Pro (Yearly)",
+     "price": "79.99", "display": "Vendora Pro (Yearly)",
      "description": "Unlimited inventory, invoices and exports"},
 ]
 

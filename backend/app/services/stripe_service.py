@@ -93,7 +93,7 @@ def create_payment_intent(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "error": "pro_required",
-                "message": "Stripe integration requires Pro tier ($20/mo).",
+                "message": "Stripe integration requires Pro.",
             },
         )
 

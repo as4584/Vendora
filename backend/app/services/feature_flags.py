@@ -83,7 +83,7 @@ def require_market_pricing(current_user):
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "error": "pro_required",
-                "message": "Price suggestions and eBay comps are part of Pro ($20/mo).",
+                "message": "Price suggestions and eBay comps are part of Pro.",
                 "feature": "market_pricing",
             },
         )
