@@ -40,6 +40,7 @@ node_modules/
 vendora_data/
 
 # Local artifacts
+/.app-review/
 backend/vendora.db
 backend/test.db
 logs.txt

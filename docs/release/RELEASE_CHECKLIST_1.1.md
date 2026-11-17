@@ -45,7 +45,7 @@ Work through these in order. Anything marked **TODO** needs a decision or value 
 - **App Privacy:** use `docs/release/APP_PRIVACY_ANSWERS.md`.
 
 ## 5. Subscriptions (ASC → Subscriptions), one group "Resqlo Pro"
-For each product, fill in: reference name, product id, duration, **price: TODO**, display name, description (≤45), review screenshot (screenshot of the Plans & Billing screen), and review notes.
+For each product, verify the reference name, product ID, duration, price, display name, description (≤45), availability, and review notes in App Store Connect. Follow the [native subscription screenshot guide](SUBSCRIPTION_REVIEW_SCREENSHOTS.md) to capture and check one App Review screenshot per product. These are separate from the public listing screenshots in section 4.
 
 | Product id | Duration | Display name | Description |
 |---|---|---|---|
