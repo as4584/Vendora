@@ -5,16 +5,25 @@
  */
 let AsyncStorage: any;
 
-const OUTBOX = "offline:outbox";
-const MIRROR = "offline:inventory_mirror";
-const FAILED = "offline:failed";
+const OUTBOX = "outbox";
+const MIRROR = "mirror";
+const FAILED = "failed";
 
 function apiError(status: number, message: string) {
   return Object.assign(new Error(message), { status });
 }
 
+const JOURNAL_KEY = "account:v1:seller:offline:journal";
 async function read(key: string) {
-  return JSON.parse((await AsyncStorage.getItem(key)) ?? "null");
+  return JSON.parse((await AsyncStorage.getItem(JOURNAL_KEY)) ?? "null")?.[key] ?? null;
+}
+
+async function seed(key: string, value: string) {
+  const prior = JSON.parse((await AsyncStorage.getItem(JOURNAL_KEY)) ?? "null");
+  await AsyncStorage.setItem(JOURNAL_KEY, JSON.stringify({
+    mirror: {}, outbox: [], remap: {}, pendingInvoices: [], failed: [], lastSync: null,
+    ...prior, [key]: JSON.parse(value),
+  }));
 }
 
 describe("offline outbox rejections", () => {
@@ -22,13 +31,14 @@ describe("offline outbox rejections", () => {
     jest.resetModules();
     AsyncStorage = require("@react-native-async-storage/async-storage").default;
     await AsyncStorage.clear();
+    require("../services/session").replaceSession("seller");
   });
 
   it("records a rejected quick sale and restores the mirrored stock", async () => {
-    await AsyncStorage.setItem(MIRROR, JSON.stringify({
-      item1: { id: "item1", quantity: 0, status: "sold" },
+    await seed(MIRROR, JSON.stringify({
+      item1: { id: "item1", quantity: 1, status: "in_stock" },
     }));
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify([
+    await seed(OUTBOX, JSON.stringify([
       { id: "ob_1", kind: "quick_sale", path: "/transactions", method: "POST",
         body: { item_id: "item1", quantity: 1 }, createdAt: "t", attempts: 0 },
     ]));
@@ -47,10 +57,7 @@ describe("offline outbox rejections", () => {
   });
 
   it("pulls dependents of a rejected offline-created item and keeps others", async () => {
-    await AsyncStorage.setItem(MIRROR, JSON.stringify({
-      local_x: { id: "local_x", quantity: 2, status: "in_stock" },
-    }));
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify([
+    await seed(OUTBOX, JSON.stringify([
       { id: "ob_c", kind: "create_item", path: "/inventory", method: "POST",
         body: { name: "" }, tempId: "local_x", createdAt: "t", attempts: 0 },
       { id: "ob_u", kind: "update_item", path: "/inventory/local_x", method: "PUT",
@@ -70,14 +77,14 @@ describe("offline outbox rejections", () => {
 
     // Only the independent sale reached the server after the rejection.
     expect(send).toHaveBeenCalledTimes(2);
-    expect(send).toHaveBeenLastCalledWith("/transactions", "POST", { item_id: "real1" });
+    expect(send).toHaveBeenLastCalledWith("/transactions", "POST", { item_id: "real1" }, expect.objectContaining({ ownerId: "seller" }));
     expect((await read(FAILED)).map((f: any) => f.id)).toEqual(["ob_c", "ob_u", "ob_s"]);
     expect((await read(MIRROR)).local_x).toBeUndefined();
     expect(await read(OUTBOX)).toEqual([]);
   });
 
   it("keeps transient failures queued instead of recording them", async () => {
-    await AsyncStorage.setItem(OUTBOX, JSON.stringify([
+    await seed(OUTBOX, JSON.stringify([
       { id: "ob_t", kind: "quick_sale", path: "/transactions", method: "POST",
         body: {}, createdAt: "t", attempts: 0 },
     ]));
@@ -87,11 +94,11 @@ describe("offline outbox rejections", () => {
     await offline.flushOutbox();
 
     expect(await read(OUTBOX)).toHaveLength(1);
-    expect(await read(FAILED)).toBeNull();
+    expect(await read(FAILED)).toEqual([]);
   });
 
   it("clearFailedSyncs empties the list", async () => {
-    await AsyncStorage.setItem(FAILED, JSON.stringify([{ id: "x" }]));
+    await seed(FAILED, JSON.stringify([{ id: "x" }]));
     const offline = require("../services/offline/inventory");
     await offline.clearFailedSyncs();
     expect(await read(FAILED)).toEqual([]);

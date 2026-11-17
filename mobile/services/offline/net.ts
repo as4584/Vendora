@@ -37,22 +37,29 @@ function computeOnline(state: { isConnected: boolean | null; isInternetReachable
 /** Start listening. Idempotent — safe to call once from the network provider. */
 export function initNetwork(): () => void {
   if (_unsubscribe) return _unsubscribe;
-  _unsubscribe = NetInfo.addEventListener((state) => {
+  const stop = NetInfo.addEventListener((state) => {
     const next = computeOnline(state);
     if (next !== _online) {
       _online = next;
       listeners.forEach((l) => l(next));
     }
   });
+  const cleanup = () => {
+    if (_unsubscribe !== cleanup) return;
+    _unsubscribe = null;
+    stop();
+  };
+  _unsubscribe = cleanup;
   // Seed the current value.
   NetInfo.fetch().then((state) => {
+    if (_unsubscribe !== cleanup) return;
     const next = computeOnline(state);
     if (next !== _online) {
       _online = next;
       listeners.forEach((l) => l(next));
     }
-  });
-  return _unsubscribe;
+  }).catch(() => undefined);
+  return cleanup;
 }
 
 export function isOnline(): boolean {

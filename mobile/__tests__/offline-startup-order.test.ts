@@ -16,6 +16,7 @@ describe("offline sync before api.ts initializes", () => {
     AsyncStorage = require("@react-native-async-storage/async-storage").default;
     await AsyncStorage.clear();
     await AsyncStorage.setItem(OUTBOX_KEY, JSON.stringify(queued));
+    require("../services/session").replaceSession("seller");
   });
 
   it("tryGetSender returns null until a sender is registered", () => {
@@ -36,14 +37,18 @@ describe("offline sync before api.ts initializes", () => {
 
   it("drains the kept outbox once the sender is registered", async () => {
     const sender = require("../services/offline/sender");
-    const { flushOutbox } = require("../services/offline/inventory");
+    const { flushOutbox, queueQuickSale, getSyncState } = require("../services/offline/inventory");
+    await queueQuickSale({ item_id: "ours", method: "cash", gross_amount: "3.00" });
     await flushOutbox(); // too early: no-op
+    expect((await getSyncState()).pending).toBe(1);
 
     const send = jest.fn().mockResolvedValue({});
     sender.setSender(send);
     await flushOutbox();
 
-    expect(send).toHaveBeenCalledWith("/transactions/quick-sale", "POST", { item_id: "a" });
-    expect(JSON.parse((await AsyncStorage.getItem(OUTBOX_KEY)) as string)).toEqual([]);
+    expect(send).toHaveBeenCalledWith("/transactions", "POST",
+      expect.objectContaining({ item_id: "ours" }), expect.objectContaining({ ownerId: "seller" }));
+    expect((await getSyncState()).pending).toBe(0);
+    expect(JSON.parse((await AsyncStorage.getItem(OUTBOX_KEY)) as string)).toEqual(queued);
   });
 });

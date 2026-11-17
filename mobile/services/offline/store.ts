@@ -1,58 +1,73 @@
-/**
- * Offline storage primitives.
- *
- * Thin JSON-over-AsyncStorage helpers plus the key namespace used by the
- * offline layer (read cache, inventory mirror, write outbox). Everything the
- * offline system persists lives under the `offline:` prefix so it can be wiped
- * in one shot on sign-out.
- */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { assertSession, type AccountContext } from "../session";
 
-export const KEYS = {
-  inventoryMirror: "offline:inventory_mirror", // id -> InventoryItem (+ _pending flags)
-  outbox: "offline:outbox", // OutboxEntry[]
-  failed: "offline:failed", // FailedSync[] — changes the server rejected
-  dashboardCache: "offline:cache:dashboard", // last Dashboard payload
-  lastSync: "offline:last_sync", // ISO string of last successful server read
-  pendingInvoices: "offline:pending_invoices", // InvoiceData[] created offline, not yet synced
-} as const;
+/** Never read or remove pre-scope device-global offline/scan keys. */
+export function accountKey(ownerId: string, name: string): string {
+  return `account:v1:${encodeURIComponent(ownerId)}:${name}`;
+}
 
-export async function readJSON<T>(key: string, fallback: T): Promise<T> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    if (raw == null) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+export class OfflineStorageError extends Error {
+  constructor(cause: unknown) {
+    super("Unable to access offline storage. The change was not confirmed on this device.", { cause });
+    this.name = "OfflineStorageError";
   }
 }
 
-export async function writeJSON(key: string, value: unknown): Promise<void> {
+export async function readAccountJSON<T>(account: AccountContext, name: string, empty: () => T): Promise<T> {
+  assertSession(account);
+  let data: T;
   try {
-    await AsyncStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Storage full / serialization failure: non-fatal for the caller.
+    const raw = await AsyncStorage.getItem(accountKey(account.ownerId, name));
+    data = raw === null ? empty() : JSON.parse(raw);
+  } catch (cause) {
+    assertSession(account);
+    throw new OfflineStorageError(cause);
+  }
+  assertSession(account);
+  return data;
+}
+
+export async function writeAccountJSON(account: AccountContext, name: string, data: unknown): Promise<void> {
+  assertSession(account);
+  try {
+    await AsyncStorage.setItem(accountKey(account.ownerId, name), JSON.stringify(data));
+  } catch (cause) {
+    assertSession(account);
+    throw new OfflineStorageError(cause);
+  }
+  assertSession(account);
+}
+
+// Serialize read-modify-write per owner's document, never hold a lock over
+// network I/O. A failed write must not poison the next transaction.
+const writes = new Map<string, Promise<unknown>>();
+export async function updateAccountJSON<T, R>(
+  account: AccountContext,
+  name: string,
+  empty: () => T,
+  update: (state: T) => R,
+): Promise<R> {
+  const key = accountKey(account.ownerId, name);
+  const previous = writes.get(key);
+  const next = (previous ?? Promise.resolve()).catch(() => undefined).then(async () => {
+    const state = await readAccountJSON(account, name, empty);
+    const result = update(state);
+    await writeAccountJSON(account, name, state);
+    return result;
+  });
+  writes.set(key, next);
+  try {
+    return await next;
+  } finally {
+    if (writes.get(key) === next) writes.delete(key);
   }
 }
 
 /** Client-generated id for records created while offline. No native crypto dep. */
 export function tempId(prefix = "local"): string {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** True for ids minted locally (not yet confirmed by the server). */
 export function isTempId(id: string | null | undefined): boolean {
   return typeof id === "string" && id.startsWith("local_");
-}
-
-/** Wipe all offline state — called on sign-out so the next user starts clean. */
-export async function clearOfflineData(): Promise<void> {
-  await AsyncStorage.multiRemove([
-    KEYS.inventoryMirror,
-    KEYS.outbox,
-    KEYS.failed,
-    KEYS.dashboardCache,
-    KEYS.lastSync,
-    KEYS.pendingInvoices,
-  ]);
 }

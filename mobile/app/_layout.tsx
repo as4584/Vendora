@@ -17,6 +17,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { identify, initCrashReporting, track } from "../services/telemetry";
 import { maybePromptSaleAlerts, syncPushToken } from "../services/pushAlerts";
 import { allowedDuringOnboarding, checkOnboarding, subscribeOnboarding, type OnboardingState } from "../services/onboarding";
+import { captureSession, isCurrentSession } from "../services/session";
 // react-navigation is vendored inside expo-router in SDK 57.
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
 
@@ -55,8 +56,9 @@ function RootLayoutNav() {
     useEffect(() => {
         identify(userId);
         if (!userId) return;
+        const session = captureSession();
         track("app_open");
-        void syncPushToken().then((on) => (on ? undefined : maybePromptSaleAlerts(userId)));
+        void syncPushToken().then((on) => (on || !isCurrentSession(session) ? undefined : maybePromptSaleAlerts(userId)));
     }, [userId]);
 
     useEffect(() => {

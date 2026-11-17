@@ -42,7 +42,9 @@ Risk Level: Medium
 
 Test Coverage: 100% required
 
-Notes: Never store plaintext passwords.
+Notes: Never store plaintext passwords. Mobile session generations isolate
+request/refresh results and offline state across logout and account switches.
+Mobile regressions cover offline launch, stale success/rejection, and replay.
 
 Feature: Inventory Engine
 
@@ -112,7 +114,10 @@ Risk Level: High
 
 Test Coverage: 100% (12 tests)
 
-Notes: Quick Sale, manual log, refund with negative entry + item revert.
+Notes: Quick Sale, manual log, refund with negative entry + item revert. Mobile
+offline receipts require a durable account-journal commit. Mobile regressions
+cover storage rejection, enqueue during replay, temp-ID remap after reconnect,
+and stable retry IDs after a lost sale response.
 
 Feature: Dashboard API
 

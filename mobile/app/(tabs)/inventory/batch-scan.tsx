@@ -19,6 +19,7 @@ import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
 import { rememberScan, resolveScan } from "../../../services/smartScan";
+import { captureSession, isCurrentSession } from "../../../services/session";
 import {
   addScan,
   applyCostToAll,
@@ -37,6 +38,7 @@ import { playSound } from "../../../services/sounds";
 const BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"] as const;
 
 export default function BatchScanScreen() {
+  const session = captureSession();
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [tray, setTray] = useState<TrayEntry[]>([]);
@@ -56,7 +58,7 @@ export default function BatchScanScreen() {
 
   const onScanned = async ({ data }: { data: string }) => {
     const code = data.trim();
-    if (!code || inFlight.current.has(code)) return;
+    if (!code || inFlight.current.has(code) || !isCurrentSession(session)) return;
     const now = Date.now();
     // A box already in the tray: count it without another lookup.
     if (trayRef.current.some((e) => e.barcode === code)) {
@@ -72,9 +74,10 @@ export default function BatchScanScreen() {
     inFlight.current.add(code);
     try {
       const [hit, existing] = await Promise.all([
-        resolveScan(code).catch(() => null),
+        resolveScan(code, undefined, session).catch(() => null),
         api.listItems({ upc: code, perPage: 1 }).then((r) => r.items[0] ?? null).catch(() => null),
       ]);
+      if (!isCurrentSession(session)) return;
       const known = !!hit?.match;
       const { tray: next, added } = addScan(trayRef.current, code, hit?.fields ?? {}, known, Date.now(), existing);
       if (added) {
@@ -89,6 +92,7 @@ export default function BatchScanScreen() {
   };
 
   const saveAll = async () => {
+    if (!isCurrentSession(session)) return;
     const unnamed = missingNames(tray);
     if (unnamed.length) {
       Alert.alert("Name every new item", unnamed.length === 1 ? "1 box still needs a name." : `${unnamed.length} boxes still need a name.`);
@@ -99,11 +103,12 @@ export default function BatchScanScreen() {
     let added = 0;
     const failed: TrayEntry[] = [];
     for (const action of planSave(tray)) {
+      if (!isCurrentSession(session)) return;
       try {
         if (action.kind === "create") {
           await api.createItem(action.payload);
           created += 1;
-          rememberScan(action.entry.barcode, action.entry.fields).catch(() => undefined);
+          rememberScan(action.entry.barcode, action.entry.fields, session).catch(() => undefined);
         } else {
           await api.updateItem(action.itemId, {
             quantity: action.quantity,
@@ -116,6 +121,7 @@ export default function BatchScanScreen() {
         failed.push(action.entry);
       }
     }
+    if (!isCurrentSession(session)) return;
     setSaving(false);
     if (failed.length) {
       setTray(failed);

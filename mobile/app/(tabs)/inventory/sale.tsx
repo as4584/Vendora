@@ -41,6 +41,7 @@ import { playSound } from "../../../services/sounds";
 import { ItemThumb } from "../../../components/ItemThumb";
 import { REPEAT_COOLDOWN_MS } from "../../../services/batchScan";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { captureSession, isCurrentSession } from "../../../services/session";
 
 // Cash and card first: that is how almost every show sale is paid.
 const PRIMARY_METHODS = ["cash", "card"];
@@ -61,6 +62,7 @@ let rowSeq = 0;
 const newRow = (method: string, amount = ""): PaymentRow => ({ key: `p${++rowSeq}`, method, amount });
 
 export default function QuickSaleScreen() {
+  const session = captureSession();
   const router = useRouter();
   const params = useLocalSearchParams<{ add?: string }>();
   const insets = useSafeAreaInsets();
@@ -379,13 +381,19 @@ export default function QuickSaleScreen() {
   };
 
   const undoSale = async () => {
+    if (!isCurrentSession(session)) return;
     const ids = receipt?.transactionIds ?? [];
     try {
-      for (const id of ids) await api.refundTransaction(id, "Undone at checkout");
+      for (const id of ids) {
+        if (!isCurrentSession(session)) return;
+        await api.refundTransaction(id, "Undone at checkout");
+      }
+      if (!isCurrentSession(session)) return;
       triggerHaptic("success");
       resetSale();
       Alert.alert("Sale undone", "Items are back in stock.");
     } catch (err) {
+      if (!isCurrentSession(session)) return;
       Alert.alert("Couldn't undo", (err as Error)?.message || "Try again, or refund it from the item.");
     }
   };

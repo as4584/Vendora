@@ -13,6 +13,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as api from '../services/api';
+import { replaceSession } from '../services/session';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
@@ -52,6 +53,7 @@ describe('api.ts — request()', () => {
   let fetchSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    replaceSession();
     fetchSpy = jest.spyOn(global, 'fetch');
     // Reset async storage between tests
     (asyncStorageMock.getItem as jest.Mock).mockResolvedValue(null);
@@ -93,7 +95,8 @@ describe('api.ts — request()', () => {
 
   // ── 3. 401 clears token and calls registered handler ─────────────────────
   it('clears stored token and invokes onUnauthorized handler on 401', async () => {
-    (asyncStorageMock.getItem as jest.Mock).mockResolvedValue('stale-jwt');
+    await api.setToken('stale-jwt');
+    (asyncStorageMock.removeItem as jest.Mock).mockClear();
     fetchSpy.mockResolvedValueOnce(
       makeFetchResponse({
         status: 401,
@@ -132,7 +135,7 @@ describe('api.ts — request()', () => {
 
   // ── 5. Replacing the onUnauthorized handler ───────────────────────────────
   it('only the most recently registered onUnauthorized handler fires', async () => {
-    (asyncStorageMock.getItem as jest.Mock).mockResolvedValue('stale-jwt');
+    await api.setToken('stale-jwt');
     fetchSpy.mockResolvedValueOnce(
       makeFetchResponse({
         status: 401,
