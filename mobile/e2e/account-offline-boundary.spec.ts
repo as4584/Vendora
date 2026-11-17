@@ -7,8 +7,11 @@ const buyer = {
   order_count: 1, total_spent: "24.00", last_purchase_at: null,
 };
 
+// The tab, not the "More" screen heading that shows once it is open.
+const moreTab = (page: Page) => page.getByRole("tab", { name: /More$/ });
+
 async function openMoreRoute(page: Page, title: "Customers" | "Settings") {
-  await page.getByText("More", { exact: true }).click();
+  await moreTab(page).click();
   await page.getByText(title, { exact: true }).click();
 }
 
@@ -17,7 +20,7 @@ async function signIn(page: Page, owner: string) {
   await page.getByLabel("Email", { exact: true }).fill(`${owner}@example.test`);
   await page.getByLabel("Password", { exact: true }).fill("test-only-password");
   await page.getByRole("button", { name: "Sign In", exact: true }).click();
-  await expect(page.getByText("More", { exact: true })).toBeVisible();
+  await expect(moreTab(page)).toBeVisible();
 }
 
 test("sign-out removes the private tab tree and B cannot see A's cached customers", async ({ page }) => {
@@ -59,7 +62,7 @@ test("sign-out removes the private tab tree and B cannot see A's cached customer
   await signIn(page, "B");
   await openMoreRoute(page, "Customers");
   await expect(page.getByTestId("customers-content")).toBeVisible();
-  await expect(page.getByText(/failed to fetch/i)).toBeVisible();
+  await expect(page.getByText(/can.t reach resqlo/i)).toBeVisible();
   await expect(page.getByText(buyer.name)).toHaveCount(0);
 
   await openMoreRoute(page, "Settings");
