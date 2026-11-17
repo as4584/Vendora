@@ -106,7 +106,6 @@ export default function QuickSaleScreen() {
   const [lastSales, setLastSales] = useState<Record<string, api.LastSale | null>>({});
   const [scanNote, setScanNote] = useState<{ text: string; ok: boolean } | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prefilled = useRef(false);
   const catalogRequest = useRef(0);
   const submissionInFlight = useRef(false);
   const checkoutAttempt = useRef<{ fingerprint: string; id: string } | null>(null);
