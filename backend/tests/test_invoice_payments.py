@@ -6,6 +6,9 @@ and the PDF balance due.
 """
 from decimal import Decimal
 
+import pytest
+
+from app.models.inventory import InventoryStockLedger
 from app.models.transaction import Transaction
 from app.services.invoice import allocate
 
@@ -123,6 +126,9 @@ class TestPaymentMath:
         assert parts == [Decimal("3.33"), Decimal("3.33"), Decimal("3.34")]
         assert allocate(Decimal("5.00"), [Decimal("0"), Decimal("0")]) == [Decimal("0.00"), Decimal("5.00")]
         assert allocate(Decimal("5.00"), []) == []
+        assert allocate(Decimal("0.02"), [Decimal("1")] * 3) == [
+            Decimal("0.01"), Decimal("0.01"), Decimal("0.00"),
+        ]
 
 
 class TestStatusTransitions:
@@ -167,6 +173,61 @@ class TestStatusTransitions:
 
 
 class TestCostAndStock:
+    def test_installments_book_tax_separately_and_preserve_shipping_and_discount(self, client, auth_headers, db):
+        item = _item(client, auth_headers)
+        inv = _invoice(client, auth_headers, item_id=item["id"], tax="8.01", shipping="3.00", discount="2.00")
+        for amt in ("36.33", "36.33", "36.35"):
+            assert _pay(client, auth_headers, inv["id"], amt).status_code == 201
+        txns = db.query(Transaction).filter(Transaction.invoice_id == inv["id"]).all()
+        assert len(txns) == 3
+        assert sorted(t.tax_amount for t in txns) == [Decimal("2.67")] * 3
+        assert sum(t.gross_amount for t in txns) == Decimal("101.00")
+        assert sum(t.gross_amount + t.tax_amount for t in txns) == Decimal("109.01")
+        assert sum(t.net_amount - t.cost_amount for t in txns) == Decimal("61.00")
+
+    @pytest.mark.parametrize("mark_paid", [False, True])
+    def test_first_payment_rolls_back_every_line_when_size_stock_runs_out(self, client, auth_headers, db, mark_paid):
+        created = client.post("/api/v1/inventory", json={
+            "name": "Size Run", "quantity": 2, "buy_price": "20.00",
+            "custom_attributes": {"variants": [{"size": "M", "quantity": 1}, {"size": "L", "quantity": 1}]},
+        }, headers=auth_headers)
+        assert created.status_code == 201, created.text
+        item = created.json()
+        line = {"inventory_item_id": item["id"], "description": "Size M", "size_label": "M", "unit_price": "30.00"}
+        created = client.post("/api/v1/invoices", json={
+            "customer_name": "Show Buyer", "items": [line, line],
+        }, headers=auth_headers)
+        assert created.status_code == 201, created.text
+        invoice_id = created.json()["id"]
+        path = f"/api/v1/invoices/{invoice_id}"
+        assert client.patch(f"{path}/status", json={"status": "sent"}, headers=auth_headers).status_code == 200
+        result = (
+            client.patch(f"{path}/status", json={"status": "paid"}, headers=auth_headers)
+            if mark_paid else _pay(client, auth_headers, invoice_id, "20.00")
+        )
+        assert result.status_code == 409, result.text
+        assert result.json()["detail"]["error"] == "insufficient_size_stock"
+        invoice = client.get(path, headers=auth_headers).json()
+        assert invoice["status"] == "sent"
+        assert invoice["amount_paid"] == "0.00"
+        assert invoice["payments"] == []
+        assert db.query(Transaction).filter(Transaction.invoice_id == invoice_id).count() == 0
+        assert db.query(InventoryStockLedger).filter(InventoryStockLedger.source_id == invoice_id).count() == 0
+        stock = client.get(f"/api/v1/inventory/{item['id']}", headers=auth_headers).json()
+        assert stock["quantity"] == 2
+        assert stock["actual_sell_price"] is None
+        assert stock["custom_attributes"] == item["custom_attributes"]
+
+    def test_unknown_cost_does_not_get_rebooked_from_later_stock_edit(self, client, auth_headers, db):
+        item = client.post("/api/v1/inventory", json={"name": "Unknown cost"}, headers=auth_headers).json()
+        inv = _invoice(client, auth_headers, item_id=item["id"])
+        assert _pay(client, auth_headers, inv["id"], "50.00").status_code == 201
+        assert client.put(f"/api/v1/inventory/{item['id']}", json={"buy_price": "40.00"}, headers=auth_headers).status_code == 200
+        assert _pay(client, auth_headers, inv["id"], "50.00").status_code == 201
+        txns = db.query(Transaction).filter(Transaction.invoice_id == inv["id"]).all()
+        assert len(txns) == 2
+        assert all(t.cost_amount is None for t in txns)
+
     def test_cost_booked_once_across_partials(self, client, auth_headers, db):
         item = _item(client, auth_headers, buy="40.00")
         inv = _invoice(client, auth_headers, item_id=item["id"], price="100.00")

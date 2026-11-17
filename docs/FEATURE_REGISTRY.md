@@ -84,9 +84,9 @@ Dependencies: Payment engine, Inventory Engine
 
 Risk Level: High
 
-Test Coverage: 100% (17 tests)
+Test Coverage: 98% invoice service and 99% invoice router (combined statements and branches in backend coverage).
 
-Notes: Invoice state machine enforced (draft→sent→paid/cancelled). Paid creates transactions + transitions inventory. Locked after payment.
+Notes: Invoice state machine supports installments. First payment books stock and payment/status atomically, with tax excluded from revenue and cost allocated from the first-payment snapshot. Locked against edits after payment. Generic sale refunds cannot be used for invoice payments.
 
 Feature: Profit Calculation Engine
 
@@ -112,9 +112,9 @@ Dependencies: Inventory Engine, Profit Calculation Engine
 
 Risk Level: High
 
-Test Coverage: 100% (12 tests)
+Test Coverage: 94% transaction router (combined statements and branches), with dedicated checkout component and responsive browser tests.
 
-Notes: Quick Sale, manual log, refund with negative entry + item revert. Mobile
+Notes: Quick Sale supports paginated sellable stock, server search, and independently priced cart lines for different sizes of the same item. A new sale resets customer and sale-level tax changes. Manual sales roll back if stock cannot be deducted; ordinary sale refunds create a reversing entry and restore stock. Quick Sale, manual log, refund with negative entry + item revert. Mobile
 offline receipts require a durable account-journal commit. Mobile regressions
 cover storage rejection, enqueue during replay, temp-ID remap after reconnect,
 and stable retry IDs after a lost sale response.

@@ -88,9 +88,14 @@ def create_transaction(
             InventoryItem.id == payload.item_id,
             InventoryItem.user_id == current_user.id,
             InventoryItem.deleted_at.is_(None),
-        ).first()
+        ).populate_existing().with_for_update().first()
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
+        if source and reference:
+            # A retry could have waited for the original sale's item lock.
+            existing = _find_client_request(db, current_user.id, reference)
+            if existing:
+                return existing
         # Validate stock before creating the transaction record
         check_qty = payload.quantity if payload.quantity else 1
         available = get_available_quantity(item)
@@ -148,13 +153,8 @@ def create_transaction(
                 idempotency_key=idem_key,
             )
         except HTTPException:
-            # Backward-compat fallback: transition status directly if deduction fails
-            logger.warning(
-                "deduct_stock failed for item %s on txn %s — status-only transition.",
-                item.id, txn.id,
-            )
-            item.status = "sold"
-            db.add(item)
+            db.rollback()
+            raise
 
     db.commit()
     analytics.track_first(db, current_user.id, "sale_recorded")
@@ -251,22 +251,26 @@ def create_sale_order(
     if replay:
         return replay
 
-    items: dict = {}
+    item_ids = {line.item_id for line in payload.lines}
+    items = {
+        item.id: item
+        for item in db.query(InventoryItem).filter(
+            InventoryItem.id.in_(item_ids),
+            InventoryItem.user_id == current_user.id,
+            InventoryItem.deleted_at.is_(None),
+        ).order_by(InventoryItem.id).populate_existing().with_for_update().all()
+    }
+    replay = _replayed_order(db, current_user.id, payload.client_request_id)
+    if replay:
+        return replay
     requested: dict = {}
     requested_sizes: dict = {}
     for line in payload.lines:
         if line.item_id not in items:
-            item = db.query(InventoryItem).filter(
-                InventoryItem.id == line.item_id,
-                InventoryItem.user_id == current_user.id,
-                InventoryItem.deleted_at.is_(None),
-            ).with_for_update().first()
-            if not item:
-                raise HTTPException(status_code=404, detail=f"Item {line.item_id} not found")
-            items[line.item_id] = item
+            raise HTTPException(status_code=404, detail=f"Item {line.item_id} not found")
         requested[line.item_id] = requested.get(line.item_id, 0) + line.quantity
         if line.size and _variant_rows(items[line.item_id]):
-            key = (line.item_id, line.size.strip())
+            key = (line.item_id, line.size.strip().lower())
             requested_sizes[key] = requested_sizes.get(key, 0) + line.quantity
     for item_id, qty in requested.items():
         available = get_available_quantity(items[item_id])
@@ -492,6 +496,12 @@ def refund_transaction(
     ).with_for_update().first()
     if not original:
         raise HTTPException(status_code=404, detail="Transaction not found")
+
+    if original.invoice_id:
+        raise HTTPException(status_code=409, detail={
+            "error": "invoice_refund_unsupported",
+            "message": "Invoice payments can't be refunded from transaction history.",
+        })
 
     if original.is_refund:
         raise HTTPException(status_code=400, detail={

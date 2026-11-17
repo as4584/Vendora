@@ -79,6 +79,22 @@ class TestSaleOrder:
         assert resp.status_code == 409
         assert _count_txns(db, test_user) == 0
 
+    def test_two_sizes_consume_separate_stock_and_size_casing_cannot_oversell(self, client, auth_headers, db, test_user):
+        item = _item(db, test_user, qty=2)
+        item.custom_attributes = {"variants": [{"size": "M", "quantity": 1}, {"size": "L", "quantity": 1}]}
+        db.commit()
+        mid = {"item_id": str(item.id), "unit_price": "100.00", "size": "M"}
+        too_many = _order(client, auth_headers, [mid, {**mid, "size": "m"}])
+        assert too_many.status_code == 409, too_many.text
+        assert too_many.json()["detail"]["error"] == "insufficient_size_stock"
+        assert _count_txns(db, test_user) == 0
+        accepted = _order(client, auth_headers, [mid, {**mid, "size": "L", "unit_price": "120.00"}])
+        assert accepted.status_code == 201, accepted.text
+        assert [txn["variant_size"] for txn in accepted.json()["transactions"]] == ["M", "L"]
+        db.refresh(item)
+        assert item.quantity == 0
+        assert item.custom_attributes["variants"] == [{"size": "M", "quantity": 0}, {"size": "L", "quantity": 0}]
+
     def test_failure_midway_rolls_everything_back(self, client, auth_headers, db, test_user):
         a = _item(db, test_user, "First", qty=3)
         b = _item(db, test_user, "Second", qty=3)

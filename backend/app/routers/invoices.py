@@ -36,7 +36,6 @@ from app.services.invoice import (
     calculate_invoice_totals,
     check_invoice_item_availability,
     transition_invoice,
-    process_invoice_payment,
     record_invoice_payment,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
@@ -238,10 +237,11 @@ def update_invoice(
 
     Allowed only for draft/sent invoices. Paid/cancelled are immutable.
     """
+    # A concurrent first payment must finish before editing lines or totals.
     invoice = db.query(Invoice).filter(
         Invoice.id == invoice_id,
         Invoice.user_id == current_user.id,
-    ).first()
+    ).with_for_update().first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
@@ -324,15 +324,15 @@ def update_invoice_status(
     invoice = db.query(Invoice).filter(
         Invoice.id == invoice_id,
         Invoice.user_id == current_user.id,
-    ).first()
+    ).with_for_update().first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    updated = transition_invoice(invoice, payload.status, db)
-
-    # If manually marked as paid, process the payment
-    if payload.status == "paid":
-        process_invoice_payment(updated, db)
+    try:
+        updated = transition_invoice(invoice, payload.status, db)
+    except HTTPException:
+        db.rollback()
+        raise
 
     return _invoice_to_response(updated, db)
 
@@ -357,14 +357,18 @@ def add_invoice_payment(
     ).with_for_update().first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    record_invoice_payment(
-        invoice,
-        payload.amount,
-        payload.method,
-        db,
-        note=payload.note,
-        client_request_id=payload.client_request_id,
-    )
+    try:
+        record_invoice_payment(
+            invoice,
+            payload.amount,
+            payload.method,
+            db,
+            note=payload.note,
+            client_request_id=payload.client_request_id,
+        )
+    except HTTPException:
+        db.rollback()
+        raise
     db.refresh(invoice)
     return _invoice_to_response(invoice, db)
 
