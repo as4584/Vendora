@@ -47,7 +47,7 @@ def test_page_shows_google_picker_with_safe_config(client, auth_headers, token, 
     body = r.text
     assert "google.picker.PickerBuilder" in body and '"key": "picker-key"' in body
     assert '"appId": "client"' in body  # project number = client id prefix
-    assert "vendora://settings?integration=google_sheets&status=linked" in body
+    assert "vendora://settings?integration=google_sheets\\u0026status=linked" in body
     assert "</script><script>" not in body.split("const C =")[1].split(";\n")[0]
 
 
@@ -75,5 +75,24 @@ def test_bad_or_wrong_tickets_are_refused(client, auth_headers, token, picker_ke
 def test_web_return_goes_to_hosted_settings(client, auth_headers, token, picker_key, fake):  # noqa: F811
     ticket = _ticket(client, auth_headers, platform="web")
     body = client.get(f"{BASE}/picker/page?ticket={ticket}").text
-    assert '"web": true' in body and "/settings?integration=google_sheets&status=linked" in body
+    assert '"web": true' in body and "/settings?integration=google_sheets\\u0026status=linked" in body
     assert google_picker.read_ticket(ticket)["ret"] == "web"
+
+
+def test_picker_page_rejects_malformed_ticket(client):
+    from app.config import settings
+    old = (settings.GOOGLE_CLIENT_ID, settings.GOOGLE_CLIENT_SECRET, settings.GOOGLE_PICKER_API_KEY)
+    settings.GOOGLE_CLIENT_ID, settings.GOOGLE_CLIENT_SECRET, settings.GOOGLE_PICKER_API_KEY = "1-x.apps.googleusercontent.com", "s", "k"
+    try:
+        r = client.get("/api/v1/integrations/google/picker/page", params={"ticket": "</script><script>alert(1)</script>"})
+        assert r.status_code == 401
+        assert "<script>alert" not in r.text
+    finally:
+        settings.GOOGLE_CLIENT_ID, settings.GOOGLE_CLIENT_SECRET, settings.GOOGLE_PICKER_API_KEY = old
+
+
+def test_picker_page_config_has_no_raw_tag_characters():
+    from app.services import google_picker
+    page = google_picker.picker_page("a.b.c", "tok</script><b>&", "app", "https://x/link")
+    script = page.split("const C = ", 1)[1].split(";\n", 1)[0]
+    assert "<" not in script and ">" not in script and "&" not in script

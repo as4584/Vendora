@@ -102,7 +102,15 @@ def picker_page(ticket: str, access_token: str, ret: str, link_url: str) -> str:
         "messageType": MESSAGE_TYPE,
         "done": {r: return_url(ret, r) for r in ("linked", "cancelled", "error")},
     }
-    data = json.dumps(cfg).replace("</", "<\\/")
+    # Safe inside <script>: no tag, entity or line-separator characters survive.
+    data = (
+        json.dumps(cfg)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
     title = html.escape("Pick your sheet · Resqlo")
     return f"""<!doctype html>
 <html lang="en"><head>
