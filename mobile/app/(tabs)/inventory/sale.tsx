@@ -53,6 +53,8 @@ const CATALOG_PAGE_SIZE = 12;
 type CartLine = { item: api.InventoryItem; qty: number; price: string; size?: string };
 type PaymentRow = { key: string; method: string; amount: string };
 
+import { PLATFORM_FEES, estimateFeeCents } from "../../../utils/platformFees";
+
 const listPrice = (item: api.InventoryItem) => centsToString(toCents(item.expected_sell_price || "0"));
 const cartKey = (itemId: string, size?: string) => size ? `${itemId}:${size.trim().toLowerCase()}` : itemId;
 const lineMax = (line: CartLine, cart: Record<string, CartLine>, key: string) => {
@@ -87,6 +89,8 @@ export default function QuickSaleScreen() {
   const [method, setMethod] = useState("cash");
   const [split, setSplit] = useState<PaymentRow[]>([]);
   const [feeAmount, setFeeAmount] = useState("");
+  const [soldOn, setSoldOn] = useState<string | null>(null);
+  const [feeEdited, setFeeEdited] = useState(false);
   const [discountMode, setDiscountMode] = useState<DiscountMode>("amount");
   const [discountValue, setDiscountValue] = useState("");
   const [taxOn, setTaxOn] = useState(false);
@@ -223,6 +227,11 @@ export default function QuickSaleScreen() {
     discountValue,
     taxRate: taxOn ? taxRate : "",
   });
+  // Picking where it sold pre-fills that platform's typical fee until the
+  // seller types their own.
+  useEffect(() => {
+    if (soldOn && !feeEdited) setFeeAmount(centsToString(estimateFeeCents(soldOn, totals.total)));
+  }, [soldOn, feeEdited, totals.total]);
   const fee = toCents(feeAmount);
   const splitting = split.length > 0;
   const splitPaid = split.reduce((sum, row) => sum + toCents(row.amount), 0);
@@ -349,6 +358,8 @@ export default function QuickSaleScreen() {
     setMethod("cash");
     setSplit([]);
     setFeeAmount("");
+    setSoldOn(null);
+    setFeeEdited(false);
     setDiscountMode("amount");
     setDiscountValue("");
     setTaxRate(defaultTax);
@@ -799,13 +810,38 @@ export default function QuickSaleScreen() {
               </View>
             </View>
           )}
+          <Text style={styles.adjustLabel}>Sold on</Text>
+          <View style={styles.chipWrap}>
+            {PLATFORM_FEES.map((p) => (
+              <Chip
+                key={p.key}
+                label={p.label}
+                compact
+                active={soldOn === p.key}
+                onPress={() => {
+                  setFeeEdited(false);
+                  setSoldOn(soldOn === p.key ? null : p.key);
+                  if (soldOn === p.key) setFeeAmount("");
+                }}
+              />
+            ))}
+          </View>
+          {soldOn ? (
+            <Text style={styles.helperText}>
+              Estimated {PLATFORM_FEES.find((p) => p.key === soldOn)?.label} fee
+              {PLATFORM_FEES.find((p) => p.key === soldOn)?.note ? ` (${PLATFORM_FEES.find((p) => p.key === soldOn)?.note})` : ""}. Edit it if yours differs.
+            </Text>
+          ) : null}
           <TextInput
             accessibilityLabel="Fee amount"
             style={styles.input}
             placeholder="Processing fee (optional)"
             placeholderTextColor={COLORS.textSoft}
             value={feeAmount}
-            onChangeText={setFeeAmount}
+            onChangeText={(text) => {
+              setFeeEdited(true);
+              setFeeAmount(text);
+            }}
             keyboardType="decimal-pad"
           />
           <TextInput
