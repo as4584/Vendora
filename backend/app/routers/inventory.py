@@ -1056,6 +1056,111 @@ def bulk_delete_items(
     )
 
 
+class PriceChange(_PydBase):
+    # "set": price = value; "percent": price *= 1 + value/100; "amount": price += value
+    mode: Literal["set", "percent", "amount"]
+    value: Decimal
+
+
+class BulkUpdateRequest(_PydBase):
+    item_ids: list[str]
+    list_price: Optional[PriceChange] = None
+    buy_price: Optional[Decimal] = None
+    category: Optional[str] = None
+    platform: Optional[str] = None
+    # Marking sold goes through the sell flow so a sale is recorded.
+    status: Optional[Literal["in_stock", "listed"]] = None
+
+
+class BulkSkipped(_PydBase):
+    id: str
+    reason: str
+
+
+class BulkUpdateResponse(_PydBase):
+    updated: int
+    skipped: list[BulkSkipped] = []
+
+
+def _apply_price_change(current: Optional[Decimal], change: PriceChange) -> Optional[Decimal]:
+    if change.mode == "set":
+        new = change.value
+    elif current is None:
+        return None
+    elif change.mode == "percent":
+        new = current * (1 + change.value / 100)
+    else:
+        new = current + change.value
+    return max(Decimal("0"), new).quantize(Decimal("0.01"))
+
+
+@router.post("/bulk-update", response_model=BulkUpdateResponse)
+def bulk_update_items(
+    payload: BulkUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit many inventory items at once (owned + active only).
+
+    Items an edit can't apply to (no list price to adjust by %, a status
+    transition the state machine forbids) are skipped and reported, not failed.
+    """
+    from app.services.inventory import validate_transition
+
+    if not payload.item_ids:
+        raise HTTPException(status_code=400, detail="item_ids is required")
+    if payload.list_price and payload.list_price.mode == "set" and payload.list_price.value < 0:
+        raise HTTPException(status_code=400, detail="Price can't be negative")
+    if payload.buy_price is not None and payload.buy_price < 0:
+        raise HTTPException(status_code=400, detail="Cost can't be negative")
+    if not any([payload.list_price, payload.buy_price is not None, payload.category is not None,
+                payload.platform is not None, payload.status]):
+        raise HTTPException(status_code=400, detail="Nothing to update")
+
+    updated = 0
+    skipped: list[BulkSkipped] = []
+    for item_id in payload.item_ids[:500]:
+        try:
+            item_uuid = UUID(item_id)
+        except ValueError:
+            skipped.append(BulkSkipped(id=item_id, reason="Not found"))
+            continue
+        item = (
+            db.query(InventoryItem)
+            .filter(
+                InventoryItem.id == item_uuid,
+                InventoryItem.user_id == current_user.id,
+                InventoryItem.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not item:
+            skipped.append(BulkSkipped(id=item_id, reason="Not found"))
+            continue
+        if payload.status and item.status != payload.status and not validate_transition(item.status, payload.status):
+            skipped.append(BulkSkipped(id=item_id, reason=f"Can't move a {item.status} item to {payload.status}"))
+            continue
+        if payload.list_price:
+            new_price = _apply_price_change(item.expected_sell_price, payload.list_price)
+            if new_price is None:
+                skipped.append(BulkSkipped(id=item_id, reason="No list price to adjust"))
+                continue
+            item.expected_sell_price = new_price
+        if payload.buy_price is not None:
+            item.buy_price = payload.buy_price
+        if payload.category is not None:
+            item.category = payload.category.strip() or None
+        if payload.platform is not None:
+            item.platform = payload.platform.strip() or None
+        if payload.status:
+            item.status = payload.status
+        db.add(item)
+        _sheet_push(db, item)
+        updated += 1
+    db.commit()
+    return BulkUpdateResponse(updated=updated, skipped=skipped)
+
+
 @router.patch("/{item_id}/photos", response_model=ItemResponse)
 def update_item_photos(
     item_id: UUID,
