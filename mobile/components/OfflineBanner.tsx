@@ -8,12 +8,14 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useNetwork } from "../context/network";
 import { COLORS } from "../theme/tokens";
 
 export function OfflineBanner() {
   const { online, pending, failed, dismissFailed } = useNetwork();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   if (failed > 0 && online && pending === 0) {
     return (
@@ -21,6 +23,9 @@ export function OfflineBanner() {
         <Text style={styles.text}>
           {failed} offline change{failed === 1 ? "" : "s"} couldn&apos;t be saved. Please check and re-enter.
         </Text>
+        <TouchableOpacity accessibilityRole="button" onPress={() => router.push("/sync-issues")} hitSlop={10}>
+          <Text style={[styles.text, styles.dismiss]}>Review</Text>
+        </TouchableOpacity>
         <TouchableOpacity accessibilityRole="button" onPress={dismissFailed} hitSlop={10}>
           <Text style={[styles.text, styles.dismiss]}>Dismiss</Text>
         </TouchableOpacity>

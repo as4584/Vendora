@@ -406,6 +406,7 @@ export async function flushOutbox(): Promise<void> {
           applyStockChange(journal.mirror, entry, false);
         }
         journal.outbox.shift();
+        journal.lastSync = new Date().toISOString();
       });
       notifySync();
     }

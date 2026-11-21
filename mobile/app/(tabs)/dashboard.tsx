@@ -22,6 +22,7 @@ import {
 import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../../theme/tokens";
 import { loadSnapshot, peekSnapshot, saveSnapshot } from "../../services/offline/snapshot";
 import { SkeletonDashboard } from "../../components/Skeleton";
+import { SyncStatusPill } from "../../components/SyncStatusPill";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -156,6 +157,7 @@ export default function DashboardScreen() {
         <View style={{ flex: 1 }}>
           <Text accessibilityRole="header" style={styles.greeting}>{`${greeting()}, ${name}`}</Text>
           <Text style={styles.greetingSub}>{todayLabel()}</Text>
+          <SyncStatusPill />
         </View>
       </View>
 
