@@ -22,6 +22,7 @@ import {
 import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../../theme/tokens";
 import { loadSnapshot, peekSnapshot, saveSnapshot } from "../../services/offline/snapshot";
 import { SkeletonDashboard } from "../../components/Skeleton";
+import { AgingCard } from "../../components/AgingCard";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -174,6 +175,8 @@ export default function DashboardScreen() {
           </View>
         ) : null}
       </GradientCard>
+
+      <AgingCard />
 
       {/* 2x2 stat grid */}
       <View style={styles.grid}>

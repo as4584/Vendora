@@ -2331,3 +2331,14 @@ export const updateGoogleSheetSettings = (settings: { source_of_truth?: boolean;
   request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "PATCH", body: JSON.stringify(settings) });
 export const unlinkGoogleSheet = () => request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "DELETE" });
 export const syncGoogleSheets = () => request<GoogleSheetsSyncResult>(`${GS}/sync`, { method: "POST" });
+
+export interface AgingStock {
+  days: number;
+  count: number;
+  items: { id: string; name: string; expected_sell_price: string | null; buy_price: string | null; days_old: number }[];
+}
+
+/** In-stock/listed items that have sat unsold the longest. */
+export async function getAgingStock(days = 60): Promise<AgingStock> {
+  return request<AgingStock>(`/inventory/aging?days=${days}`);
+}

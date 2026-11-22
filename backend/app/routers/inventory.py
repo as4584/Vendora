@@ -841,6 +841,44 @@ def get_pricing_suggestion(
     }
 
 
+class AgingItem(_PydBase):
+    id: UUID
+    name: str
+    expected_sell_price: Optional[Decimal] = None
+    buy_price: Optional[Decimal] = None
+    days_old: int
+
+
+class AgingResponse(_PydBase):
+    days: int
+    count: int
+    items: list[AgingItem]
+
+
+@router.get("/aging", response_model=AgingResponse)
+def get_aging_items(
+    days: int = Query(60, ge=7, le=730),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """In-stock/listed items older than `days`, oldest first (up to 100)."""
+    from app.services.aging import aging_items
+
+    now = datetime.now(timezone.utc)
+    count, items = aging_items(db, current_user.id, days=days, now=now)
+    return AgingResponse(
+        days=days,
+        count=count,
+        items=[
+            AgingItem(
+                id=i.id, name=i.name, expected_sell_price=i.expected_sell_price, buy_price=i.buy_price,
+                days_old=(now - (i.created_at if i.created_at.tzinfo else i.created_at.replace(tzinfo=timezone.utc))).days,
+            )
+            for i in items
+        ],
+    )
+
+
 @router.get("/{item_id}", response_model=ItemResponse)
 def get_item(
     item_id: UUID,
