@@ -110,7 +110,7 @@ describe('router layouts', () => {
   it('registers visible and hidden tab routes with safe-area padding', () => {
     mockAuthState = { isAuthenticated: true, isLoading: false, user: { id: 'seller' } };
     render(<TabsLayout />);
-    expect(mockTabsScreen).toHaveBeenCalledTimes(20);
+    expect(mockTabsScreen).toHaveBeenCalledTimes(21);
     const routeNames = mockTabsScreen.mock.calls.map(([props]) => props.name);
     expect(routeNames).toEqual([
       'dashboard',
@@ -131,6 +131,7 @@ describe('router layouts', () => {
       'settings/analytics',
       'settings/support',
       'settings/show-summary',
+      'settings/tax-pack',
       'customers/index',
       'customers/[id]',
     ]);
