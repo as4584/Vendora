@@ -41,7 +41,7 @@ export default function AddCostsScreen() {
   const filled = items.filter((i) => parseCost(costs[i.id] ?? "") !== null);
   const invalid = items.filter((i) => (costs[i.id] ?? "").trim() && parseCost(costs[i.id]) === null);
 
-  const useForAll = (value: string) => {
+  const applyToAll = (value: string) => {
     setCosts((prev) => {
       const next = { ...prev };
       for (const i of items) if (!(next[i.id] ?? "").trim()) next[i.id] = value;
@@ -98,7 +98,7 @@ export default function AddCostsScreen() {
             <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
             {item.expected_sell_price ? <Text style={styles.muted}>Listed at ${Number(item.expected_sell_price).toFixed(2)}</Text> : null}
             {index === 0 && (costs[item.id] ?? "").trim() && items.length > 1 ? (
-              <Text style={styles.link} accessibilityRole="button" onPress={() => useForAll(costs[item.id]!)}>Use this cost for all blank items</Text>
+              <Text style={styles.link} accessibilityRole="button" onPress={() => applyToAll(costs[item.id]!)}>Use this cost for all blank items</Text>
             ) : null}
           </View>
           <TextInput
