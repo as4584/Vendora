@@ -973,6 +973,41 @@ export async function importInventoryFile(
   );
 }
 
+export type SalesPlatform = "poshmark" | "mercari" | "whatnot" | "depop" | "other_csv";
+
+export interface SalesImportResult {
+  platform: SalesPlatform;
+  dry_run: boolean;
+  columns: Record<string, string>;
+  rows: number;
+  new_sales: number;
+  duplicates: number;
+  imported: number;
+  gross_total: string;
+  fee_total: string;
+  missing_dates: number;
+  errors: { row: number; reason: string }[];
+}
+
+/** Preview (dryRun) or import sales from a marketplace sales-report CSV. */
+export async function importSalesCsv(
+  file: { uri: string; name: string; mimeType?: string },
+  platform: SalesPlatform,
+  dryRun: boolean
+): Promise<SalesImportResult> {
+  const formData = new FormData();
+  if (Platform.OS === "web") {
+    const blob = await fetch(file.uri).then((response) => response.blob());
+    formData.append("file", blob, file.name);
+  } else {
+    formData.append("file", { uri: file.uri, name: file.name, type: file.mimeType || "text/csv" } as any);
+  }
+  return request<SalesImportResult>(
+    `/transactions/import/sales?platform=${platform}&dry_run=${dryRun ? "true" : "false"}`,
+    { method: "POST", body: formData }
+  );
+}
+
 export type ImportRowEditableField =
   | "name" | "category" | "sku" | "upc" | "size" | "color" | "condition" | "quantity"
   | "buy_price" | "expected_sell_price" | "notes";
