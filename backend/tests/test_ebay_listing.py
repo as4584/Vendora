@@ -47,6 +47,8 @@ class FakeEbay:
         resps = best[1]
         r = resps.pop(0) if len(resps) > 1 else resps[0]
         status, body = r
+        if isinstance(body, str):
+            return httpx.Response(status, text=body)
         return httpx.Response(status, json=body) if body is not None else httpx.Response(status)
 
     def paths(self, method=None):
@@ -493,6 +495,84 @@ class TestEbayOrderStock:
         await ebay_service.sync(db, test_user.id)
         db.refresh(item)
         assert item.quantity == 2
+
+
+def _selling_xml(items: str, pages: int = 1, ack: str = "Success") -> str:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<GetMyeBaySellingResponse xmlns="urn:ebay:apis:eBLBaseComponents">'
+        f"<Ack>{ack}</Ack><ActiveList><ItemArray>{items}</ItemArray>"
+        f"<PaginationResult><TotalNumberOfPages>{pages}</TotalNumberOfPages></PaginationResult>"
+        "</ActiveList></GetMyeBaySellingResponse>"
+    )
+
+
+def _listing(item_id: str, title: str, price: str = "25.00", qty: str = "1", sku: str = "") -> str:
+    sku_xml = f"<SKU>{sku}</SKU>" if sku else ""
+    return (
+        f"<Item><ItemID>{item_id}</ItemID><Title>{title}</Title>{sku_xml}"
+        f"<QuantityAvailable>{qty}</QuantityAvailable>"
+        f'<SellingStatus><CurrentPrice currencyID="USD">{price}</CurrentPrice></SellingStatus>'
+        "<PictureDetails><GalleryURL>https://i.ebayimg.com/x.jpg</GalleryURL></PictureDetails></Item>"
+    )
+
+
+class TestSellerHubListings:
+    def test_parser_reads_items_and_pages(self):
+        listings, pages = ebay_service._parse_my_ebay_selling(
+            _selling_xml(_listing("111", "Vintage Tee", "19.99", "2", sku="TEE-1"), pages=3))
+        assert pages == 3
+        assert listings == [{
+            "item_id": "111", "sku": "TEE-1", "title": "Vintage Tee", "price": Decimal("19.99"),
+            "quantity": 2, "image": "https://i.ebayimg.com/x.jpg",
+        }]
+
+    def test_parser_rejects_failures_and_dtds(self):
+        assert ebay_service._parse_my_ebay_selling(_selling_xml("", ack="Failure")) == ([], 0)
+        assert ebay_service._parse_my_ebay_selling('<!DOCTYPE x [<!ENTITY a "b">]><x/>') == ([], 0)
+        assert ebay_service._parse_my_ebay_selling("not xml") == ([], 0)
+
+    async def test_sync_imports_seller_hub_listings_once(self, db, test_user, token, fake):
+        fake.on("GET", "/sell/fulfillment/v1/order", (200, {"orders": [], "total": 0}))
+        fake.on("GET", "/sell/inventory/v1/inventory_item", (200, {"inventoryItems": [], "total": 0}))
+        fake.on("POST", "/ws/api.dll", (200, _selling_xml(
+            _listing("111", "Vintage Tee", "19.99") + _listing("222", "Pokemon Lot", "40.00", "3", sku="PKM-1"))))
+        result = await ebay_service.sync(db, test_user.id)
+        assert result.items_imported == 2
+        items = {i.name: i for i in db.query(InventoryItem).filter_by(user_id=test_user.id).all()}
+        tee, lot = items["Vintage Tee"], items["Pokemon Lot"]
+        assert tee.sku is None and tee.expected_sell_price == Decimal("19.99") and tee.status == "listed"
+        assert lot.sku == "PKM-1" and lot.quantity == 3
+        assert db.query(InventoryExternalLink).filter_by(external_id="listing:111").one().inventory_item_id == tee.id
+        again = await ebay_service.sync(db, test_user.id)
+        assert again.items_imported == 0 and again.items_updated == 2
+        assert fake.calls[-1].headers["X-EBAY-API-CALL-NAME"] == "GetMyeBaySelling"
+
+    async def test_order_for_skuless_listing_deducts_stock(self, db, test_user, token, fake):
+        fake.on("GET", "/sell/fulfillment/v1/order", (200, {"orders": [], "total": 0}))
+        fake.on("GET", "/sell/inventory/v1/inventory_item", (200, {"inventoryItems": [], "total": 0}))
+        fake.on("POST", "/ws/api.dll", (200, _selling_xml(_listing("333", "Lamp", qty="2"))))
+        await ebay_service.sync(db, test_user.id)
+        lamp = db.query(InventoryItem).filter_by(user_id=test_user.id, name="Lamp").one()
+        order = {
+            "orderId": "ORD-9", "creationDate": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+            "lineItems": [{"lineItemId": "L1", "legacyItemId": "333", "quantity": 1}],
+        }
+        assert ebay_service._apply_order_stock(db, test_user.id, order) == 1
+        db.flush()
+        db.refresh(lamp)
+        assert lamp.quantity == 1
+
+    async def test_inventory_api_items_are_not_duplicated(self, db, test_user, token, fake):
+        fake.on("GET", "/sell/fulfillment/v1/order", (200, {"orders": [], "total": 0}))
+        fake.on("GET", "/sell/inventory/v1/inventory_item", (200, {"inventoryItems": [{
+            "sku": "SHOE-1", "product": {"title": "Jordan 4"},
+            "availability": {"shipToLocationAvailability": {"quantity": 1}}}], "total": 1}))
+        fake.on("GET", "/sell/inventory/v1/offer", (200, {"offers": []}))
+        fake.on("POST", "/ws/api.dll", (200, _selling_xml(_listing("444", "Jordan 4", sku="SHOE-1"))))
+        result = await ebay_service.sync(db, test_user.id)
+        assert result.items_imported == 1
+        assert db.query(InventoryItem).filter_by(user_id=test_user.id).count() == 1
 
 
 class TestComps:

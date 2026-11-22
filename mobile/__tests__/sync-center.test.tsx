@@ -128,6 +128,20 @@ describe('SyncCenterScreen', () => {
     await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Sync failed', 'ls down'));
   });
 
+  it('after an eBay import, offers to add costs', async () => {
+    (apiMock.getEbayStatus as jest.Mock).mockResolvedValue({ connected: true, last_synced_at: null });
+    (apiMock.triggerEbaySync as jest.Mock).mockResolvedValue({ status: 'completed', items_imported: 12 });
+    const screen = render(<SyncCenterScreen />);
+    await screen.findByText('eBay');
+    fireEvent.press(screen.getAllByText('eBay')[0]);
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith(
+      'Imported 12 items from eBay', expect.any(String), expect.any(Array),
+    ));
+    const buttons = (Alert.alert as jest.Mock).mock.calls.find((c) => c[0] === 'Imported 12 items from eBay')[2];
+    buttons.find((b: { text: string }) => b.text === 'Add costs').onPress();
+    expect(mockPush).toHaveBeenCalledWith('/inventory/add-costs');
+  });
+
   it('formats last-sync times across minute, hour, and day ranges', async () => {
     const now = Date.now();
     (apiMock.getLightspeedStatus as jest.Mock).mockResolvedValue({ connected: true, last_synced_at: new Date(now - 5 * 60000).toISOString() });

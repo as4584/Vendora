@@ -164,3 +164,17 @@ class TestOwnershipEnforcement:
         assert resp_a.json()["items"][0]["name"] == "User A Item"
         assert resp_b.json()["total"] == 1
         assert resp_b.json()["items"][0]["name"] == "User B Item"
+
+
+def test_list_missing_cost_filter(client, db, test_user, auth_headers):
+    from decimal import Decimal
+    from app.models.inventory import InventoryItem
+
+    db.add_all([
+        InventoryItem(user_id=test_user.id, name="No cost"),
+        InventoryItem(user_id=test_user.id, name="Has cost", buy_price=Decimal("4.00")),
+    ])
+    db.flush()
+    r = client.get("/api/v1/inventory?missing_cost=true", headers=auth_headers)
+    assert r.status_code == 200
+    assert [i["name"] for i in r.json()["items"]] == ["No cost"]
