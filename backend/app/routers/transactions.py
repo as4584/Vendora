@@ -503,6 +503,14 @@ def refund_transaction(
             "message": "Invoice payments can't be refunded from transaction history.",
         })
 
+    if original.method == "trade":
+        # The pairs received are already in inventory; a money refund would
+        # double count. Undo a trade by trading back.
+        raise HTTPException(status_code=409, detail={
+            "error": "trade_refund_unsupported",
+            "message": "Trades can't be refunded. Record a trade back instead.",
+        })
+
     if original.is_refund:
         raise HTTPException(status_code=400, detail={
             "error": "cannot_refund_refund",

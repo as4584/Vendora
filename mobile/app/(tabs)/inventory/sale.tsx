@@ -488,6 +488,14 @@ export default function QuickSaleScreen() {
             <SectionLabel>Items</SectionLabel>
             <Text style={styles.stepText}>{step}</Text>
           </View>
+          <Button
+            testID="sale-start-trade"
+            label="Trade instead"
+            variant="secondary"
+            size="sm"
+            leadingIcon="swap-horizontal-outline"
+            onPress={() => router.push("/inventory/trade")}
+          />
           <View style={styles.searchRow}>
             <TextInput
               accessibilityLabel="Search sale inventory"

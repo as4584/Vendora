@@ -18,6 +18,7 @@ import {
   queueUpdateItem,
   queueQuickSale,
   queueSaleOrder,
+  queueTrade,
   queueCreateInvoice,
   getPendingInvoices,
   getPendingInvoice,
@@ -1127,6 +1128,54 @@ export async function createSaleOrder(payload: CreateSaleOrderPayload): Promise<
     if (isNetworkError(e)) return queueSaleOrder(body, session);
     throw e;
   }
+}
+
+export interface TradeGivePayload { item_id: string; quantity?: number; size?: string; value: string }
+export interface TradeGetPayload {
+  name: string; size?: string; upc?: string; sku?: string; category?: string; condition?: string;
+  value: string; list_price?: string;
+}
+export type TradeCashMethod = "cash" | "card" | "venmo" | "cashapp" | "paypal" | "zelle" | "other";
+export interface CreateTradePayload {
+  give: TradeGivePayload[];
+  get: TradeGetPayload[];
+  /** + they pay me, - I pay them. */
+  cash_amount: string;
+  cash_method?: TradeCashMethod;
+  notes?: string;
+  customer_id?: string;
+  client_request_id?: string;
+}
+export interface Trade {
+  id: string;
+  order_id: string;
+  value_out: string;
+  value_in: string;
+  cash_amount: string;
+  cash_method: string | null;
+  profit: string | null;
+  transaction_ids: string[];
+  received_item_ids: string[];
+  created_at: string | null;
+  /** Saved on this phone, waiting to sync. */
+  pending?: boolean;
+}
+
+/** Record a trade; offline (or on a dropped connection) it is queued and synced later. */
+export async function createTrade(payload: CreateTradePayload): Promise<Trade> {
+  const session = captureSession();
+  const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("trade") };
+  if (!isOnline()) return queueTrade(body, session);
+  try {
+    return await request<Trade>("/trades", { method: "POST", body: JSON.stringify(body) }, true, session);
+  } catch (e) {
+    if (isNetworkError(e)) return queueTrade(body, session);
+    throw e;
+  }
+}
+
+export async function listTrades(limit = 50): Promise<Trade[]> {
+  return request<Trade[]>(`/trades?limit=${limit}`);
 }
 
 export async function listTransactions(

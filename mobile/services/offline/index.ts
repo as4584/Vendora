@@ -15,6 +15,7 @@ export {
   queueUpdateItem,
   queueQuickSale,
   queueSaleOrder,
+  queueTrade,
   queueCreateInvoice,
   getPendingInvoices,
   getPendingInvoice,
