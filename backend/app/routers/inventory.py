@@ -19,7 +19,7 @@ from uuid import UUID
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel as _PydBase
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -839,6 +839,35 @@ def get_pricing_suggestion(
         "name_avg": round(float(name_avg), 2) if name_avg else None,
         "margin_30_percent": margin_30,
     }
+
+
+@router.get("/labels.pdf")
+def get_price_labels(
+    ids: str = Query(..., description="Comma-separated item ids (max 200)"),
+    layout: Literal["thermal", "sheet"] = Query("thermal"),
+    per_unit: bool = Query(False, description="One label per unit in stock"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Printable price labels with a scan-to-sell QR code."""
+    from app.services.labels import build_labels_pdf, expand
+
+    try:
+        wanted = list(dict.fromkeys(UUID(part.strip()) for part in ids.split(",") if part.strip()))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="ids must be item UUIDs")
+    if not wanted or len(wanted) > 200:
+        raise HTTPException(status_code=422, detail="Pick between 1 and 200 items")
+    found = {
+        item.id: item for item in db.query(InventoryItem).filter(
+            InventoryItem.id.in_(wanted), InventoryItem.user_id == current_user.id, InventoryItem.deleted_at.is_(None),
+        ).all()
+    }
+    if not found:
+        raise HTTPException(status_code=404, detail="Items not found")
+    pdf = build_labels_pdf(expand([found[i] for i in wanted if i in found], per_unit), layout)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="resqlo-labels.pdf"'})
 
 
 @router.get("/{item_id}", response_model=ItemResponse)

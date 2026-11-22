@@ -111,6 +111,13 @@ describe('ItemDetailScreen', () => {
     alertSpy.mockRestore();
   });
 
+  it('opens price labels for this item', async () => {
+    const screen = render(<ItemDetailScreen />);
+    await screen.findByTestId('print-item-label');
+    fireEvent.press(screen.getByTestId('print-item-label'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/inventory/labels', params: { ids: expect.any(String) } });
+  });
+
   it('copies the SKU and UPC with a tap', async () => {
     const Clipboard = require('expo-clipboard');
     const copy = jest.spyOn(Clipboard, 'setStringAsync').mockResolvedValue(true);

@@ -409,6 +409,23 @@ describe('QuickSaleScreen (checkout)', () => {
     await screen.findByText('Sale complete');
   });
 
+  it('scans a Resqlo price-label QR straight into the cart', async () => {
+    const screen = await ready();
+    fireEvent.press(screen.getByLabelText('Scan barcode to add'));
+    await waitFor(() => expect(mockOnScan).toBeDefined());
+    await act(async () => mockOnScan!({ data: 'resqlo:item:item-2' }));
+    expect(screen.getByText(/Cart · 1 item/)).toBeTruthy();
+    // A tag for a pair not in the loaded list is fetched; sold-out pairs are refused.
+    (apiMock.getItem as jest.Mock).mockResolvedValueOnce({ ...ITEM2, id: 'abcdef12-0000', quantity: 0 });
+    await act(async () => mockOnScan!({ data: 'RESQLO:ITEM:abcdef12-0000' }));
+    expect(screen.getByText(/Not in stock: RESQLO:ITEM/)).toBeTruthy();
+    (apiMock.getItem as jest.Mock).mockRejectedValueOnce(new Error('404'));
+    await act(async () => mockOnScan!({ data: 'resqlo:item:abcdef12-9999' }));
+    (apiMock.getItem as jest.Mock).mockResolvedValueOnce({ ...ITEM2, id: 'abcdef12-1111', name: 'Tagged pair' });
+    await act(async () => mockOnScan!({ data: 'resqlo:item:abcdef12-1111' }));
+    expect(screen.getByText(/Added Tagged pair/)).toBeTruthy();
+  });
+
   it('scans a barcode to add the item, and explains unknown codes', async () => {
     const screen = await ready();
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));

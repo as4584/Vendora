@@ -404,6 +404,14 @@ export default function ItemDetailScreen() {
       </Card>
       <StockxItemCard itemId={item.id} />
 
+      <Button
+        testID="print-item-label"
+        label="Print price label"
+        variant="secondary"
+        leadingIcon="print-outline"
+        onPress={() => push({ pathname: "/inventory/labels", params: { ids: item.id } })}
+      />
+
       <EbayCompsCard itemId={item.id} />
 
       <EbayListingCard item={item} available={qty} onChanged={() => void loadItem()} />
