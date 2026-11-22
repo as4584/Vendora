@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import RootLayout from '../app/_layout';
 import Index from '../app/index';
 import AuthLayout from '../app/(auth)/_layout';
@@ -47,6 +47,16 @@ jest.mock('../services/pushAlerts', () => ({
   syncPushToken: jest.fn(async () => false),
   maybePromptSaleAlerts: jest.fn(async () => undefined),
 }));
+let mockIntroSeen = true;
+jest.mock('expo-splash-screen', () => ({ preventAutoHideAsync: jest.fn(async () => true), hideAsync: jest.fn(async () => true) }));
+jest.mock('../components/BrandIntro', () => {
+  const { Text } = require('react-native');
+  return {
+    hasSeenIntro: async () => mockIntroSeen,
+    BrandLoader: () => <Text>brand-loader</Text>,
+    BrandIntro: ({ onDone }: { onDone: () => void }) => <Text onPress={onDone}>brand-intro</Text>,
+  };
+});
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 jest.mock('react-native-safe-area-context', () => {
   const ReactModule = require('react');
@@ -70,13 +80,25 @@ describe('router layouts', () => {
     jest.clearAllMocks();
     mockSegments.splice(0);
     mockAuthState = { isAuthenticated: false, isLoading: false };
+    mockIntroSeen = true;
   });
 
-  it('shows a loader while authentication state is being restored', () => {
+  it('shows a loader while authentication state is being restored', async () => {
     mockAuthState = { isAuthenticated: false, isLoading: true };
     const screen = render(<RootLayout />);
-    expect(screen.UNSAFE_getByType(require('react-native').ActivityIndicator)).toBeTruthy();
+    await act(async () => {});
+    expect(screen.getByText('brand-loader')).toBeTruthy();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('plays the branded intro on first open, then continues into the app', async () => {
+    mockIntroSeen = false;
+    mockSegments.push('(tabs)');
+    const screen = render(<RootLayout />);
+    await waitFor(() => expect(screen.getByText('brand-intro')).toBeTruthy());
+    fireEvent.press(screen.getByText('brand-intro'));
+    await waitFor(() => expect(screen.queryByText('brand-intro')).toBeNull());
+    expect(mockReplace).toHaveBeenCalledWith('/(auth)/login');
   });
 
   it('redirects signed-out users to login outside the auth group', async () => {
