@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PLATFORM_FEES, estimateFeeCents } from "../../../utils/platformFees";
 import {
   View,
   Text,
@@ -52,8 +53,6 @@ const CATALOG_PAGE_SIZE = 12;
 // price: the agreed per-unit price as typed (defaults to the list price, editable to haggle).
 type CartLine = { item: api.InventoryItem; qty: number; price: string; size?: string };
 type PaymentRow = { key: string; method: string; amount: string };
-
-import { PLATFORM_FEES, estimateFeeCents } from "../../../utils/platformFees";
 
 const listPrice = (item: api.InventoryItem) => centsToString(toCents(item.expected_sell_price || "0"));
 const cartKey = (itemId: string, size?: string) => size ? `${itemId}:${size.trim().toLowerCase()}` : itemId;
