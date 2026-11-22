@@ -2,7 +2,7 @@
 
 Per MONETIZATION_AND_LIMITS:
   Free tier ($0/mo): max 25 inventory items
-  Pro tier ($20/mo): unlimited
+  Pro tier: unlimited
   Partner add-on (+$5/mo): boolean flag, does NOT affect item limits
 """
 from fastapi import Depends, HTTPException, status
@@ -43,7 +43,7 @@ def enforce_item_limit(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error": "tier_limit_reached",
-                    "message": f"Free tier is limited to {limit} items. Upgrade to Pro ($20/mo) for unlimited inventory.",
+                    "message": f"Free tier is limited to {limit} items. Upgrade to Pro for unlimited inventory.",
                     "current_count": count,
                     "tier": current_user.subscription_tier,
                     "limit": limit,

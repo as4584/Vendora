@@ -8,7 +8,6 @@ Per ARCHITECTURE.md:
 import uuid
 
 from sqlalchemy import Column, String, Numeric, Boolean, ForeignKey, CheckConstraint, Index, DateTime, Uuid
-# from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
 

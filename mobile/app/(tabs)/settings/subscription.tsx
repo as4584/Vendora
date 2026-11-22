@@ -186,12 +186,12 @@ export default function SubscriptionScreen() {
       ) : (
         <>
           <Card style={styles.card}>
-            <SectionLabel>Pro · $20/month</SectionLabel>
+            <SectionLabel>Pro</SectionLabel>
             <Text style={styles.copy}>Unlimited inventory, price suggestions and eBay comps, spreadsheet exports, advanced analytics, and Stripe card payments.</Text>
             {status?.tier !== "pro" ? <ActionButton label={working === "pro" ? "Opening checkout..." : "Upgrade to Pro"} onPress={() => openCheckout("pro")} disabled={!!working} /> : <Pill label="Active" tone="success" />}
           </Card>
           <Card style={styles.card}>
-            <SectionLabel>Partner · +$5/month</SectionLabel>
+            <SectionLabel>Partner add-on</SectionLabel>
             <Text style={styles.copy}>Adds a public storefront, verified badge, and priority in-app support. Includes Pro when needed.</Text>
             {!status?.is_partner ? <ActionButton label={working === "partner" ? "Opening checkout..." : "Add Partner"} onPress={() => openCheckout("partner")} disabled={!!working} /> : <Pill label="Active" tone="success" />}
           </Card>

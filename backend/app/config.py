@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     # Stripe
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_PRO_PRICE_ID: str = ""  # Stripe Price ID for Pro tier ($20/mo)
+    STRIPE_PRO_PRICE_ID: str = ""  # Stripe Price ID for the Pro tier
     STRIPE_PARTNER_PRICE_ID: str = ""  # Stripe Price ID for Partner add-on ($5/mo)
     # RevenueCat (iOS in-app purchases). The webhook sends this exact value in
     # the Authorization header; set the same string in the RevenueCat dashboard.

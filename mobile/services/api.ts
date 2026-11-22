@@ -849,21 +849,6 @@ export async function uploadItemPhotos(
   });
 }
 
-/**
- * Save size variants for a clothing item.
- * Variants are stored in custom_attributes.variants.
- */
-export async function updateItemVariants(
-  id: string,
-  variants: SizeVariant[]
-): Promise<InventoryItem> {
-  const item = await getItem(id);
-  const existing = item.custom_attributes ?? {};
-  return updateItem(id, {
-    custom_attributes: { ...existing, variants },
-  });
-}
-
 export interface ImportPreviewRow {
   /** Import row id; target of updateInventoryImportRow. */
   id: string | null;
@@ -951,26 +936,6 @@ export async function importInventoryFromLink(
     }
     throw error;
   }
-}
-
-export async function importInventoryFile(
-  file: { uri: string; name: string; mimeType?: string },
-  dryRun = false
-): Promise<InventoryImportResult> {
-  const formData = new FormData();
-  formData.append("file", {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType || "text/csv",
-  } as any);
-
-  return request<InventoryImportResult>(
-    `/inventory/import/file?dry_run=${dryRun ? "true" : "false"}`,
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
 }
 
 export type ImportRowEditableField =
@@ -1475,10 +1440,6 @@ export async function submitSupportRequest(subject: string, message: string): Pr
 
 export async function exportInventoryWarehouseCSV(): Promise<string> {
   return request<string>("/export/inventory?template=warehouse");
-}
-
-export async function exportTransactionsCSV(): Promise<string> {
-  return request<string>("/export/transactions");
 }
 
 /** Absolute URL for a checkout's branded PDF receipt (needs the auth header). */
@@ -2168,10 +2129,6 @@ export async function updateReconciliationIssue(
 }
 
 // ─── App Health ──────────────────────────────────────────
-
-export async function healthCheck(): Promise<{ status: string; version: string }> {
-  return request("/health");
-}
 
 // ─── Customers ───────────────────────────────────────
 

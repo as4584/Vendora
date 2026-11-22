@@ -146,12 +146,6 @@ export const TYPE = {
   figure: { fontSize: 28, fontWeight: "600" as const, lineHeight: 34, fontVariant: ["tabular-nums"] as ["tabular-nums"] },
 };
 
-// Depth on dark comes from surface steps + hairlines, not shadows.
-export const ELEVATION = {
-  flat: { borderWidth: 1, borderColor: COLORS.border },
-  raised: { borderWidth: 1, borderColor: COLORS.borderStrong },
-};
-
 // Control heights. Apple's minimum touch target is 44pt; "sm" reaches it via hitSlop.
 /**
  * Dynamic Type caps (Text maxFontSizeMultiplier). Body copy scales freely and
