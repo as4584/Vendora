@@ -18,6 +18,7 @@ import {
   queueUpdateItem,
   queueQuickSale,
   queueSaleOrder,
+  flushInBackground,
   queueCreateInvoice,
   getPendingInvoices,
   getPendingInvoice,
@@ -26,6 +27,8 @@ import {
   readCachedDashboard,
 } from "./offline";
 import type { SortKey } from "../utils/inventorySort";
+import { isConMode } from "./conMode";
+import { cachedComps } from "./compsCache";
 import { accountKey, OfflineStorageError, readAccountJSON, tempId, writeAccountJSON } from "./offline/store";
 import {
   assertSession, captureSession, replaceSession, requireAccount, SessionChangedError, type SessionContext,
@@ -1096,12 +1099,20 @@ export interface CreateTransactionPayload {
   client_request_id?: string;
 }
 
+/** Con Mode: the receipt comes from the local journal; the send happens right after. */
+async function instant<T>(queued: Promise<T>): Promise<T> {
+  const result = await queued;
+  flushInBackground();
+  return result;
+}
+
 export async function createTransaction(
   payload: CreateTransactionPayload
 ): Promise<Transaction> {
   const session = captureSession();
   const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("sale") };
   if (!isOnline()) return queueQuickSale(body, session);
+  if (isConMode()) return instant(queueQuickSale(body, session));
   try {
     return await request<Transaction>("/transactions", {
       method: "POST",
@@ -1118,6 +1129,7 @@ export async function createSaleOrder(payload: CreateSaleOrderPayload): Promise<
   const session = captureSession();
   const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("order") };
   if (!isOnline()) return queueSaleOrder(body, session);
+  if (isConMode()) return instant(queueSaleOrder(body, session));
   try {
     return await request<SaleOrder>("/transactions/order", {
       method: "POST",
@@ -2042,11 +2054,14 @@ export async function listEbayFees(): Promise<EbayOrderFees[]> {
 }
 
 export async function getItemEbayComps(itemId: string): Promise<EbayComps> {
-  return request<EbayComps>(`/inventory/${encodeURIComponent(itemId)}/ebay-comps`);
+  return cachedComps(`item:${itemId}`, () => request<EbayComps>(`/inventory/${encodeURIComponent(itemId)}/ebay-comps`),
+    { preferCache: isConMode() });
 }
 
 export async function searchEbayComps(q: string): Promise<EbayComps> {
-  return request<EbayComps>(`/integrations/ebay/comps?q=${encodeURIComponent(q)}`);
+  const key = q.trim().toLowerCase();
+  return cachedComps(`q:${key}`, () => request<EbayComps>(`/integrations/ebay/comps?q=${encodeURIComponent(q)}`),
+    { preferCache: isConMode() });
 }
 
 /** One shared marketplace write job (StockX ask removal, eBay quantity push). */

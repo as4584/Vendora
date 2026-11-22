@@ -99,6 +99,17 @@ describe('QuickSaleScreen (checkout)', () => {
     expect(screen.queryByText('Quick Sale')).toBeNull();
   });
 
+  it('toggles Con Mode for instant checkout', async () => {
+    const { isConMode, resetConModeForTests } = require('../services/conMode');
+    resetConModeForTests();
+    const screen = render(<QuickSaleScreen />);
+    await waitFor(() => expect(screen.getByText('Con Mode off')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('con-mode-toggle'));
+    expect(screen.getByText('Con Mode on')).toBeTruthy();
+    expect(isConMode()).toBe(true);
+    resetConModeForTests();
+  });
+
   it('logs the whole cart as ONE order and shows a shareable receipt', async () => {
     const screen = await ready();
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));

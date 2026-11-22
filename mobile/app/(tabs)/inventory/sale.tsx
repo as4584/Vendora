@@ -9,12 +9,14 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Pressable,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
 import { CustomerPicker } from "../../../components/CustomerPicker";
 import { isOnline } from "../../../services/offline";
+import { useConMode } from "../../../services/conMode";
 import { Card, Icon, Pill, SectionLabel } from "../../../components/ui";
 import { Button, IconButton, triggerHaptic } from "../../../components/Button";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
@@ -478,11 +480,29 @@ export default function QuickSaleScreen() {
     }
   };
 
+  const [conMode, setConMode] = useConMode();
   const step = cartLines.length === 0 ? "Add items" : `${cartLines.length} item${cartLines.length === 1 ? "" : "s"} in cart`;
 
   return (
     <View style={styles.container}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Pressable
+          testID="con-mode-toggle"
+          style={[styles.conMode, conMode && styles.conModeOn]}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: conMode }}
+          accessibilityLabel="Con Mode"
+          accessibilityHint="Checkout never waits on wifi; sales sync in the background"
+          onPress={() => { triggerHaptic("light"); setConMode(!conMode); }}
+        >
+          <Icon name={conMode ? "flash" : "flash-outline"} size={20} color={conMode ? "#FFFFFF" : COLORS.textSoft} />
+          <View style={styles.flex}>
+            <Text style={[styles.conModeTitle, conMode && styles.conModeTitleOn]}>Con Mode {conMode ? "on" : "off"}</Text>
+            <Text style={[styles.conModeHint, conMode && styles.conModeTitleOn]}>
+              {conMode ? "Instant checkout. Sales sync in the background." : "Turn on at a show for instant checkout on bad wifi."}
+            </Text>
+          </View>
+        </Pressable>
         <Card style={{ gap: SPACING.md }}>
           <View style={styles.sectionHead}>
             <SectionLabel>Items</SectionLabel>
@@ -1005,7 +1025,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.bgElevated,
   },
-  chipCompact: { minHeight: 36, paddingHorizontal: 12 },
+  chipCompact: { minHeight: 44, paddingHorizontal: 12 },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipDisabled: { opacity: 0.4 },
   chipText: { ...TYPE.footnote, color: COLORS.textMuted, fontWeight: "600" },
@@ -1017,12 +1037,12 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   cartTop: { flexDirection: "row", alignItems: "flex-start", gap: SPACING.sm },
-  lastSold: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32 },
+  lastSold: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44 },
   lastSoldText: { ...TYPE.footnote, color: COLORS.textMuted, flex: 1 },
   lastSoldPrice: { color: COLORS.text, fontWeight: "600" },
   lastSoldUse: { ...TYPE.footnote, color: COLORS.primaryBright, fontWeight: "600" },
   haggleRow: { flexDirection: "row", gap: SPACING.xs, flexWrap: "wrap" },
-  haggleChip: { minHeight: 36, paddingHorizontal: SPACING.sm, justifyContent: "center", borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
+  haggleChip: { minHeight: 44, paddingHorizontal: SPACING.sm, justifyContent: "center", borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
   haggleText: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
   cartControls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: SPACING.sm },
   qtyStepper: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
@@ -1049,6 +1069,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     textAlign: "right",
   },
+  conMode: {
+    flexDirection: "row", alignItems: "center", gap: SPACING.sm, minHeight: 56, padding: SPACING.sm,
+    borderRadius: RADII.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card,
+  },
+  conModeOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  conModeTitle: { ...TYPE.body, fontWeight: "700", color: COLORS.text },
+  conModeTitleOn: { color: "#FFFFFF" },
+  conModeHint: { ...TYPE.caption, color: COLORS.textSoft },
   divider: { height: 1, backgroundColor: COLORS.border, marginVertical: SPACING.xs },
   subRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   subLabel: { color: COLORS.textMuted, fontSize: 14, fontWeight: "600" },
