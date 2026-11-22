@@ -229,10 +229,8 @@ export default function QuickSaleScreen() {
   });
   // Picking where it sold pre-fills that platform's typical fee until the
   // seller types their own.
-  useEffect(() => {
-    if (soldOn && !feeEdited) setFeeAmount(centsToString(estimateFeeCents(soldOn, totals.total)));
-  }, [soldOn, feeEdited, totals.total]);
-  const fee = toCents(feeAmount);
+  const feeText = soldOn && !feeEdited ? centsToString(estimateFeeCents(soldOn, totals.total)) : feeAmount;
+  const fee = toCents(feeText);
   const splitting = split.length > 0;
   const splitPaid = split.reduce((sum, row) => sum + toCents(row.amount), 0);
   const splitLeft = totals.total - splitPaid;
@@ -820,8 +818,8 @@ export default function QuickSaleScreen() {
                 active={soldOn === p.key}
                 onPress={() => {
                   setFeeEdited(false);
+                  setFeeAmount("");
                   setSoldOn(soldOn === p.key ? null : p.key);
-                  if (soldOn === p.key) setFeeAmount("");
                 }}
               />
             ))}
@@ -837,7 +835,7 @@ export default function QuickSaleScreen() {
             style={styles.input}
             placeholder="Processing fee (optional)"
             placeholderTextColor={COLORS.textSoft}
-            value={feeAmount}
+            value={feeText}
             onChangeText={(text) => {
               setFeeEdited(true);
               setFeeAmount(text);
