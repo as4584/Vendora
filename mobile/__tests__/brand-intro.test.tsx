@@ -31,6 +31,17 @@ describe('brand intro', () => {
     expect(await hasSeenIntro()).toBe(true);
   });
 
+  it('skips the intro on the web app', async () => {
+    const { Platform } = require('react-native');
+    const os = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    try {
+      expect(await hasSeenIntro()).toBe(true);
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: os, configurable: true });
+    }
+  });
+
   it('never blocks launch when storage fails', async () => {
     jest.spyOn(AsyncStorage, 'getItem').mockRejectedValueOnce(new Error('x'));
     jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('x'));

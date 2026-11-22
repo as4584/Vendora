@@ -10,7 +10,7 @@
  *   Reduced Motion skips the animation and shows the final frame briefly.
  */
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Image, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Image, Platform, StyleSheet, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useReducedMotion } from "./useReducedMotion";
 
@@ -21,6 +21,8 @@ export const INTRO_MS = 2200;
 const STILL_MS = 900;
 
 export async function hasSeenIntro(): Promise<boolean> {
+  // The intro is for the installed app; the web app opens straight to sign-in.
+  if (Platform.OS === "web") return true;
   try {
     return (await AsyncStorage.getItem(INTRO_KEY)) === "1";
   } catch {
