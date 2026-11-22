@@ -36,7 +36,7 @@ export default function SyncIssuesScreen() {
         <Text style={styles.status}>{label}</Text>
         <Text style={styles.muted}>
           {net.lastSync ? `Last synced ${timeAgo(net.lastSync)}.` : "Not synced yet on this phone."}
-          {" "}Changes you make offline are saved on this phone and upload automatically when you're back online.
+          {" "}Changes you make offline are saved on this phone and upload automatically when you&apos;re back online.
         </Text>
       </Card>
 
