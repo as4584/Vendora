@@ -100,3 +100,16 @@ class ShowSummaryResponse(BaseModel):
 
 class ShowStartRequest(BaseModel):
     started_at: Optional[datetime] = None  # default: now
+
+
+class SavingsResponse(BaseModel):
+    """Work Resqlo's integrations did for the seller since `since`."""
+    since: datetime
+    minutes_saved: int
+    items_imported: int
+    sales_imported: int
+    stock_updates: int
+    fees_tracked: Decimal
+    minutes_per_item: float
+    minutes_per_sale: float
+    minutes_per_stock_update: float

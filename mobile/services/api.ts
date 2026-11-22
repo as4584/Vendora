@@ -2331,3 +2331,20 @@ export const updateGoogleSheetSettings = (settings: { source_of_truth?: boolean;
   request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "PATCH", body: JSON.stringify(settings) });
 export const unlinkGoogleSheet = () => request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "DELETE" });
 export const syncGoogleSheets = () => request<GoogleSheetsSyncResult>(`${GS}/sync`, { method: "POST" });
+
+export interface Savings {
+  since: string;
+  minutes_saved: number;
+  items_imported: number;
+  sales_imported: number;
+  stock_updates: number;
+  fees_tracked: string;
+  minutes_per_item: number;
+  minutes_per_sale: number;
+  minutes_per_stock_update: number;
+}
+
+/** Work Resqlo's integrations did for the seller this month. */
+export async function getSavings(): Promise<Savings> {
+  return request<Savings>("/dashboard/savings");
+}
