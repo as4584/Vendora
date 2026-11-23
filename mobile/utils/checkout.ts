@@ -259,6 +259,13 @@ export function sameBarcode(a?: string | null, b?: string | null): boolean {
   return norm(a) !== "" && norm(a) === norm(b);
 }
 
+/** Store SKU stickers: same SKU regardless of case and spacing. */
+export function sameSku(sku?: string | null, scanned?: string | null): boolean {
+  if (!sku || !scanned) return false;
+  const norm = (s: string) => s.replace(/\s+/g, "").toUpperCase();
+  return norm(sku) !== "" && norm(sku) === norm(scanned);
+}
+
 /**
  * Two-way split (e.g. cash + card): when one amount is typed, the other
  * becomes whatever is left of the total, so the payments always add up.

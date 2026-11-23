@@ -34,8 +34,9 @@ import { Button, triggerHaptic } from "../../../components/Button";
 import { Icon } from "../../../components/ui";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { playSound } from "../../../services/sounds";
+import { SCANNER_BARCODE_TYPES } from "../../../utils/barcodeRules";
 
-const BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"] as const;
+const BARCODE_TYPES = SCANNER_BARCODE_TYPES;
 
 export default function BatchScanScreen() {
   const session = captureSession();
@@ -75,7 +76,7 @@ export default function BatchScanScreen() {
     try {
       const [hit, existing] = await Promise.all([
         resolveScan(code, undefined, session).catch(() => null),
-        api.listItems({ upc: code, perPage: 1 }).then((r) => r.items[0] ?? null).catch(() => null),
+        api.resolveBarcode(code).then((r) => r.item).catch(() => null),
       ]);
       if (!isCurrentSession(session)) return;
       const known = !!hit?.match;

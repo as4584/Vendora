@@ -18,6 +18,12 @@ jest.mock('expo-camera', () => {
 });
 jest.mock('../services/api', () => ({
   listItems: jest.fn(),
+  // The screen asks resolveBarcode; route it through listItems so each test's
+  // listItems stub still decides whether the box is already in stock.
+  resolveBarcode: jest.fn(async () => {
+    const r = await jest.requireMock('../services/api').listItems();
+    return { item: r?.items?.[0] ?? null };
+  }),
   createItem: jest.fn(),
   updateItem: jest.fn(),
 }));

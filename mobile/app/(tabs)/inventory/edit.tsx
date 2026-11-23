@@ -27,6 +27,7 @@ import * as api from "../../../services/api";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
 
 import { BRAND, COLORS } from "../../../theme/tokens";
+import { SCANNER_BARCODE_TYPES } from "../../../utils/barcodeRules";
 import { Button, IconButton } from "../../../components/Button";
 const CLOTHING_KEYWORDS = [
     "clothing", "apparel", "shirt", "pants", "jeans", "dress", "jacket",
@@ -584,7 +585,7 @@ export default function EditItemScreen() {
                         style={StyleSheet.absoluteFill}
                         onBarcodeScanned={scanned ? undefined : onBarcodeScanned}
                         barcodeScannerSettings={{
-                            barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"],
+                            barcodeTypes: [...SCANNER_BARCODE_TYPES],
                         }}
                     />
                     <ScannerOverlay hint="Point at a barcode to scan" onCancel={() => setScannerOpen(false)} />

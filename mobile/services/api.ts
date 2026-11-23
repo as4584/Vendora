@@ -997,6 +997,80 @@ export async function commitInventoryImport(
   });
 }
 
+// ─── Barcode control ───────────────────────────────────
+
+export interface BarcodeResolution {
+  code: string;
+  matched_by: "label" | "linked" | "upc" | "sku" | null;
+  rule_name: string | null;
+  item: InventoryItem | null;
+}
+
+export interface BarcodeRuleInput {
+  name: string;
+  prefix?: string | null;
+  suffix?: string | null;
+  min_length?: number | null;
+  max_length?: number | null;
+  strip_prefix?: boolean;
+  strip_suffix?: boolean;
+  slice_start?: number | null;
+  slice_length?: number | null;
+  lookup_field?: "auto" | "sku" | "upc" | "linked";
+  enabled?: boolean;
+}
+
+export interface BarcodeRule extends Required<BarcodeRuleInput> {
+  id: string;
+  position: number;
+}
+
+export interface LinkedBarcode {
+  code: string;
+  inventory_item_id: string;
+}
+
+/** What a scanned code means for this seller: label QR, rules, links, UPC, SKU. */
+export async function resolveBarcode(code: string): Promise<BarcodeResolution> {
+  return request<BarcodeResolution>(`/scan/resolve?code=${encodeURIComponent(code)}`);
+}
+
+export async function listBarcodeRules(): Promise<BarcodeRule[]> {
+  return request<BarcodeRule[]>("/scan/rules");
+}
+
+export async function createBarcodeRule(body: BarcodeRuleInput): Promise<BarcodeRule> {
+  return request<BarcodeRule>("/scan/rules", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateBarcodeRule(id: string, body: BarcodeRuleInput): Promise<BarcodeRule> {
+  return request<BarcodeRule>(`/scan/rules/${id}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export async function deleteBarcodeRule(id: string): Promise<void> {
+  await request<void>(`/scan/rules/${id}`, { method: "DELETE" });
+}
+
+export async function reorderBarcodeRules(ids: string[]): Promise<BarcodeRule[]> {
+  return request<BarcodeRule[]>("/scan/rules/order", { method: "POST", body: JSON.stringify({ ids }) });
+}
+
+export async function listItemBarcodes(itemId: string): Promise<LinkedBarcode[]> {
+  return request<LinkedBarcode[]>(`/inventory/${itemId}/barcodes`);
+}
+
+/** Teach Resqlo that a store's own barcode means this item. */
+export async function linkBarcode(itemId: string, code: string, replace = false): Promise<LinkedBarcode> {
+  return request<LinkedBarcode>(`/inventory/${itemId}/barcodes`, {
+    method: "POST",
+    body: JSON.stringify({ code, replace }),
+  });
+}
+
+export async function unlinkBarcode(itemId: string, code: string): Promise<void> {
+  await request<void>(`/inventory/${itemId}/barcodes/${encodeURIComponent(code)}`, { method: "DELETE" });
+}
+
 // ─── Transaction Endpoints ───────────────────────────
 
 export interface Transaction {

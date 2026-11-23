@@ -23,7 +23,7 @@ import {
     Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
@@ -48,6 +48,7 @@ import {
 
 import { BRAND, COLORS, FONT_SCALE, TONES } from "../../../theme/tokens";
 import { playSound } from "../../../services/sounds";
+import { SCANNER_BARCODE_TYPES } from "../../../utils/barcodeRules";
 const CATEGORY_PREFIXES: Record<string, string> = {
     sneakers: "SNK",
     clothing: "CLO",
@@ -88,7 +89,8 @@ export default function AddItemScreen() {
     const [name, setName] = useState("");
     const [category, setCategory] = useState("");
     const [sku, setSku] = useState("");
-    const [upc, setUpc] = useState("");
+    const { upc: scannedUpc } = useLocalSearchParams<{ upc?: string }>();
+    const [upc, setUpc] = useState(typeof scannedUpc === "string" ? scannedUpc : "");
     const [size, setSize] = useState("");
     const [color, setColor] = useState("");
     const [condition, setCondition] = useState("");
@@ -842,7 +844,7 @@ export default function AddItemScreen() {
                         ref={cameraRef}
                         style={styles.camera}
                         facing="back"
-                        barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] }}
+                        barcodeScannerSettings={{ barcodeTypes: [...SCANNER_BARCODE_TYPES] }}
                         onBarcodeScanned={scanned ? undefined : onBarcodeScanned}
                     />
                     {scanStep === "barcode" ? (
