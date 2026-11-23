@@ -34,6 +34,8 @@ MAX_EMBEDDED_IMAGE_BYTES = 40 * 1024 * 1024
 MAX_XLSX_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_XLSX_MEMBERS = 50000
 MAX_XLSX_COMPRESSION_RATIO = 1000
+# Pictures inside an .xlsx; the text-only reader never opens them.
+MEDIA_PREFIXES = ("xl/media/", "xl/embeddings/", "xl/drawings/")
 MAX_EMBEDDED_IMAGE_DIMENSION = 640
 JPEG_THUMBNAIL_QUALITY = 76
 
@@ -704,19 +706,23 @@ def _warehouse_matrix_rows_to_dicts(
     return rows
 
 
-def assert_safe_xlsx_archive(content: bytes) -> None:
+def assert_safe_xlsx_archive(content: bytes | str, skip_media: bool = False) -> None:
     """Refuse zip bombs before openpyxl or our own reader inflates anything.
 
     The declared uncompressed sizes in the central directory are checked; a
     member that lies about its size is still capped because zipfile verifies
-    the size/CRC while reading.
+    the size/CRC while reading. With ``skip_media`` (photos are never read),
+    pictures don't count toward the limits, so a sheet with thousands of
+    photos is fine.
     """
     try:
-        archive = zipfile.ZipFile(io.BytesIO(content))
+        archive = zipfile.ZipFile(io.BytesIO(content) if isinstance(content, bytes) else content)
     except zipfile.BadZipFile:
         return  # not a zip at all: nothing to inflate; the parser reports it
 
     infos = archive.infolist()
+    if skip_media:
+        infos = [info for info in infos if not info.filename.startswith(MEDIA_PREFIXES)]
     total = sum(info.file_size for info in infos)
     if len(infos) > MAX_XLSX_MEMBERS or total > MAX_XLSX_UNCOMPRESSED_BYTES or any(
         info.file_size > 0 and info.compress_size > 0
@@ -922,7 +928,9 @@ def _table_rows_to_dicts(
     return rows
 
 
-def rows_from_bytes(content: bytes, file_format: str, content_type: str | None = None) -> list[dict[str, Any]]:
+def rows_from_bytes(
+    content: bytes, file_format: str, content_type: str | None = None, with_images: bool = True,
+) -> list[dict[str, Any]]:
     max_bytes = MAX_XLSX_IMPORT_BYTES if file_format == "xlsx" else MAX_CSV_IMPORT_BYTES
     max_mb = max_bytes // (1024 * 1024)
     if len(content) > max_bytes:
@@ -940,7 +948,7 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="XLSX import support is not installed on the server.",
             ) from exc
-        assert_safe_xlsx_archive(content)
+        assert_safe_xlsx_archive(content, skip_media=not with_images)
 
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         last_error: HTTPException | None = None
@@ -948,7 +956,7 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
             for sheet_idx, sheet in enumerate(workbook.worksheets):
                 table_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
                 try:
-                    embedded_images = _xlsx_first_sheet_images(content) if sheet_idx == 0 else []
+                    embedded_images = _xlsx_first_sheet_images(content) if sheet_idx == 0 and with_images else []
                     return _table_rows_to_dicts(table_rows, embedded_images=embedded_images)
                 except HTTPException as exc:
                     last_error = exc
@@ -972,6 +980,36 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
     if getattr(dialect, "delimiter", ",") in {"\r", "\n"}:
         dialect = csv.excel
     return _table_rows_to_dicts([list(row) for row in csv.reader(io.StringIO(text), dialect=dialect)])
+
+
+def xlsx_rows_from_path(path: str) -> list[dict[str, Any]]:
+    """Read an .xlsx straight from disk, text only, at any file size.
+
+    Rows stream from the file (openpyxl read-only mode) and pictures are
+    never opened, so a sheet full of photos costs about the same memory as
+    one without. Only the row text is kept.
+    """
+    with open(path, "rb") as handle:
+        _reject_html_download(handle.read(512))
+    assert_safe_xlsx_archive(path, skip_media=True)
+    from openpyxl import load_workbook
+
+    # A file handle (not the path): openpyxl rejects paths not ending in .xlsx.
+    with open(path, "rb") as handle:
+        workbook = load_workbook(handle, read_only=True, data_only=True)
+        last_error: HTTPException | None = None
+        try:
+            for sheet in workbook.worksheets:
+                table_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
+                try:
+                    return _table_rows_to_dicts(table_rows, embedded_images=[])
+                except HTTPException as exc:
+                    last_error = exc
+        finally:
+            workbook.close()
+    if last_error:
+        raise last_error
+    return []
 
 
 def parse_inventory_rows(rows: list[dict[str, Any]]) -> list[ParsedImportRow]:

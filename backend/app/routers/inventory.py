@@ -11,6 +11,7 @@ import ipaddress
 import math
 import socket
 import os
+import shutil
 import uuid
 import base64
 import binascii
@@ -68,6 +69,7 @@ from app.services.spreadsheet_import import (
     google_sheet_csv_url,
     parse_inventory_rows,
     rows_from_bytes,
+    xlsx_rows_from_path,
     MAX_CSV_IMPORT_BYTES,
     MAX_XLSX_IMPORT_BYTES,
 )
@@ -1157,7 +1159,10 @@ def _coerce_row(raw: dict, mapping: dict[str, str]) -> tuple[dict, Optional[str]
 # spreadsheet parser's own limit.
 DIRECT_IMPORT_UPLOAD_BYTES = 90 * 1024 * 1024
 IMPORT_CHUNK_MAX_BYTES = 6 * 1024 * 1024
-IMPORT_UPLOAD_MAX_BYTES = MAX_XLSX_IMPORT_BYTES
+# .xlsx files are read from disk without opening their pictures, so photo-heavy
+# sheets have no practical size limit; this ceiling only guards the server disk.
+IMPORT_UPLOAD_MAX_BYTES = 20 * 1024 * 1024 * 1024
+IMPORT_DISK_HEADROOM_BYTES = 2 * 1024 * 1024 * 1024
 IMPORT_UPLOAD_DIR = Path(tempfile.gettempdir()) / "resqlo-import-uploads"
 IMPORT_UPLOAD_TTL_SECONDS = 6 * 3600
 SPREADSHEET_EXTENSIONS = (".csv", ".xlsx", ".txt")
@@ -1190,8 +1195,12 @@ def _spreadsheet_headers_rows(filename: str, content: bytes) -> tuple[list[str],
     """Headers + string rows from a CSV or XLSX file, for the preview mapper."""
     if detect_format(filename, None, content) != "xlsx":
         return _parse_csv_bytes(content)
+    return _headers_rows_from_table(_read_spreadsheet(lambda: rows_from_bytes(content, "xlsx", with_images=False)))
+
+
+def _read_spreadsheet(read) -> list[dict]:
     try:
-        table = rows_from_bytes(content, "xlsx")
+        return read()
     except HTTPException:
         raise
     except Exception as exc:  # openpyxl raises many types for damaged files
@@ -1199,6 +1208,9 @@ def _spreadsheet_headers_rows(filename: str, content: bytes) -> tuple[list[str],
             status_code=400,
             detail="Couldn't read this spreadsheet. Re-save it as .xlsx or .csv and try again.",
         ) from exc
+
+
+def _headers_rows_from_table(table: list[dict]) -> tuple[list[str], list[dict]]:
     headers: list[str] = []
     seen: set[str] = set()
     rows: list[dict] = []
@@ -1275,12 +1287,20 @@ async def start_import_upload(
     current_user: User = Depends(get_current_user),
 ):
     """Begin a chunked spreadsheet upload for files too big for one request."""
-    _check_import_filename(payload.filename)
-    if payload.size > IMPORT_UPLOAD_MAX_BYTES:
-        limit_mb = IMPORT_UPLOAD_MAX_BYTES // (1024 * 1024)
-        raise HTTPException(status_code=413, detail=f"Spreadsheets over {limit_mb} MB can't be imported.")
+    name = _check_import_filename(payload.filename)
+    # A CSV holds no pictures: 500 MB of text is millions of rows.
+    limit = IMPORT_UPLOAD_MAX_BYTES if name.lower().endswith(".xlsx") else MAX_CSV_IMPORT_BYTES
+    if payload.size > limit:
+        limit_mb = limit // (1024 * 1024)
+        hint = " Save it as .xlsx instead." if limit < IMPORT_UPLOAD_MAX_BYTES else ""
+        raise HTTPException(status_code=413, detail=f"Spreadsheets over {limit_mb} MB can't be imported.{hint}")
     _sweep_stale_uploads()
     IMPORT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(IMPORT_UPLOAD_DIR).free < payload.size + IMPORT_DISK_HEADROOM_BYTES:
+        raise HTTPException(
+            status_code=507,
+            detail="Resqlo is short on space for a file this big right now. Try again later or contact support.",
+        )
     upload_id = uuid.uuid4()
     _upload_path(current_user, upload_id).write_bytes(b"")
     return {"upload_id": str(upload_id), "chunk_bytes": IMPORT_CHUNK_MAX_BYTES}
@@ -1335,11 +1355,19 @@ async def preview_import_upload(
     if not path.exists():
         raise HTTPException(status_code=404, detail="Upload not found or expired. Pick the file again.")
     try:
-        content = path.read_bytes()
+        with path.open("rb") as handle:
+            is_xlsx = filename.lower().endswith(".xlsx") or handle.read(2) == b"PK"
+        if is_xlsx:
+            # Read from disk: rows stream, pictures are never opened.
+            parsed = _headers_rows_from_table(_read_spreadsheet(lambda: xlsx_rows_from_path(str(path))))
+        else:
+            if path.stat().st_size > MAX_CSV_IMPORT_BYTES:
+                raise HTTPException(status_code=413, detail="CSV files over 500 MB can't be imported. Save it as .xlsx instead.")
+            parsed = _spreadsheet_headers_rows(filename, path.read_bytes())
     finally:
         path.unlink(missing_ok=True)
         path.with_suffix(".idx").unlink(missing_ok=True)
-    return _build_import_preview(filename, content, db, current_user)
+    return _build_import_preview(filename, b"", db, current_user, parsed=parsed)
 
 
 def _build_import_preview(
@@ -1347,8 +1375,9 @@ def _build_import_preview(
     content: bytes,
     db: Session,
     current_user: User,
+    parsed: tuple[list[str], list[dict]] | None = None,
 ) -> ImportPreviewResponse:
-    headers, raw_rows = _spreadsheet_headers_rows(filename, content)
+    headers, raw_rows = parsed or _spreadsheet_headers_rows(filename, content)
     file = SimpleNamespace(filename=filename)
     detected_mapping = _detect_mapping(headers)
 

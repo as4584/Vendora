@@ -139,3 +139,95 @@ def test_stringify_cell():
     assert inventory_router._stringify_cell(3.0) == "3"
     assert inventory_router._stringify_cell(datetime(2026, 1, 2)) == "2026-01-02"
     assert inventory_router._stringify_cell(datetime(2026, 1, 2, 3, 4)) == "2026-01-02T03:04:00"
+
+
+def _photo_xlsx(photos: int) -> bytes:
+    from openpyxl.drawing.image import Image as XLImage
+    from PIL import Image
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Product Name", "SKU", "Qty", "Photo"])
+    for i in range(photos):
+        ws.append([f"Dunk {i}", f"D-{i}", 1, ""])
+        buf = io.BytesIO()
+        Image.new("RGB", (300, 300), (i * 40 % 255, 90, 160)).save(buf, format="PNG")
+        buf.seek(0)
+        ws.add_image(XLImage(buf), f"D{i + 2}")
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def test_photo_heavy_xlsx_never_opens_pictures(client, auth_headers, monkeypatch, tmp_path):
+    from app.services import spreadsheet_import as si
+
+    monkeypatch.setattr(inventory_router, "IMPORT_UPLOAD_DIR", tmp_path)
+    content = _photo_xlsx(6)
+    # Limits so tight the photos alone would trip them, and reading a photo fails the test.
+    monkeypatch.setattr(si, "MAX_XLSX_MEMBERS", 12)
+    monkeypatch.setattr(si, "_xlsx_first_sheet_images", lambda *_: (_ for _ in ()).throw(AssertionError("read photos")))
+
+    upload_id = _chunked(client, auth_headers, content, "photos.xlsx", 4096)
+    resp = client.post(f"{UPLOADS}/{upload_id}/preview", json={"filename": "photos.xlsx"}, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["total_rows"] == 6
+
+    direct = client.post(PREVIEW, files={"file": ("photos.xlsx", content, "application/octet-stream")},
+                         headers=auth_headers)
+    assert direct.status_code == 201, direct.text
+    assert list(tmp_path.iterdir()) == []  # upload pieces cleaned up
+
+
+def test_xlsx_cap_is_disk_only_and_csv_stays_text_sized(client, auth_headers, monkeypatch, tmp_path):
+    import shutil
+    from collections import namedtuple
+
+    monkeypatch.setattr(inventory_router, "IMPORT_UPLOAD_DIR", tmp_path)
+    huge = 8 * 1024 * 1024 * 1024
+    Usage = namedtuple("Usage", "total used free")
+    monkeypatch.setattr(shutil, "disk_usage", lambda _: Usage(0, 0, huge * 4))
+    ok = client.post(UPLOADS, json={"filename": "big.xlsx", "size": huge}, headers=auth_headers)
+    assert ok.status_code == 201, ok.text
+
+    csv = client.post(UPLOADS, json={"filename": "big.csv", "size": huge}, headers=auth_headers)
+    assert csv.status_code == 413 and ".xlsx" in csv.json()["detail"]
+    over = client.post(UPLOADS, json={"filename": "x.xlsx", "size": inventory_router.IMPORT_UPLOAD_MAX_BYTES + 1},
+                       headers=auth_headers)
+    assert over.status_code == 413 and ".xlsx instead" not in over.json()["detail"]
+
+    monkeypatch.setattr(shutil, "disk_usage", lambda _: Usage(0, 0, huge))
+    full = client.post(UPLOADS, json={"filename": "big.xlsx", "size": huge}, headers=auth_headers)
+    assert full.status_code == 507
+
+
+def test_chunked_csv_over_text_cap_rejected_at_finish(client, auth_headers, monkeypatch, tmp_path):
+    monkeypatch.setattr(inventory_router, "IMPORT_UPLOAD_DIR", tmp_path)
+    content = _big_csv(50)
+    start = client.post(UPLOADS, json={"filename": "a.csv", "size": len(content)}, headers=auth_headers).json()
+    data = base64.b64encode(content).decode()
+    client.put(f"{UPLOADS}/{start['upload_id']}", json={"index": 0, "data": data}, headers=auth_headers)
+    monkeypatch.setattr(inventory_router, "MAX_CSV_IMPORT_BYTES", 10)
+    resp = client.post(f"{UPLOADS}/{start['upload_id']}/preview", json={"filename": "a.csv"}, headers=auth_headers)
+    assert resp.status_code == 413
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_corrupt_chunked_xlsx_reports_cleanly(client, auth_headers, monkeypatch, tmp_path):
+    monkeypatch.setattr(inventory_router, "IMPORT_UPLOAD_DIR", tmp_path)
+    upload_id = _chunked(client, auth_headers, b"PK\x03\x04 broken", "bad.xlsx", 1024)
+    resp = client.post(f"{UPLOADS}/{upload_id}/preview", json={"filename": "bad.xlsx"}, headers=auth_headers)
+    assert resp.status_code == 400 and "Couldn't read" in resp.json()["detail"]
+
+
+def test_path_reader_tries_later_sheets_and_empty_books(tmp_path):
+    from app.services.spreadsheet_import import xlsx_rows_from_path
+
+    wb = Workbook()
+    wb.active.append(["just", "noise"])
+    second = wb.create_sheet()
+    second.append(["Product Name", "SKU"])
+    second.append(["Hat", "H-1"])
+    path = tmp_path / "two.xlsx"
+    wb.save(path)
+    assert xlsx_rows_from_path(str(path)) == [{"Product Name": "Hat", "SKU": "H-1"}]
