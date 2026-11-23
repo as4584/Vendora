@@ -17,9 +17,21 @@ import { COLORS, SPACING } from "../../../theme/tokens";
 import ImportReview from "../../../components/ImportReview";
 import { errorMessage } from "../../../services/errors";
 
+function pickerLabel(
+  loading: boolean,
+  upload: number | null,
+  photos: { done: number; total: number } | null
+): string {
+  if (photos && photos.total > 0) return `Reading photos ${photos.done.toLocaleString()} of ${photos.total.toLocaleString()}...`;
+  if (upload !== null && upload < 1) return `Uploading ${Math.round(upload * 100)}%...`;
+  if (loading) return "Preparing Preview...";
+  return "Choose CSV or Excel File";
+}
+
 export default function InventoryImportScreen() {
   const [preview, setPreview] = useState<api.InventoryImportPreview | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [photoProgress, setPhotoProgress] = useState<{ done: number; total: number } | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -48,11 +60,13 @@ export default function InventoryImportScreen() {
     setUploadProgress(null);
     try {
       let nextPreview: api.InventoryImportPreview;
-      if ((asset.size ?? 0) > DIRECT_UPLOAD_LIMIT) {
+      // Excel files can hold photos, which take a while: the server reads them in the background.
+      if ((asset.size ?? 0) > DIRECT_UPLOAD_LIMIT || asset.name.toLowerCase().endsWith(".xlsx")) {
         nextPreview = await api.previewInventoryImportChunked(
           { uri: asset.uri, name: asset.name, size: asset.size ?? 0 },
           readBase64Chunk,
-          setUploadProgress
+          setUploadProgress,
+          (done, total) => setPhotoProgress({ done, total })
         );
       } else {
         const formData = new FormData();
@@ -75,6 +89,7 @@ export default function InventoryImportScreen() {
     } finally {
       setLoading(false);
       setUploadProgress(null);
+      setPhotoProgress(null);
     }
   };
 
@@ -157,7 +172,7 @@ export default function InventoryImportScreen() {
         <Text style={styles.helperText}>
           Re-importing a Resqlo export updates the same items. Nothing is duplicated, and rows we can’t read are flagged so you can fix them.
         </Text>
-        <ActionButton label={uploadProgress !== null ? `Uploading ${Math.round(uploadProgress * 100)}%...` : loading ? "Preparing Preview..." : "Choose CSV or Excel File"} onPress={handlePickFile} disabled={loading} />
+        <ActionButton label={pickerLabel(loading, uploadProgress, photoProgress)} onPress={handlePickFile} disabled={loading} />
         {fileName ? <Text style={styles.fileName}>Selected: {fileName}</Text> : null}
       </Card>
 

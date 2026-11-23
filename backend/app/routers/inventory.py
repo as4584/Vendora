@@ -13,6 +13,7 @@ import socket
 import os
 import shutil
 import uuid
+import threading
 import base64
 import binascii
 import tempfile
@@ -28,12 +29,13 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel as _PydBase
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.services import analytics
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models.user import User
 from app.models.inventory import (
     InventoryItem,
@@ -1195,7 +1197,7 @@ def _spreadsheet_headers_rows(filename: str, content: bytes) -> tuple[list[str],
     """Headers + string rows from a CSV or XLSX file, for the preview mapper."""
     if detect_format(filename, None, content) != "xlsx":
         return _parse_csv_bytes(content)
-    return _headers_rows_from_table(_read_spreadsheet(lambda: rows_from_bytes(content, "xlsx", with_images=False)))
+    return _headers_rows_from_table(_read_spreadsheet(lambda: rows_from_bytes(content, "xlsx")))
 
 
 def _read_spreadsheet(read) -> list[dict]:
@@ -1217,10 +1219,7 @@ def _headers_rows_from_table(table: list[dict]) -> tuple[list[str], list[dict]]:
     for row in table:
         clean: dict = {}
         for key, value in row.items():
-            text = _stringify_cell(value)
-            if text.startswith("data:image/"):
-                continue  # embedded pictures are not stored on the review rows
-            clean[key] = text
+            clean[key] = _stringify_cell(value)
             if key not in seen:
                 seen.add(key)
                 headers.append(key)
@@ -1354,20 +1353,75 @@ async def preview_import_upload(
     path = _upload_path(current_user, upload_id)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Upload not found or expired. Pick the file again.")
+    with path.open("rb") as handle:
+        is_xlsx = filename.lower().endswith(".xlsx") or handle.read(2) == b"PK"
+    if is_xlsx:
+        # Photos take a while: build the preview in the background and let
+        # the app poll GET /imports/{job_id} for progress.
+        job = InventoryImportJob(
+            user_id=current_user.id, status="pending", source="spreadsheet", filename=filename,
+            field_mapping={"_progress": {"done": 0, "total": 0}}, total_rows=0,
+            rows_created=0, rows_updated=0, rows_skipped=0, rows_errored=0,
+        )
+        db.add(job)
+        db.commit()
+        _run_import_job(lambda session: _process_xlsx_upload(session, job.id, current_user.id, path, filename))
+        return JSONResponse(status_code=202, content={"job_id": str(job.id), "status": "pending"})
     try:
-        with path.open("rb") as handle:
-            is_xlsx = filename.lower().endswith(".xlsx") or handle.read(2) == b"PK"
-        if is_xlsx:
-            # Read from disk: rows stream, pictures are never opened.
-            parsed = _headers_rows_from_table(_read_spreadsheet(lambda: xlsx_rows_from_path(str(path))))
-        else:
-            if path.stat().st_size > MAX_CSV_IMPORT_BYTES:
-                raise HTTPException(status_code=413, detail="CSV files over 500 MB can't be imported. Save it as .xlsx instead.")
-            parsed = _spreadsheet_headers_rows(filename, path.read_bytes())
+        if path.stat().st_size > MAX_CSV_IMPORT_BYTES:
+            raise HTTPException(status_code=413, detail="CSV files over 500 MB can't be imported. Save it as .xlsx instead.")
+        parsed = _spreadsheet_headers_rows(filename, path.read_bytes())
     finally:
-        path.unlink(missing_ok=True)
-        path.with_suffix(".idx").unlink(missing_ok=True)
+        _remove_upload(path)
     return _build_import_preview(filename, b"", db, current_user, parsed=parsed)
+
+
+def _remove_upload(path: Path) -> None:
+    path.unlink(missing_ok=True)
+    path.with_suffix(".idx").unlink(missing_ok=True)
+
+
+def _run_import_job(work) -> None:
+    """Run ``work(session)`` on a worker thread with its own DB session."""
+    def runner():
+        session = SessionLocal()
+        try:
+            work(session)
+        finally:
+            session.close()
+
+    threading.Thread(target=runner, name="import-preview", daemon=True).start()
+
+
+def _process_xlsx_upload(db: Session, job_id, user_id, path: Path, filename: str) -> None:
+    job = db.get(InventoryImportJob, job_id)
+    user = db.get(User, user_id)
+    last = {"at": 0.0}
+
+    def progress(done: int, total: int) -> None:
+        now = time.monotonic()
+        if done != total and now - last["at"] < 1.0:
+            return
+        last["at"] = now
+        job.field_mapping = {"_progress": {"done": done, "total": total}}
+        db.commit()
+
+    try:
+        parsed = _headers_rows_from_table(
+            _read_spreadsheet(lambda: xlsx_rows_from_path(str(path), on_progress=progress))
+        )
+        _build_import_preview(filename, b"", db, user, parsed=parsed, job=job)
+    except Exception as exc:  # report every failure on the job instead of losing it
+        db.rollback()
+        detail = exc.detail if isinstance(exc, HTTPException) else "Couldn't read this spreadsheet. Re-save it as .xlsx and try again."
+        if not isinstance(exc, HTTPException):
+            logger.exception("Import preview failed for job %s", job_id)
+        job = db.get(InventoryImportJob, job_id)
+        job.status = "failed"
+        job.field_mapping = {"_error": str(detail)}
+        db.commit()
+    finally:
+        _remove_upload(path)
 
 
 def _build_import_preview(
@@ -1376,24 +1430,21 @@ def _build_import_preview(
     db: Session,
     current_user: User,
     parsed: tuple[list[str], list[dict]] | None = None,
+    job: InventoryImportJob | None = None,
 ) -> ImportPreviewResponse:
     headers, raw_rows = parsed or _spreadsheet_headers_rows(filename, content)
     file = SimpleNamespace(filename=filename)
     detected_mapping = _detect_mapping(headers)
 
     # Persist the job in 'pending' state
-    job = InventoryImportJob(
-        user_id=current_user.id,
-        status="pending",
-        source="spreadsheet",
-        filename=file.filename,
-        field_mapping=detected_mapping,
-        total_rows=len(raw_rows),
-        rows_created=0,
-        rows_updated=0,
-        rows_skipped=0,
-        rows_errored=0,
-    )
+    new_job = job is None
+    if new_job:
+        job = InventoryImportJob(user_id=current_user.id, source="spreadsheet")
+    job.status = "pending"
+    job.filename = file.filename
+    job.field_mapping = detected_mapping
+    job.total_rows = len(raw_rows)
+    job.rows_created = job.rows_updated = job.rows_skipped = job.rows_errored = 0
     db.add(job)
     db.flush()  # get job.id
 
@@ -1458,7 +1509,7 @@ def _build_import_preview(
             row_number=row_num,
             action=action,
             inventory_item_id=row_result.inventory_item_id,
-            raw_data=dict(raw),
+            raw_data=_without_photos(raw),
             mapped_data=mapped or None,
             error_message=error,
             match_key=row_result.match_key,
@@ -1478,12 +1529,65 @@ def _build_import_preview(
         status=job.status,
         filename=job.filename,
         detected_mapping=detected_mapping,
-        rows=preview_rows,
+        rows=_slim_preview_rows(preview_rows),
         total_rows=job.total_rows,
         rows_to_create=counts["create"],
         rows_to_update=counts["update"],
         rows_to_skip=counts["skip"],
         rows_errored=counts["error"],
+    )
+
+
+PHOTO_FIELDS = ("photo_front_url", "photo_back_url")
+# The review screen shows the first rows with their pictures; later rows keep
+# their photos server-side (they still import) but are sent without them so a
+# sheet with thousands of photos doesn't become a huge download to the phone.
+PREVIEW_PHOTO_ROWS = 100
+
+
+def _is_data_image(value) -> bool:
+    return isinstance(value, str) and value.startswith("data:image/")
+
+
+def _without_photos(raw: dict) -> dict:
+    return {k: ("[photo]" if _is_data_image(v) else v) for k, v in raw.items()}
+
+
+def _slim_preview_rows(rows: list[ImportRowResult]) -> list[ImportRowResult]:
+    out = []
+    for index, row in enumerate(rows):
+        if index >= PREVIEW_PHOTO_ROWS and row.mapped_data and any(_is_data_image(v) for v in row.mapped_data.values()):
+            row = row.model_copy(update={
+                "mapped_data": {k: v for k, v in row.mapped_data.items() if not _is_data_image(v)},
+            })
+        out.append(row)
+    return out
+
+
+@router.get("/imports/{job_id}/preview", response_model=ImportPreviewResponse)
+def get_import_preview(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The preview of a job built in the background, once it's ready."""
+    job = _get_previewed_job(job_id, current_user.id, db)
+    rows = db.query(InventoryImportRow).filter(
+        InventoryImportRow.job_id == job.id,
+    ).order_by(InventoryImportRow.row_number).all()
+    results = [_row_result(row) for row in rows]
+    actions = [row.action for row in rows]
+    return ImportPreviewResponse(
+        job_id=job.id,
+        status=job.status,
+        filename=job.filename,
+        detected_mapping=job.field_mapping or {},
+        rows=_slim_preview_rows(results),
+        total_rows=job.total_rows,
+        rows_to_create=actions.count("create"),
+        rows_to_update=actions.count("update"),
+        rows_to_skip=actions.count("skip"),
+        rows_errored=actions.count("error"),
     )
 
 
@@ -1573,6 +1677,10 @@ def update_import_row(
         unknown = sorted(set(payload.data) - EDITABLE_IMPORT_FIELDS)
         if unknown:
             raise HTTPException(status_code=422, detail=f"Unknown field(s): {', '.join(unknown)}")
+        kept_photos = {
+            k: v for k, v in (row.mapped_data or {}).items()
+            if k in PHOTO_FIELDS and k not in payload.data and v
+        }
         as_text = {k: "" if v is None else str(v) for k, v in payload.data.items()}
         mapped, error = _coerce_row(as_text, {k: k for k in as_text})
         if not error and mapped.get("quantity") is not None and mapped["quantity"] < 0:
@@ -1583,8 +1691,9 @@ def update_import_row(
         if error:
             row.action = "error"
             # Keep what the seller typed so they can fix it from the same sheet.
-            row.mapped_data = {k: v for k, v in payload.data.items() if v not in (None, "")}
+            row.mapped_data = {**{k: v for k, v in payload.data.items() if v not in (None, "")}, **kept_photos}
         else:
+            mapped.update(kept_photos)
             row.mapped_data = mapped
             _resolve_row_action(row, mapped, current_user.id, db)
 
@@ -1602,6 +1711,10 @@ def update_import_row(
     db.add(job)
     db.commit()
     db.refresh(row)
+    return _row_result(row)
+
+
+def _row_result(row: InventoryImportRow) -> ImportRowResult:
     return ImportRowResult(
         id=row.id,
         row_number=row.row_number,
@@ -1747,4 +1860,10 @@ def get_import_job(
     ).first()
     if not job:
         raise HTTPException(status_code=404, detail="Import job not found.")
-    return job
+    meta = job.field_mapping if isinstance(job.field_mapping, dict) else {}
+    out = ImportJobResponse.model_validate(job)
+    out.progress = meta.get("_progress") if job.status == "pending" else None
+    out.error = meta.get("_error") if job.status == "failed" else None
+    if out.progress is not None or out.error is not None:
+        out.field_mapping = None
+    return out

@@ -932,7 +932,9 @@ export async function previewInventoryImport(
 export async function previewInventoryImportChunked(
   file: { uri: string; name: string; size: number },
   readChunk: (uri: string, offset: number, length: number) => Promise<string>,
-  onProgress?: (fraction: number) => void
+  onProgress?: (fraction: number) => void,
+  onPhotos?: (done: number, total: number) => void,
+  pollMs = 1000
 ): Promise<InventoryImportPreview> {
   const started = await request<{ upload_id: string; chunk_bytes: number }>("/inventory/imports/uploads", {
     method: "POST",
@@ -955,10 +957,35 @@ export async function previewInventoryImportChunked(
     }
     onProgress?.((index + 1) / total);
   }
-  return request<InventoryImportPreview>(`/inventory/imports/uploads/${started.upload_id}/preview`, {
-    method: "POST",
-    body: JSON.stringify({ filename: file.name }),
-  });
+  const finished = await request<InventoryImportPreview | { job_id: string; status: "pending" }>(
+    `/inventory/imports/uploads/${started.upload_id}/preview`,
+    { method: "POST", body: JSON.stringify({ filename: file.name }) }
+  );
+  if (finished.status !== "pending") return finished as InventoryImportPreview;
+  return waitForImportPreview(finished.job_id, onPhotos, pollMs);
+}
+
+export interface ImportJobStatus {
+  id: string;
+  status: "pending" | "previewed" | "committed" | "failed";
+  progress?: { done: number; total: number } | null;
+  error?: string | null;
+}
+
+/** Excel files are read on the server in the background (photos take a while); poll until the preview is ready. */
+export async function waitForImportPreview(
+  jobId: string,
+  onPhotos?: (done: number, total: number) => void,
+  pollMs = 1000
+): Promise<InventoryImportPreview> {
+  for (;;) {
+    const job = await request<ImportJobStatus>(`/inventory/imports/${jobId}`);
+    if (job.status === "failed") throw new ApiError(job.error || "Couldn't read this spreadsheet.", 400);
+    if (job.status !== "pending") break;
+    if (job.progress) onPhotos?.(job.progress.done, job.progress.total);
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  return request<InventoryImportPreview>(`/inventory/imports/${jobId}/preview`);
 }
 
 export async function importInventoryFromLink(

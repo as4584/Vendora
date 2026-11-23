@@ -583,6 +583,38 @@ describe('API endpoint contracts', () => {
     expectPath(calls[4][0], '/inventory/imports/uploads/up-1/preview');
   });
 
+  it('polls a background Excel preview, reporting photo progress, until it is ready', async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(response({ upload_id: 'up-3', chunk_bytes: 10 }, 201))
+      .mockResolvedValueOnce(response({ received: 1 }))
+      .mockResolvedValueOnce(response({ job_id: 'job-3', status: 'pending' }, 202))
+      .mockResolvedValueOnce(response({ id: 'job-3', status: 'pending', progress: { done: 0, total: 0 } }))
+      .mockResolvedValueOnce(response({ id: 'job-3', status: 'pending', progress: { done: 50, total: 80 } }))
+      .mockResolvedValueOnce(response({ id: 'job-3', status: 'pending', progress: null }))
+      .mockResolvedValueOnce(response({ id: 'job-3', status: 'previewed' }))
+      .mockResolvedValueOnce(response({ job_id: 'job-3', rows: [{ row_number: 1 }] }));
+    const photos: Array<[number, number]> = [];
+    const result = await api.previewInventoryImportChunked(
+      { uri: 'u', name: 'photos.xlsx', size: 5 }, async () => 'QQ==', undefined,
+      (done, total) => photos.push([done, total]), 0,
+    );
+    expect(result).toEqual({ job_id: 'job-3', rows: [{ row_number: 1 }] });
+    expect(photos).toEqual([[0, 0], [50, 80]]);
+    const calls = fetchMock.mock.calls as Array<[string, RequestInit]>;
+    expectPath(calls[3][0], '/inventory/imports/job-3');
+    expectPath(calls[7][0], '/inventory/imports/job-3/preview');
+  });
+
+  it('surfaces a failed background preview with the server reason', async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(response({ id: 'j', status: 'failed', error: 'Could not find an inventory header row.' }))
+      .mockResolvedValueOnce(response({ id: 'j', status: 'failed', error: null }));
+    await expect(api.waitForImportPreview('j', undefined, 0)).rejects.toThrow('header row');
+    await expect(api.waitForImportPreview('j', undefined, 0)).rejects.toThrow("Couldn't read this spreadsheet.");
+  });
+
   it('does not retry a chunk the server rejected', async () => {
     fetchMock.mockReset();
     fetchMock

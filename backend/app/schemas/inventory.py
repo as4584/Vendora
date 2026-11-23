@@ -186,6 +186,9 @@ class ImportJobResponse(BaseModel):
     rows_errored: int
     created_at: datetime
     updated_at: datetime
+    # While a big .xlsx is processed in the background (status "pending").
+    progress: Optional[dict[str, int]] = None   # {"done": photos read, "total": photos}
+    error: Optional[str] = None                 # why a background preview failed
 
     model_config = {"from_attributes": True}
 

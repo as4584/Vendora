@@ -2,6 +2,8 @@
 import base64
 import io
 
+import pytest
+
 from openpyxl import Workbook
 
 from app.routers import inventory as inventory_router
@@ -159,24 +161,110 @@ def _photo_xlsx(photos: int) -> bytes:
     return out.getvalue()
 
 
-def test_photo_heavy_xlsx_never_opens_pictures(client, auth_headers, monkeypatch, tmp_path):
-    from app.services import spreadsheet_import as si
-
+@pytest.fixture()
+def inline_jobs(monkeypatch, db, tmp_path):
+    """Run background import jobs right away, on the test's DB session."""
     monkeypatch.setattr(inventory_router, "IMPORT_UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(inventory_router, "_run_import_job", lambda work: work(db))
+    return tmp_path
+
+
+def _background_preview(client, headers, content: bytes, filename: str):
+    upload_id = _chunked(client, headers, content, filename, 4096)
+    started = client.post(f"{UPLOADS}/{upload_id}/preview", json={"filename": filename}, headers=headers)
+    assert started.status_code == 202, started.text
+    job_id = started.json()["job_id"]
+    return job_id, client.get(f"/api/v1/inventory/imports/{job_id}", headers=headers).json()
+
+
+def test_photo_xlsx_imports_with_every_photo(client, db, auth_headers, inline_jobs):
+    from app.models.inventory import InventoryItem
+
     content = _photo_xlsx(6)
-    # Limits so tight the photos alone would trip them, and reading a photo fails the test.
-    monkeypatch.setattr(si, "MAX_XLSX_MEMBERS", 12)
-    monkeypatch.setattr(si, "_xlsx_first_sheet_images", lambda *_: (_ for _ in ()).throw(AssertionError("read photos")))
+    job_id, job = _background_preview(client, auth_headers, content, "photos.xlsx")
+    assert job["status"] == "previewed" and job["total_rows"] == 6 and job["progress"] is None
 
-    upload_id = _chunked(client, auth_headers, content, "photos.xlsx", 4096)
-    resp = client.post(f"{UPLOADS}/{upload_id}/preview", json={"filename": "photos.xlsx"}, headers=auth_headers)
+    preview = client.get(f"/api/v1/inventory/imports/{job_id}/preview", headers=auth_headers).json()
+    assert all(row["mapped_data"]["photo_front_url"].startswith("data:image/jpeg") for row in preview["rows"])
+    assert list(inline_jobs.iterdir()) == []  # upload pieces cleaned up
+
+    # Editing a row on the review screen keeps its photo.
+    first = preview["rows"][0]
+    edited = client.patch(f"/api/v1/inventory/imports/{job_id}/rows/{first['id']}",
+                          json={"data": {"name": "Renamed", "quantity": "2"}}, headers=auth_headers)
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["mapped_data"]["photo_front_url"].startswith("data:image/")
+
+    commit = client.post(f"/api/v1/inventory/imports/{job_id}/commit", headers=auth_headers)
+    assert commit.status_code == 200, commit.text
+    items = db.query(InventoryItem).filter(InventoryItem.source == "spreadsheet").all()
+    assert len(items) == 6 and all(i.photo_front_url.startswith("data:image/") for i in items)
+
+
+def test_direct_xlsx_preview_keeps_photos(client, auth_headers):
+    content = _photo_xlsx(2)
+    resp = client.post(PREVIEW, files={"file": ("photos.xlsx", content, "application/octet-stream")},
+                       headers=auth_headers)
     assert resp.status_code == 201, resp.text
-    assert resp.json()["total_rows"] == 6
+    assert all(r["mapped_data"]["photo_front_url"].startswith("data:image/") for r in resp.json()["rows"])
 
-    direct = client.post(PREVIEW, files={"file": ("photos.xlsx", content, "application/octet-stream")},
-                         headers=auth_headers)
-    assert direct.status_code == 201, direct.text
-    assert list(tmp_path.iterdir()) == []  # upload pieces cleaned up
+
+def test_big_previews_send_photos_for_the_first_rows_only(client, auth_headers, monkeypatch, inline_jobs):
+    monkeypatch.setattr(inventory_router, "PREVIEW_PHOTO_ROWS", 2)
+    job_id, _ = _background_preview(client, auth_headers, _photo_xlsx(4), "p.xlsx")
+    rows = client.get(f"/api/v1/inventory/imports/{job_id}/preview", headers=auth_headers).json()["rows"]
+    assert ["photo_front_url" in r["mapped_data"] for r in rows] == [True, True, False, False]
+
+
+def test_background_failure_is_reported_on_the_job(client, auth_headers, inline_jobs):
+    job_id, job = _background_preview(client, auth_headers, b"PK\x03\x04 broken", "bad.xlsx")
+    assert job["status"] == "failed" and "Couldn't read" in job["error"]
+    assert client.get(f"/api/v1/inventory/imports/{job_id}/preview", headers=auth_headers).status_code == 400
+
+    noheader = _xlsx([["just", "noise"]])
+    _, job = _background_preview(client, auth_headers, noheader, "noise.xlsx")
+    assert job["status"] == "failed" and "header row" in job["error"]
+
+
+def test_unexpected_background_error_is_logged_and_reported(client, auth_headers, monkeypatch, inline_jobs):
+    def boom(*_a, **_k):
+        raise RuntimeError("disk vanished")
+
+    monkeypatch.setattr(inventory_router, "_build_import_preview", boom)
+    _, job = _background_preview(client, auth_headers, _photo_xlsx(1), "p.xlsx")
+    assert job["status"] == "failed" and "Re-save" in job["error"]
+
+
+def test_progress_is_reported_while_pending(client, db, auth_headers, monkeypatch, inline_jobs):
+    seen = []
+    real = inventory_router._build_import_preview
+
+    def peek(filename, content, session, user, parsed=None, job=None):
+        seen.append(inventory_router.get_import_job(job.id, session, user))
+        return real(filename, content, session, user, parsed=parsed, job=job)
+
+    monkeypatch.setattr(inventory_router, "_build_import_preview", peek)
+    _background_preview(client, auth_headers, _photo_xlsx(3), "p.xlsx")
+    assert seen[0].status == "pending" and seen[0].progress == {"done": 3, "total": 3}
+    assert seen[0].field_mapping is None
+
+
+def test_real_worker_thread_uses_its_own_session(monkeypatch):
+    ran = []
+
+    class FakeSession:
+        def close(self):
+            ran.append("closed")
+
+    monkeypatch.setattr(inventory_router, "SessionLocal", FakeSession)
+    inventory_router._run_import_job(lambda session: ran.append(type(session).__name__))
+    import time as _t
+
+    for _ in range(100):
+        if len(ran) == 2:
+            break
+        _t.sleep(0.01)
+    assert ran == ["FakeSession", "closed"]
 
 
 def test_xlsx_cap_is_disk_only_and_csv_stays_text_sized(client, auth_headers, monkeypatch, tmp_path):
@@ -211,13 +299,6 @@ def test_chunked_csv_over_text_cap_rejected_at_finish(client, auth_headers, monk
     resp = client.post(f"{UPLOADS}/{start['upload_id']}/preview", json={"filename": "a.csv"}, headers=auth_headers)
     assert resp.status_code == 413
     assert list(tmp_path.iterdir()) == []
-
-
-def test_corrupt_chunked_xlsx_reports_cleanly(client, auth_headers, monkeypatch, tmp_path):
-    monkeypatch.setattr(inventory_router, "IMPORT_UPLOAD_DIR", tmp_path)
-    upload_id = _chunked(client, auth_headers, b"PK\x03\x04 broken", "bad.xlsx", 1024)
-    resp = client.post(f"{UPLOADS}/{upload_id}/preview", json={"filename": "bad.xlsx"}, headers=auth_headers)
-    assert resp.status_code == 400 and "Couldn't read" in resp.json()["detail"]
 
 
 def test_path_reader_tries_later_sheets_and_empty_books(tmp_path):
