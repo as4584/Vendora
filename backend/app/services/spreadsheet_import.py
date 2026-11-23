@@ -402,6 +402,9 @@ def _reject_html_download(content: bytes, content_type: str | None = None) -> No
         )
 
 
+STRONG_HEADER_SCORE = 7
+
+
 def _header_score(values: list[Any]) -> int:
     fields = [resolve_field(str(value)) for value in values if str(value or "").strip()]
     unique_fields = {field for field in fields if field}
@@ -575,13 +578,26 @@ def _display_size_label(value: Any) -> str:
     }.get(normalized, raw.upper())
 
 
+GRID_NAME_HEADERS = {"itemname", "productname", "name", "product", "item", "model", "style"}
+
+
+def _is_shoe_size_header(value: Any) -> bool:
+    """A header cell that is a shoe size: 4 to 18, whole or half (8, 8.5, "10.5")."""
+    if isinstance(value, bool):
+        return False
+    label = _compact_text(value)
+    if not re.fullmatch(r"\d{1,2}(\.[05])?", label):
+        return False
+    return 1 <= float(label) <= 18
+
+
 def _horizontal_size_table_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     current_category: str | None = None
 
     for header_idx, row in enumerate(table_rows):
         normalized = [normalize_header(value) for value in row]
-        name_cols = [idx for idx, value in enumerate(normalized) if value in {"itemname", "productname", "name"}]
+        name_cols = [idx for idx, value in enumerate(normalized) if value in GRID_NAME_HEADERS]
         if not name_cols:
             non_empty = [_compact_text(value) for value in row if _compact_text(value)]
             if "inventory" in normalized and non_empty:
@@ -592,9 +608,11 @@ def _horizontal_size_table_rows_to_dicts(table_rows: list[list[Any]]) -> list[di
         size_cols = [
             (idx, _display_size_label(row[idx]))
             for idx, value in enumerate(normalized)
-            if idx > name_col and value in HORIZONTAL_SIZE_HEADERS
+            if idx > name_col and (value in HORIZONTAL_SIZE_HEADERS or _is_shoe_size_header(row[idx]))
         ]
-        if not size_cols:
+        # Numbers as headers could be anything; two or more shoe sizes make it a grid.
+        numeric = sum(1 for idx, _ in size_cols if _is_shoe_size_header(row[idx]))
+        if not size_cols or (numeric and len(size_cols) < 2):
             continue
 
         total_cols = [
@@ -1002,20 +1020,23 @@ def _table_rows_to_dicts(
     if horizontal_rows:
         return horizontal_rows
 
-    matrix_rows = _warehouse_matrix_rows_to_dicts(table_rows, embedded_images or [])
-    if matrix_rows:
-        return matrix_rows
-
     candidates = [
         (idx, _header_score(row))
         for idx, row in enumerate(table_rows[:25])
         if any(str(value or "").strip() for value in row)
     ]
+    best = max(candidates, key=lambda item: item[1]) if candidates else None
+    # Name + SKU/qty/price headers: an ordinary sheet, even with title rows on top.
+    if not best or best[1] < STRONG_HEADER_SCORE:
+        matrix_rows = _warehouse_matrix_rows_to_dicts(table_rows, embedded_images or [])
+        if matrix_rows:
+            return matrix_rows
     if not candidates:
         return []
 
-    header_idx, score = max(candidates, key=lambda item: item[1])
-    if score < 3:
+    header_idx, score = best
+    # A short sheet ("Name" only, or "Item, Qty") is fine as long as a column is recognised.
+    if score < 3 and not any(resolve_field(value) for value in table_rows[header_idx] if value):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -1086,12 +1107,13 @@ def rows_from_bytes(
         text = content.decode("cp1252", errors="replace")
     sample = text[:2048]
     try:
-        dialect = csv.Sniffer().sniff(sample) if sample.strip() else csv.excel
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;	|") if sample.strip() else csv.excel
     except csv.Error:
         dialect = csv.excel
     if getattr(dialect, "delimiter", ",") in {"\r", "\n"}:
         dialect = csv.excel
-    return _table_rows_to_dicts([list(row) for row in csv.reader(io.StringIO(text), dialect=dialect)])
+    # newline="" lets the csv module handle \r\n, \n and old-Mac \r endings (and newlines inside quotes).
+    return _table_rows_to_dicts([list(row) for row in csv.reader(io.StringIO(text, newline=""), dialect=dialect)])
 
 
 def xlsx_rows_from_path(path: str, with_images: bool = True, on_progress=None) -> list[dict[str, Any]]:

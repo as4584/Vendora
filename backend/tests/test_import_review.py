@@ -33,7 +33,7 @@ def test_preview_rows_carry_ids(client, auth_headers):
 
 def test_edit_fixes_error_row_and_commit_uses_edits(client, db, auth_headers):
     data = _preview(client, auth_headers, [
-        {"name": "", "sku": "BAD-1", "quantity": "2"},
+        {"name": "", "sku": "", "quantity": "2"},
         {"name": "Keep me", "sku": "K-1", "quantity": "1"},
     ])
     job, (bad, keep) = data["job_id"], data["rows"]

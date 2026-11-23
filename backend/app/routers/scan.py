@@ -39,7 +39,7 @@ def normalize_barcode(raw: str) -> str:
 def normalize_style(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
-    code = raw.strip().upper().replace(" ", "")
+    code = raw.strip().upper().replace(" ", "")[:64]  # scan_memory.style_code is 64 chars
     return code or None
 
 

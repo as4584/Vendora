@@ -4,6 +4,7 @@ Soft-delete 404 rule: All GET/PUT/PATCH filter WHERE deleted_at IS NULL.
 Soft-deleted records return 404, never exposed.
 """
 import logging
+import re
 import csv
 import asyncio
 import io
@@ -70,7 +71,13 @@ from app.services.spreadsheet_import import (
     google_sheet_export_urls,
     google_sheet_csv_url,
     parse_inventory_rows,
+    extract_url,
+    normalize_header,
+    parse_money,
+    parse_quantity,
+    resolve_field,
     rows_from_bytes,
+    unescape_cell,
     xlsx_rows_from_path,
     MAX_CSV_IMPORT_BYTES,
     MAX_XLSX_IMPORT_BYTES,
@@ -293,11 +300,12 @@ def _find_import_match(
         if match:
             return match
     if payload.get("sku"):
-        match = db.query(InventoryItem).filter(
+        same_sku = db.query(InventoryItem).filter(
             InventoryItem.user_id == user_id,
             InventoryItem.deleted_at.is_(None),
             InventoryItem.sku == payload["sku"],
-        ).first()
+        ).all()
+        match = _match_existing(same_sku, payload.get("size"))
         if match:
             return match
     return db.query(InventoryItem).filter(
@@ -394,7 +402,7 @@ def _import_inventory_content(
             touched.append(item)
 
     if not dry_run:
-        remember_items(db, current_user.id, touched)
+        _remember_imported(db, current_user.id, touched)
         db.commit()
 
     return InventoryImportResult(**result)
@@ -1116,42 +1124,98 @@ def _parse_csv_bytes(content: bytes) -> tuple[list[str], list[dict]]:
     return headers, rows
 
 
+# Item fields the preview/commit flow can write.
+PREVIEW_FIELDS = {
+    "name", "category", "sku", "upc", "size", "color", "condition", "buy_price",
+    "expected_sell_price", "actual_sell_price", "quantity", "vendor_name", "notes",
+    "platform", "photo_front_url", "photo_back_url", "_import_id",
+}
+
+
 def _detect_mapping(headers: list[str]) -> dict[str, str]:
-    """Map CSV column names to canonical InventoryItem fields."""
+    """Map spreadsheet column names to item fields.
+
+    Known exact names first, then the importer's wide alias list ("Style
+    Code", "Retail", "On Hand", "Colour", ...). One column per field: a column
+    named exactly like the field wins, otherwise the first one does.
+    """
     mapping: dict[str, str] = {}
+    exact: dict[str, bool] = {}
     for h in headers:
-        canonical = IMPORT_HEADER_MAP.get(h.strip().lower())
-        if canonical:
-            mapping[h] = canonical
+        if str(h).startswith("__"):
+            continue
+        key = str(h).strip().lower()
+        canonical = IMPORT_HEADER_MAP.get(key) or resolve_field(h)
+        if canonical not in PREVIEW_FIELDS:
+            continue
+        is_exact = normalize_header(h) == normalize_header(canonical)
+        owner = next((col for col, c in mapping.items() if c == canonical), None)
+        if owner is not None:
+            if exact[owner] or not is_exact:
+                continue
+            del mapping[owner]
+        mapping[h] = canonical
+        exact[h] = is_exact
     return mapping
 
 
 DECIMAL_FIELDS = {"buy_price", "expected_sell_price", "actual_sell_price"}
 INT_FIELDS = {"quantity"}
+PHOTO_URL_FIELDS = {"photo_front_url", "photo_back_url"}
+# Database column sizes: longer values are trimmed instead of failing the commit.
+_FIELD_MAX = {
+    col.name: col.type.length
+    for col in InventoryItem.__table__.columns
+    if getattr(col.type, "length", None)
+}
 
 
 def _coerce_row(raw: dict, mapping: dict[str, str]) -> tuple[dict, Optional[str]]:
-    """Map and coerce a raw CSV row to InventoryItem field values.
+    """Map and coerce one spreadsheet row to item field values.
 
-    Returns (mapped_data, error_message).  mapped_data is empty on error.
+    Uses the importer's forgiving readers: "$1,200.00", "1.234,56 EUR",
+    "2.0" or "3 pairs" quantities, IMAGE()/hyperlink photo cells. A row with
+    no name is named by its SKU or UPC. A price or quantity that can't be
+    read, a negative number, or no name at all flags the row for the seller
+    to fix on the review screen; the rest of the import goes ahead. Returns (mapped_data, error_message).
     """
     mapped: dict = {}
     for csv_col, canonical in mapping.items():
-        raw_val = (raw.get(csv_col) or "").strip()
+        value = raw.get(csv_col)
+        if isinstance(value, (list, dict)):
+            continue
+        raw_val = str(unescape_cell(value) or "").strip()
         if not raw_val:
             continue
-        try:
-            if canonical in DECIMAL_FIELDS:
-                # Strip currency symbols
-                mapped[canonical] = float(raw_val.replace("$", "").replace(",", ""))
-            elif canonical in INT_FIELDS:
-                mapped[canonical] = int(raw_val)
-            else:
-                mapped[canonical] = raw_val
-        except (ValueError, TypeError) as exc:
-            return {}, f"Column '{csv_col}': {exc}"
+        if canonical in DECIMAL_FIELDS:
+            amount, warning = parse_money(raw_val)
+            if warning and warning.startswith("Negative"):
+                return {}, "Prices can't be negative."
+            if amount is None:
+                return {}, f"Column '{csv_col}': couldn't read the price \"{raw_val}\"."
+            mapped[canonical] = float(amount)
+        elif canonical in INT_FIELDS:
+            if re.fullmatch(r"-\s*\d+(\.\d+)?", raw_val):
+                return {}, "Quantity can't be negative."
+            quantity, warning = parse_quantity(raw_val)
+            if warning and warning.startswith("Could not read"):
+                return {}, f"Column '{csv_col}': couldn't read the quantity \"{raw_val}\"."
+            mapped[canonical] = quantity
+        elif canonical in PHOTO_URL_FIELDS:
+            url = extract_url(raw_val)
+            if url:
+                mapped[canonical] = url
+        else:
+            limit = _FIELD_MAX.get(canonical)
+            mapped[canonical] = raw_val[:limit] if limit else raw_val
+    variants = raw.get("__variants")
+    if isinstance(variants, list) and variants:
+        mapped["_variants"] = variants
     if "name" not in mapped:
-        return {}, "Required field 'name' is missing or empty."
+        fallback = mapped.get("sku") or mapped.get("upc")
+        if not fallback:
+            return {}, "Required field 'name' is missing or empty."
+        mapped["name"] = fallback
     return mapped, None
 
 
@@ -1195,9 +1259,10 @@ def _stringify_cell(value) -> str:
 
 def _spreadsheet_headers_rows(filename: str, content: bytes) -> tuple[list[str], list[dict]]:
     """Headers + string rows from a CSV or XLSX file, for the preview mapper."""
-    if detect_format(filename, None, content) != "xlsx":
-        return _parse_csv_bytes(content)
-    return _headers_rows_from_table(_read_spreadsheet(lambda: rows_from_bytes(content, "xlsx")))
+    file_format = detect_format(filename, None, content)
+    if file_format != "xlsx" and not content.strip():
+        raise HTTPException(status_code=400, detail="CSV file has no header row.")
+    return _headers_rows_from_table(_read_spreadsheet(lambda: rows_from_bytes(content, file_format)))
 
 
 def _read_spreadsheet(read) -> list[dict]:
@@ -1219,6 +1284,11 @@ def _headers_rows_from_table(table: list[dict]) -> tuple[list[str], list[dict]]:
     for row in table:
         clean: dict = {}
         for key, value in row.items():
+            if key == "__variants":
+                clean[key] = value  # size breakdown from a size-grid sheet
+                continue
+            if str(key).startswith("__"):
+                continue
             clean[key] = _stringify_cell(value)
             if key not in seen:
                 seen.add(key)
@@ -1454,7 +1524,7 @@ def _build_import_preview(
     # Build lookups of existing items by SKU and by id for the current user.
     # SKU match is preferred; id match (from re-imported export) is the fallback
     # so items without a SKU are updated rather than duplicated on round-trip.
-    existing_by_sku: dict[str, InventoryItem] = {}
+    existing_by_sku: dict[str, list[InventoryItem]] = {}
     existing_by_id: dict[str, InventoryItem] = {}
     all_items = db.query(InventoryItem).filter(
         InventoryItem.user_id == current_user.id,
@@ -1462,7 +1532,7 @@ def _build_import_preview(
     ).all()
     for it in all_items:
         if it.sku:
-            existing_by_sku[it.sku.lower()] = it
+            existing_by_sku.setdefault(_sku_key(it.sku), []).append(it)
         existing_by_id[str(it.id)] = it
 
     for row_num, raw in enumerate(raw_rows, start=1):
@@ -1479,7 +1549,7 @@ def _build_import_preview(
         else:
             sku = (mapped.get("sku") or "").lower()
             import_id = (mapped.pop("_import_id", None) or "").strip()
-            existing = existing_by_sku.get(sku) if sku else None
+            existing = _match_existing(existing_by_sku.get(_sku_key(sku), []), mapped.get("size")) if sku else None
             match_key, match_value = "sku", mapped.get("sku")
             if not existing and import_id:
                 existing = existing_by_id.get(import_id)
@@ -1615,16 +1685,59 @@ def _get_previewed_job(job_id: UUID, user_id, db: Session) -> InventoryImportJob
     return job
 
 
+def _remember_imported(db: Session, user_id, items: list[InventoryItem]) -> None:
+    """Teach Smart Scan and the Resqlo catalog from imported items.
+
+    A side benefit only: if it fails, the import itself still goes through.
+    """
+    try:
+        with db.begin_nested():
+            remember_items(db, user_id, items)
+    except Exception:
+        logger.warning("Import: scan memory update skipped", exc_info=True)
+
+
+def _sku_key(sku: str) -> str:
+    return (sku or "").strip().lower()
+
+
+def _size_key(size) -> str:
+    text = " ".join(str(size or "").lower().split())
+    for prefix in ("us ", "size "):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+    return text
+
+
+def _match_existing(candidates: list[InventoryItem], size) -> Optional[InventoryItem]:
+    """The existing item a row updates: same SKU *and* size.
+
+    Stores often give every size of a shoe the same SKU (the style code), one
+    row per size, so a SKU alone would make every size row overwrite one
+    item. A row without a size matches only when that SKU is a single item.
+    """
+    if not candidates:
+        return None
+    wanted = _size_key(size)
+    exact = [item for item in candidates if _size_key(item.size) == wanted]
+    if exact:
+        return exact[-1]
+    if not wanted and len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def _resolve_row_action(row: InventoryImportRow, mapped: dict, user_id, db: Session) -> None:
     """Re-run the preview's create/update decision for an edited row."""
     sku = (mapped.get("sku") or "").strip()
     existing = None
     if sku:
-        existing = db.query(InventoryItem).filter(
+        same_sku = db.query(InventoryItem).filter(
             InventoryItem.user_id == user_id,
             InventoryItem.deleted_at.is_(None),
             func.lower(InventoryItem.sku) == sku.lower(),
-        ).first()
+        ).all()
+        existing = _match_existing(same_sku, mapped.get("size"))
     if existing:
         row.action, row.inventory_item_id = "update", existing.id
         row.match_key, row.match_value = "sku", sku
@@ -1777,7 +1890,8 @@ def commit_import(
                 buy_price=mapped.get("buy_price"),
                 expected_sell_price=mapped.get("expected_sell_price"),
                 actual_sell_price=mapped.get("actual_sell_price"),
-                quantity=int(mapped.get("quantity") or 1),
+                quantity=int(mapped["quantity"]) if mapped.get("quantity") is not None else 1,
+                custom_attributes={"variants": mapped["_variants"]} if mapped.get("_variants") else {},
                 vendor_name=mapped.get("vendor_name"),
                 notes=mapped.get("notes"),
                 platform=mapped.get("platform"),
@@ -1801,7 +1915,7 @@ def commit_import(
                 continue
 
             # Write a ledger entry for quantity changes
-            new_qty = int(mapped.get("quantity") or item.quantity)
+            new_qty = int(mapped["quantity"]) if mapped.get("quantity") is not None else item.quantity
             delta = new_qty - item.quantity
             if delta != 0:
                 ledger = InventoryStockLedger(
@@ -1817,10 +1931,12 @@ def commit_import(
                 db.add(ledger)
 
             # Apply all mapped fields (skip internal import-only keys)
-            _SKIP_ON_UPDATE = {"_import_id"}
+            _SKIP_ON_UPDATE = {"_import_id", "_variants"}
             for field, value in mapped.items():
                 if field not in _SKIP_ON_UPDATE and hasattr(item, field):
                     setattr(item, field, value)
+            if mapped.get("_variants"):
+                item.custom_attributes = {**(item.custom_attributes or {}), "variants": mapped["_variants"]}
             db.add(item)
             touched.append(item)
             counts["update"] += 1
@@ -1828,7 +1944,7 @@ def commit_import(
             counts["skip"] += 1
 
     # Rows with a barcode + name teach Smart Scan (never over seller-confirmed memory).
-    remember_items(db, current_user.id, touched)
+    _remember_imported(db, current_user.id, touched)
 
     job.status = "committed"
     job.rows_created = counts["create"]
