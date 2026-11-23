@@ -1071,6 +1071,36 @@ export async function unlinkBarcode(itemId: string, code: string): Promise<void>
   await request<void>(`/inventory/${itemId}/barcodes/${encodeURIComponent(code)}`, { method: "DELETE" });
 }
 
+export interface CatalogProduct {
+  rq_code: string;
+  style_code: string;
+  size: string | null;
+  name: string;
+  brand: string | null;
+  category: string | null;
+  color: string | null;
+  times_confirmed: number;
+}
+
+export interface CatalogStats {
+  products: number;
+  styles: number;
+  barcodes: number;
+}
+
+/** The item's Resqlo code: one code per product (style + size), the same in every store. */
+export async function getResqloCode(itemId: string): Promise<CatalogProduct> {
+  return request<CatalogProduct>(`/inventory/${itemId}/rq-code`, { method: "POST" });
+}
+
+export async function lookupCatalog(code: string): Promise<CatalogProduct> {
+  return request<CatalogProduct>(`/catalog/${encodeURIComponent(code)}`);
+}
+
+export async function getCatalogStats(): Promise<CatalogStats> {
+  return request<CatalogStats>("/catalog/stats");
+}
+
 // ─── Transaction Endpoints ───────────────────────────
 
 export interface Transaction {

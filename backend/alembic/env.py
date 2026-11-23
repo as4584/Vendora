@@ -27,6 +27,7 @@ from app.models.provider import ProviderSyncRun, ReconciliationIssue, ProviderWe
 from app.models.auth_session import AuthSession  # noqa: F401
 from app.models.scan_memory import ScanMemory  # noqa: F401
 from app.models.barcode import BarcodeRule, ItemBarcode  # noqa: F401
+from app.models.catalog import CatalogBarcode, CatalogProduct  # noqa: F401
 from app.models.support import SupportRequest  # noqa: F401
 from app.models.customer import Customer  # noqa: F401
 from app.models.google_sheets import GoogleSheetLink, GoogleToken  # noqa: F401

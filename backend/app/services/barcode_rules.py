@@ -4,6 +4,8 @@ Order for one scan:
   1. Resqlo label QR (``resqlo:item:<id>``)
   2. each enabled rule that matches, in the seller's order, looked up as told
   3. the raw code itself, looked up every way (linked code, UPC, SKU)
+  4. the Resqlo catalog: a Resqlo code or a box barcode any store has seen,
+     matched to this store's item with the same style code and size
 Items with stock left win over sold-out ones for the same code.
 """
 from __future__ import annotations
@@ -115,7 +117,7 @@ def find_item(db: Session, user_id, code: str, field: str) -> tuple[Optional[Inv
 class Resolution:
     code: str
     item: Optional[InventoryItem]
-    matched_by: Optional[str]  # label | linked | upc | sku | None
+    matched_by: Optional[str]  # label | linked | upc | sku | catalog | None
     rule_name: Optional[str]
 
 
@@ -142,4 +144,12 @@ def resolve(db: Session, user_id, raw: str) -> Resolution:
         item, how = find_item(db, user_id, cand.code, cand.field)
         if item:
             return Resolution(cand.code, item, how, cand.rule.name if cand.rule else None)
+
+    from app.services import catalog  # avoids an import cycle
+
+    product = catalog.find(db, code)
+    if product:
+        matches = catalog.items_for_product(db, user_id, product)
+        if matches:
+            return Resolution(code, matches[0], "catalog", None)
     return Resolution(code, None, None, None)

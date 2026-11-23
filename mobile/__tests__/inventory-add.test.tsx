@@ -369,6 +369,25 @@ describe('add inventory screen', () => {
     }), expect.any(Object)));
   });
 
+  it('fills from the Resqlo catalog, and a Resqlo code is not kept as the UPC', async () => {
+    for (const [data, upc] of [['RQ-7F3K9XA', ''], ['196153282201', '196153282201']]) {
+      mockResolveScan.mockResolvedValueOnce({
+        barcode: data, match: 'catalog', times_seen: 0,
+        fields: { name: 'Jordan 4 Black Cat', style_code: 'CU1110-010', size: '10', rq_code: 'RQ-7F3K9XA' },
+      });
+      const screen = render(<AddItemScreen />);
+      fireEvent.press(screen.getByTestId('smart-scan-button'));
+      const camera = await screen.findByTestId('camera-view');
+      await act(async () => {
+        await camera.props.onBarcodeScanned({ data });
+      });
+      expect(screen.getByLabelText('Item Name').props.value).toBe('Jordan 4 Black Cat');
+      expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Resqlo catalog/);
+      expect(screen.getByLabelText(/UPC/).props.value).toBe(upc);
+      screen.unmount();
+    }
+  });
+
   it('reads the box label for a new barcode without overwriting typed fields', async () => {
     mockReadLabel.mockResolvedValueOnce({ name: 'Label Name', style_code: 'FV5029-006', sku: 'FV5029-006', color: 'Black/Cement' });
     const screen = render(<AddItemScreen />);

@@ -17,6 +17,8 @@ from app.dependencies.auth import get_current_user
 from app.models.inventory import InventoryItem
 from app.models.scan_memory import ScanMemory
 from app.models.user import User
+from app.services import catalog
+from app.services.barcode_rules import clean_code
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -70,7 +72,7 @@ class LearnBody(BaseModel):
 
 class ScanResult(BaseModel):
     barcode: str
-    match: Optional[str]  # "memory" | "inventory" | "style" | None
+    match: Optional[str]  # "memory" | "inventory" | "catalog" | "style" | None
     fields: dict
     times_seen: int = 0
 
@@ -93,6 +95,12 @@ def lookup(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    raw = clean_code(barcode)
+    if catalog.is_rq_code(raw):
+        product = catalog.find(db, raw)
+        fields = catalog.product_fields(product) if product else {}
+        return ScanResult(barcode=raw, match="catalog" if product else None, fields=fields)
+
     code = normalize_barcode(barcode)
     mem = db.query(ScanMemory).filter_by(user_id=current_user.id, barcode=code).first()
     if mem:
@@ -108,6 +116,10 @@ def lookup(
     if item:
         return ScanResult(barcode=code, match="inventory", fields=_item_fields(item))
 
+    product = catalog.find(db, code)
+    if product:
+        return ScanResult(barcode=code, match="catalog", fields=catalog.product_fields(product))
+
     style = normalize_style(style_code)
     if style:
         sibling = (
@@ -118,6 +130,10 @@ def lookup(
         )
         if sibling:
             fields = {k: v for k, v in (sibling.fields or {}).items() if k not in PER_BOX_KEYS}
+            return ScanResult(barcode=code, match="style", fields=fields)
+        shared = catalog.first_of_style(db, style)
+        if shared:
+            fields = {k: v for k, v in catalog.product_fields(shared).items() if k not in (*PER_BOX_KEYS, "rq_code")}
             return ScanResult(barcode=code, match="style", fields=fields)
 
     return ScanResult(barcode=code, match=None, fields={})
@@ -148,6 +164,7 @@ def learn(
     else:
         mem = ScanMemory(user_id=current_user.id, barcode=body.barcode, style_code=style, fields=fields, times_seen=1)
         db.add(mem)
+    catalog.contribute(db, fields, body.barcode, confirmed=True)
     db.commit()
     db.refresh(mem)
     return ScanResult(barcode=mem.barcode, match="memory", fields=mem.fields, times_seen=mem.times_seen)

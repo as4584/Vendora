@@ -47,6 +47,7 @@ jest.mock('expo-image-picker', () => ({
 jest.mock('../services/api', () => ({
   getItem: jest.fn(),
   listItemBarcodes: jest.fn(async () => []),
+  getResqloCode: jest.fn(async () => { throw new Error('offline'); }),
   linkBarcode: jest.fn(),
   unlinkBarcode: jest.fn(),
   getItemActivity: jest.fn(async () => []),

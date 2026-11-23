@@ -63,5 +63,13 @@ describe('barcode control API', () => {
     await api.unlinkBarcode('i1', 'A/B');
     expect(last()).toMatchObject({ method: 'DELETE' });
     expect(last().url).toMatch(/\/inventory\/i1\/barcodes\/A%2FB$/);
+
+    await api.getResqloCode('i1');
+    expect(last()).toMatchObject({ method: 'POST' });
+    expect(last().url).toMatch(/\/inventory\/i1\/rq-code$/);
+    await api.lookupCatalog('RQ-7F3K9XA');
+    expect(last().url).toMatch(/\/catalog\/RQ-7F3K9XA$/);
+    await api.getCatalogStats();
+    expect(last().url).toMatch(/\/catalog\/stats$/);
   });
 });
