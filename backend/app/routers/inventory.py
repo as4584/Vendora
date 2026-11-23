@@ -10,6 +10,7 @@ import io
 import ipaddress
 import math
 import socket
+import os
 import uuid
 import base64
 import binascii
@@ -1248,7 +1249,12 @@ class ImportUploadFinish(_PydBase):
 
 
 def _upload_path(user: User, upload_id: UUID) -> Path:
-    return IMPORT_UPLOAD_DIR / f"{user.id}-{upload_id}.part"
+    # upload_id is a validated UUID; still confine the path to the upload dir.
+    base = os.path.realpath(IMPORT_UPLOAD_DIR)
+    full = os.path.normpath(os.path.join(base, f"{user.id}-{UUID(str(upload_id)).hex}.part"))
+    if not full.startswith(base + os.sep):  # pragma: no cover - unreachable for a UUID
+        raise HTTPException(status_code=400, detail="Invalid upload id.")
+    return Path(full)
 
 
 def _sweep_stale_uploads() -> None:
