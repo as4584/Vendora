@@ -2,8 +2,9 @@
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-# Larger than the biggest legitimate upload (50 MB spreadsheet import).
-MAX_REQUEST_BYTES = 55 * 1024 * 1024
+# Larger than the biggest single-request upload (90 MB spreadsheet; bigger
+# files are sent in chunks). Cloudflare refuses anything over 100 MB anyway.
+MAX_REQUEST_BYTES = 100 * 1024 * 1024
 
 SECURITY_HEADERS = {
     b"strict-transport-security": b"max-age=31536000; includeSubDomains",

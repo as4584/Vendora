@@ -11,6 +11,12 @@ import ipaddress
 import math
 import socket
 import uuid
+import base64
+import binascii
+import tempfile
+import time
+from pathlib import Path
+from types import SimpleNamespace
 from decimal import Decimal
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -1093,7 +1099,10 @@ def update_status(
 
 def _parse_csv_bytes(content: bytes) -> tuple[list[str], list[dict]]:
     """Return (headers, rows) from raw CSV bytes."""
-    text = content.decode("utf-8-sig", errors="replace")  # handle BOM
+    try:
+        text = content.decode("utf-8-sig")  # handle BOM
+    except UnicodeDecodeError:
+        text = content.decode("cp1252", errors="replace")  # Excel-on-Windows CSV
     reader = csv.DictReader(io.StringIO(text))
     if not reader.fieldnames:
         raise HTTPException(status_code=400, detail="CSV file has no header row.")
@@ -1141,22 +1150,200 @@ def _coerce_row(raw: dict, mapping: dict[str, str]) -> tuple[dict, Optional[str]
     return mapped, None
 
 
+# Imports must never fail for being "too big". Files up to the direct limit go
+# in one request; anything larger is sent in chunks (Cloudflare caps a single
+# request at 100 MB) and reassembled on disk, so the only ceiling is the
+# spreadsheet parser's own limit.
+DIRECT_IMPORT_UPLOAD_BYTES = 90 * 1024 * 1024
+IMPORT_CHUNK_MAX_BYTES = 6 * 1024 * 1024
+IMPORT_UPLOAD_MAX_BYTES = MAX_XLSX_IMPORT_BYTES
+IMPORT_UPLOAD_DIR = Path(tempfile.gettempdir()) / "resqlo-import-uploads"
+IMPORT_UPLOAD_TTL_SECONDS = 6 * 3600
+SPREADSHEET_EXTENSIONS = (".csv", ".xlsx", ".txt")
+
+
+def _check_import_filename(filename: str | None) -> str:
+    name = (filename or "").strip() or "inventory.csv"
+    lower = name.lower()
+    if lower.endswith(".xls"):
+        raise HTTPException(
+            status_code=400,
+            detail="Old .xls files can't be read. In Excel, choose File > Save As > .xlsx or .csv and import that.",
+        )
+    if not lower.endswith(SPREADSHEET_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="Choose a .csv or .xlsx spreadsheet.")
+    return name
+
+
+def _stringify_cell(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, datetime):
+        return value.isoformat() if (value.hour or value.minute or value.second) else value.date().isoformat()
+    return str(value)
+
+
+def _spreadsheet_headers_rows(filename: str, content: bytes) -> tuple[list[str], list[dict]]:
+    """Headers + string rows from a CSV or XLSX file, for the preview mapper."""
+    if detect_format(filename, None, content) != "xlsx":
+        return _parse_csv_bytes(content)
+    try:
+        table = rows_from_bytes(content, "xlsx")
+    except HTTPException:
+        raise
+    except Exception as exc:  # openpyxl raises many types for damaged files
+        raise HTTPException(
+            status_code=400,
+            detail="Couldn't read this spreadsheet. Re-save it as .xlsx or .csv and try again.",
+        ) from exc
+    headers: list[str] = []
+    seen: set[str] = set()
+    rows: list[dict] = []
+    for row in table:
+        clean: dict = {}
+        for key, value in row.items():
+            text = _stringify_cell(value)
+            if text.startswith("data:image/"):
+                continue  # embedded pictures are not stored on the review rows
+            clean[key] = text
+            if key not in seen:
+                seen.add(key)
+                headers.append(key)
+        rows.append(clean)
+    if not headers:
+        raise HTTPException(status_code=400, detail="Spreadsheet has no header row.")
+    return headers, rows
+
+
 @router.post("/imports/preview", response_model=ImportPreviewResponse, status_code=status.HTTP_201_CREATED)
 async def preview_import(
-    file: UploadFile = File(..., description="CSV file to preview"),
+    file: UploadFile = File(..., description="CSV or XLSX file to preview"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Upload a CSV, parse it, detect column mapping, and return a preview.
+    """Upload a spreadsheet, parse it, detect column mapping, and return a preview.
 
     No inventory changes are made.  Call POST /imports/{job_id}/commit to apply.
+    Files over the direct limit go through /imports/uploads in chunks.
     """
-    if not file.filename or not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only .csv files are accepted.")
+    filename = _check_import_filename(file.filename)
+    content = await _read_upload_limited(file, DIRECT_IMPORT_UPLOAD_BYTES)
+    return _build_import_preview(filename, content, db, current_user)
 
-    content = await _read_upload_limited(file, 5 * 1024 * 1024)
 
-    headers, raw_rows = _parse_csv_bytes(content)
+class ImportUploadStart(_PydBase):
+    filename: str
+    size: int
+
+
+class ImportUploadChunk(_PydBase):
+    index: int
+    data: str  # base64
+
+
+class ImportUploadFinish(_PydBase):
+    filename: str
+
+
+def _upload_path(user: User, upload_id: UUID) -> Path:
+    return IMPORT_UPLOAD_DIR / f"{user.id}-{upload_id}.part"
+
+
+def _sweep_stale_uploads() -> None:
+    if not IMPORT_UPLOAD_DIR.exists():
+        return
+    cutoff = time.time() - IMPORT_UPLOAD_TTL_SECONDS
+    for stale in IMPORT_UPLOAD_DIR.iterdir():
+        try:
+            if stale.stat().st_mtime < cutoff:
+                stale.unlink()
+        except OSError:
+            pass
+
+
+@router.post("/imports/uploads", status_code=status.HTTP_201_CREATED)
+async def start_import_upload(
+    payload: ImportUploadStart,
+    current_user: User = Depends(get_current_user),
+):
+    """Begin a chunked spreadsheet upload for files too big for one request."""
+    _check_import_filename(payload.filename)
+    if payload.size > IMPORT_UPLOAD_MAX_BYTES:
+        limit_mb = IMPORT_UPLOAD_MAX_BYTES // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"Spreadsheets over {limit_mb} MB can't be imported.")
+    _sweep_stale_uploads()
+    IMPORT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    upload_id = uuid.uuid4()
+    _upload_path(current_user, upload_id).write_bytes(b"")
+    return {"upload_id": str(upload_id), "chunk_bytes": IMPORT_CHUNK_MAX_BYTES}
+
+
+@router.put("/imports/uploads/{upload_id}")
+async def append_import_upload(
+    upload_id: UUID,
+    payload: ImportUploadChunk,
+    current_user: User = Depends(get_current_user),
+):
+    """Append one chunk. Chunks arrive in order; a retried chunk is ignored."""
+    path = _upload_path(current_user, upload_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Upload not found or expired. Pick the file again.")
+    try:
+        chunk = base64.b64decode(payload.data, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Upload chunk is corrupted.") from exc
+    if len(chunk) > IMPORT_CHUNK_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Upload chunk is too large.")
+    counter = path.with_suffix(".idx")
+    received = int(counter.read_text()) if counter.exists() else 0
+    if payload.index < received:
+        return {"received": received}
+    if payload.index != received:
+        raise HTTPException(status_code=409, detail=f"Expected chunk {received}.")
+    if path.stat().st_size + len(chunk) > IMPORT_UPLOAD_MAX_BYTES:
+        path.unlink(missing_ok=True)
+        counter.unlink(missing_ok=True)
+        raise HTTPException(status_code=413, detail="Spreadsheet is larger than Resqlo can import.")
+    with path.open("ab") as handle:
+        handle.write(chunk)
+    counter.write_text(str(received + 1))
+    return {"received": received + 1}
+
+
+@router.post(
+    "/imports/uploads/{upload_id}/preview",
+    response_model=ImportPreviewResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def preview_import_upload(
+    upload_id: UUID,
+    payload: ImportUploadFinish,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Build the import preview from a completed chunked upload."""
+    filename = _check_import_filename(payload.filename)
+    path = _upload_path(current_user, upload_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Upload not found or expired. Pick the file again.")
+    try:
+        content = path.read_bytes()
+    finally:
+        path.unlink(missing_ok=True)
+        path.with_suffix(".idx").unlink(missing_ok=True)
+    return _build_import_preview(filename, content, db, current_user)
+
+
+def _build_import_preview(
+    filename: str,
+    content: bytes,
+    db: Session,
+    current_user: User,
+) -> ImportPreviewResponse:
+    headers, raw_rows = _spreadsheet_headers_rows(filename, content)
+    file = SimpleNamespace(filename=filename)
     detected_mapping = _detect_mapping(headers)
 
     # Persist the job in 'pending' state

@@ -557,8 +557,10 @@ async def test_import_dns_rejects_hostname_resolving_private(monkeypatch):
         await inventory_router._assert_public_dns("https://files.example.com/inventory.csv")
 
 
-def test_import_upload_rejects_file_above_csv_limit(client, auth_headers):
-    oversized = b"x" * (8 * 1024 * 1024 + 1)
+def test_import_upload_rejects_file_above_csv_limit(client, auth_headers, monkeypatch):
+    from app.routers import inventory as inventory_router
+    monkeypatch.setattr(inventory_router, "MAX_CSV_IMPORT_BYTES", 1024)
+    oversized = b"x" * 1025
     response = client.post(
         "/api/v1/inventory/import/file",
         files={"file": ("inventory.csv", oversized, "text/csv")},

@@ -9,6 +9,7 @@ import {
   TextInput,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { DIRECT_UPLOAD_LIMIT, readBase64Chunk } from "../../../utils/chunkedUpload";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel, Stepper } from "../../../components/ui";
 import { GoogleSheetsPrompt } from "../../../components/GoogleSheets";
@@ -18,6 +19,7 @@ import { errorMessage } from "../../../services/errors";
 
 export default function InventoryImportScreen() {
   const [preview, setPreview] = useState<api.InventoryImportPreview | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -43,25 +45,36 @@ export default function InventoryImportScreen() {
     const asset = result.assets[0];
     setFileName(asset.name);
     setLoading(true);
+    setUploadProgress(null);
     try {
-      const formData = new FormData();
-      if (Platform.OS === "web") {
-        const blob = await fetch(asset.uri).then((response) => response.blob());
-        formData.append("file", blob, asset.name);
+      let nextPreview: api.InventoryImportPreview;
+      if ((asset.size ?? 0) > DIRECT_UPLOAD_LIMIT) {
+        nextPreview = await api.previewInventoryImportChunked(
+          { uri: asset.uri, name: asset.name, size: asset.size ?? 0 },
+          readBase64Chunk,
+          setUploadProgress
+        );
       } else {
-        formData.append("file", {
-          uri: asset.uri,
-          name: asset.name,
-          type: asset.mimeType || "text/csv",
-        } as any);
+        const formData = new FormData();
+        if (Platform.OS === "web") {
+          const blob = await fetch(asset.uri).then((response) => response.blob());
+          formData.append("file", blob, asset.name);
+        } else {
+          formData.append("file", {
+            uri: asset.uri,
+            name: asset.name,
+            type: asset.mimeType || "text/csv",
+          } as any);
+        }
+        nextPreview = await api.previewInventoryImport(formData);
       }
-      const nextPreview = await api.previewInventoryImport(formData);
       scrollToReview.current = true;
       setPreview(nextPreview);
     } catch (err) {
-      Alert.alert("Import preview failed", errorMessage(err, "Could not read this CSV file."));
+      Alert.alert("Import preview failed", errorMessage(err, "Could not read this spreadsheet."));
     } finally {
       setLoading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -135,7 +148,7 @@ export default function InventoryImportScreen() {
     <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
       <HeaderTitle
         title="Import Inventory"
-        subtitle="Upload a CSV, review each item, then add them to your inventory."
+        subtitle="Upload a CSV or Excel sheet of any size, review each item, then add them to your inventory."
       />
 
       <Card style={{ gap: SPACING.md }}>
@@ -144,7 +157,7 @@ export default function InventoryImportScreen() {
         <Text style={styles.helperText}>
           Re-importing a Resqlo export updates the same items. Nothing is duplicated, and rows we can’t read are flagged so you can fix them.
         </Text>
-        <ActionButton label={loading ? "Preparing Preview..." : "Choose CSV File"} onPress={handlePickFile} disabled={loading} />
+        <ActionButton label={uploadProgress !== null ? `Uploading ${Math.round(uploadProgress * 100)}%...` : loading ? "Preparing Preview..." : "Choose CSV or Excel File"} onPress={handlePickFile} disabled={loading} />
         {fileName ? <Text style={styles.fileName}>Selected: {fileName}</Text> : null}
       </Card>
 

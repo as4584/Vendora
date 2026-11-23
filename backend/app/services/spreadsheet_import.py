@@ -26,13 +26,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-MAX_CSV_IMPORT_BYTES = 8 * 1024 * 1024
-MAX_XLSX_IMPORT_BYTES = 50 * 1024 * 1024
-MAX_EMBEDDED_IMAGE_BYTES = 12 * 1024 * 1024
+MAX_CSV_IMPORT_BYTES = 500 * 1024 * 1024
+MAX_XLSX_IMPORT_BYTES = 500 * 1024 * 1024
+MAX_EMBEDDED_IMAGE_BYTES = 40 * 1024 * 1024
 # Zip-bomb guard for XLSX (a zip archive): total inflated size, member count,
 # and per-member compression ratio (legit XML compresses ~10-20x).
-MAX_XLSX_UNCOMPRESSED_BYTES = 300 * 1024 * 1024
-MAX_XLSX_MEMBERS = 5000
+MAX_XLSX_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
+MAX_XLSX_MEMBERS = 50000
 MAX_XLSX_COMPRESSION_RATIO = 1000
 MAX_EMBEDDED_IMAGE_DIMENSION = 640
 JPEG_THUMBNAIL_QUALITY = 76
@@ -843,6 +843,8 @@ def _xlsx_first_sheet_images(content: bytes) -> list[EmbeddedImage]:
 
             media_path = _resolve_xlsx_relationship_path(drawing_path, media_target)
             try:
+                if archive.getinfo(media_path).file_size > MAX_EMBEDDED_IMAGE_BYTES:
+                    continue  # skip a huge picture instead of failing the import
                 data_url = _image_data_url(archive.read(media_path), media_path)
             except KeyError:
                 data_url = None

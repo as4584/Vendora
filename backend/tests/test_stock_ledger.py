@@ -276,7 +276,7 @@ class TestCSVImport:
         assert resp.json()["id"] == job_id
         assert resp.json()["status"] == "previewed"
 
-    def test_non_csv_rejected(self, client, auth_headers):
+    def test_corrupt_spreadsheet_rejected(self, client, auth_headers):
         resp = client.post(
             "/api/v1/inventory/imports/preview",
             files={"file": ("data.xlsx", b"binary", "application/vnd.ms-excel")},

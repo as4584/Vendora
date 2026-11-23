@@ -924,6 +924,43 @@ export async function previewInventoryImport(
   });
 }
 
+/**
+ * Preview a spreadsheet too big for one request: upload it in chunks, then
+ * build the preview server-side. A failed chunk is retried, and the server
+ * ignores a chunk it already has, so a flaky connection can't corrupt it.
+ */
+export async function previewInventoryImportChunked(
+  file: { uri: string; name: string; size: number },
+  readChunk: (uri: string, offset: number, length: number) => Promise<string>,
+  onProgress?: (fraction: number) => void
+): Promise<InventoryImportPreview> {
+  const started = await request<{ upload_id: string; chunk_bytes: number }>("/inventory/imports/uploads", {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name, size: file.size }),
+  });
+  const chunkBytes = started.chunk_bytes;
+  const total = Math.max(1, Math.ceil(file.size / chunkBytes));
+  for (let index = 0; index < total; index += 1) {
+    const data = await readChunk(file.uri, index * chunkBytes, chunkBytes);
+    const send = () =>
+      request(`/inventory/imports/uploads/${started.upload_id}`, {
+        method: "PUT",
+        body: JSON.stringify({ index, data }),
+      });
+    try {
+      await send();
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) throw error;
+      await send();
+    }
+    onProgress?.((index + 1) / total);
+  }
+  return request<InventoryImportPreview>(`/inventory/imports/uploads/${started.upload_id}/preview`, {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name }),
+  });
+}
+
 export async function importInventoryFromLink(
   url: string,
   dryRun = false
