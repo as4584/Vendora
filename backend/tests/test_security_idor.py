@@ -31,6 +31,11 @@ PARAM = re.compile(r"\{(\w+)\}")
 PUBLIC_ROUTES = {
     # Public seller storefront: by design readable by anyone.
     "/api/v1/sellers/{user_id}",
+    # Shared Resqlo catalog: one entry per product for every store, not owned by a user.
+    # Fixing entries is admin-only (tested in test_resqlo_catalog.py).
+    "/api/v1/catalog/{code}",
+    "/api/v1/catalog/admin/products/{rq_code}",
+    "/api/v1/catalog/admin/barcodes/{code}",
 }
 
 

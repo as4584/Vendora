@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import * as api from "../../services/api";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Icon, IconCircle, type IconName } from "../../components/ui";
@@ -17,11 +19,26 @@ const LINKS: MoreLink[] = [
   { label: "Support", helper: "Get help from the Resqlo team", icon: "help-buoy-outline", route: "/settings/support" },
 ];
 
+const ADMIN_LINK: MoreLink = {
+  label: "Catalog Admin", helper: "Fix wrong entries in the Resqlo catalog", icon: "construct-outline", route: "/settings/catalog-admin",
+};
+
 export default function MoreScreen() {
   const router = useRouter();
+  const [admin, setAdmin] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void api.isCatalogAdmin().then((yes) => {
+      if (!cancelled) setAdmin(yes);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const links = admin ? [...LINKS, ADMIN_LINK] : LINKS;
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {LINKS.map((link) => (
+      {links.map((link) => (
         <TouchableOpacity
           key={link.route}
           style={styles.row}

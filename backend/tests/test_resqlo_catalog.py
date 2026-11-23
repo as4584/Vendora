@@ -132,3 +132,58 @@ def test_concurrent_create_returns_existing(db, monkeypatch):
 
     monkeypatch.setattr(catalog, "_get", stale_then_real)
     assert catalog.get_or_create(db, "AA1", "10", "Shoe").id == first.id
+
+
+ADMIN = "/api/v1/catalog/admin"
+
+
+@pytest.fixture()
+def admin_on(monkeypatch, test_user):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "CATALOG_ADMIN_EMAILS", f" other@x.test , {test_user.email.upper()} ")
+
+
+def test_admin_access_is_off_by_default(client, auth_headers, second_auth_headers, admin_on):
+    assert client.get(f"{ADMIN}/access", headers=auth_headers).json() == {"admin": True}
+    assert client.get(f"{ADMIN}/access", headers=second_auth_headers).json() == {"admin": False}
+    for method, path in [("get", "/products"), ("put", "/products/RQ-0000000"),
+                         ("delete", "/products/RQ-0000000"), ("delete", "/barcodes/1")]:
+        resp = getattr(client, method)(f"{ADMIN}{path}", headers=second_auth_headers,
+                                       **({"json": {"name": "x", "style_code": "y"}} if method == "put" else {}))
+        assert resp.status_code == 403
+
+
+def test_admin_finds_fixes_and_removes_entries(client, db, auth_headers, second_auth_headers, admin_on):
+    client.post(LEARN, json={"barcode": UPC, "fields": {**BLACK_CAT, "name": "Jordan 4 Blak Cat"}},
+                headers=second_auth_headers)
+    client.post(LEARN, json={"barcode": "195866000001",
+                             "fields": {"name": "Dunk Panda", "style_code": "DD1391-100", "size": "10"}},
+                headers=second_auth_headers)
+    black_cat = db.query(CatalogProduct).filter_by(style_code="CU1110-010").one()
+
+    every = client.get(f"{ADMIN}/products", headers=auth_headers).json()
+    assert len(every) == 2
+    for q in ("blak", UPC, black_cat.rq_code.lower(), "cu1110", "jordan"):
+        hits = client.get(f"{ADMIN}/products", params={"q": q}, headers=auth_headers).json()
+        assert [h["rq_code"] for h in hits] == [black_cat.rq_code], q
+    assert hits[0]["barcodes"] == [UPC]
+
+    fix = {"name": " Jordan 4 Black Cat ", "style_code": "cu1110-010", "size": "10.5", "brand": "Jordan", "color": " "}
+    resp = client.put(f"{ADMIN}/products/{black_cat.rq_code}", json=fix, headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "Jordan 4 Black Cat" and resp.json()["size"] == "10.5"
+    assert resp.json()["color"] is None and resp.json()["rq_code"] == black_cat.rq_code
+
+    clash = client.put(f"{ADMIN}/products/{black_cat.rq_code}",
+                       json={"name": "x", "style_code": "DD1391-100", "size": "10"}, headers=auth_headers)
+    assert clash.status_code == 409
+    assert client.put(f"{ADMIN}/products/RQ-0000000", json=fix, headers=auth_headers).status_code == 404
+
+    assert client.delete(f"{ADMIN}/barcodes/{UPC}", headers=auth_headers).status_code == 204
+    assert client.delete(f"{ADMIN}/barcodes/{UPC}", headers=auth_headers).status_code == 404
+    assert client.get(LOOKUP, params={"barcode": UPC}, headers=auth_headers).json()["match"] is None
+
+    assert client.delete(f"{ADMIN}/products/{black_cat.rq_code}", headers=auth_headers).status_code == 204
+    assert client.delete(f"{ADMIN}/products/{black_cat.rq_code}", headers=auth_headers).status_code == 404
+    assert db.query(CatalogProduct).count() == 1

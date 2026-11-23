@@ -1101,6 +1101,48 @@ export async function getCatalogStats(): Promise<CatalogStats> {
   return request<CatalogStats>("/catalog/stats");
 }
 
+// Catalog admin: fix wrong entries in the shared Resqlo catalog.
+export interface AdminCatalogProduct extends CatalogProduct {
+  barcodes: string[];
+}
+
+export interface AdminCatalogUpdate {
+  name: string;
+  style_code: string;
+  size: string | null;
+  brand: string | null;
+  category: string | null;
+  color: string | null;
+}
+
+/** Whether this account may fix the shared catalog. False when offline or on error. */
+export async function isCatalogAdmin(): Promise<boolean> {
+  try {
+    return (await request<{ admin: boolean }>("/catalog/admin/access")).admin;
+  } catch {
+    return false;
+  }
+}
+
+export async function searchCatalogAdmin(q: string): Promise<AdminCatalogProduct[]> {
+  return request<AdminCatalogProduct[]>(`/catalog/admin/products?q=${encodeURIComponent(q)}`);
+}
+
+export async function updateCatalogProduct(rqCode: string, body: AdminCatalogUpdate): Promise<AdminCatalogProduct> {
+  return request<AdminCatalogProduct>(`/catalog/admin/products/${encodeURIComponent(rqCode)}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteCatalogProduct(rqCode: string): Promise<void> {
+  await request<void>(`/catalog/admin/products/${encodeURIComponent(rqCode)}`, { method: "DELETE" });
+}
+
+export async function unlinkCatalogBarcode(code: string): Promise<void> {
+  await request<void>(`/catalog/admin/barcodes/${encodeURIComponent(code)}`, { method: "DELETE" });
+}
+
 // ─── Transaction Endpoints ───────────────────────────
 
 export interface Transaction {

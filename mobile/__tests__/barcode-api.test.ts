@@ -71,5 +71,20 @@ describe('barcode control API', () => {
     expect(last().url).toMatch(/\/catalog\/RQ-7F3K9XA$/);
     await api.getCatalogStats();
     expect(last().url).toMatch(/\/catalog\/stats$/);
+
+    fetchMock.mockResolvedValueOnce(ok({ admin: true }));
+    expect(await api.isCatalogAdmin()).toBe(true);
+    fetchMock.mockRejectedValueOnce(new Error('offline'));
+    expect(await api.isCatalogAdmin()).toBe(false);
+    await api.searchCatalogAdmin('black cat');
+    expect(last().url).toMatch(/\/catalog\/admin\/products\?q=black%20cat$/);
+    await api.updateCatalogProduct('RQ-1', { name: 'A', style_code: 'B', size: null, brand: null, category: null, color: null });
+    expect(last()).toMatchObject({ method: 'PUT', body: { name: 'A' } });
+    fetchMock.mockResolvedValueOnce(ok('', 204));
+    await api.deleteCatalogProduct('RQ-1');
+    expect(last()).toMatchObject({ method: 'DELETE' });
+    fetchMock.mockResolvedValueOnce(ok('', 204));
+    await api.unlinkCatalogBarcode('123');
+    expect(last().url).toMatch(/\/catalog\/admin\/barcodes\/123$/);
   });
 });
