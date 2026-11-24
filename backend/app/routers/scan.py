@@ -18,7 +18,7 @@ from app.models.inventory import InventoryItem
 from app.models.scan_memory import ScanMemory
 from app.models.user import User
 from app.services import catalog
-from app.services.barcode_rules import clean_code
+from app.services.barcode_rules import MAX_SCAN_LENGTH, clean_code, fit_code
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -35,7 +35,7 @@ def normalize_barcode(raw: str) -> str:
     # A UPC-A read as EAN-13 gains a leading zero; store one canonical form.
     if len(code) == 13 and code.isdigit() and code.startswith("0"):
         code = code[1:]
-    return code
+    return fit_code(code)
 
 
 def normalize_style(raw: Optional[str]) -> Optional[str]:
@@ -58,7 +58,7 @@ def _clean_fields(raw: dict) -> dict:
 
 
 class LearnBody(BaseModel):
-    barcode: str = Field(min_length=4, max_length=64)
+    barcode: str = Field(min_length=4, max_length=MAX_SCAN_LENGTH)
     fields: dict
 
     @field_validator("barcode")
@@ -90,7 +90,7 @@ def _item_fields(item: InventoryItem) -> dict:
 
 @router.get("/lookup", response_model=ScanResult)
 def lookup(
-    barcode: str = Query(min_length=4, max_length=64),
+    barcode: str = Query(min_length=4, max_length=MAX_SCAN_LENGTH),
     style_code: Optional[str] = Query(default=None, max_length=64),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

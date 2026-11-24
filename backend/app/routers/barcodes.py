@@ -14,6 +14,7 @@ from app.models.inventory import InventoryItem
 from app.models.user import User
 from app.schemas.inventory import ItemResponse
 from app.services import barcode_rules
+from app.services.barcode_rules import MAX_SCAN_LENGTH
 
 router = APIRouter(tags=["barcodes"])
 
@@ -30,7 +31,7 @@ class ResolveResponse(BaseModel):
 
 @router.get("/scan/resolve", response_model=ResolveResponse)
 def resolve_scan(
-    code: str = Query(min_length=1, max_length=200),
+    code: str = Query(min_length=1, max_length=MAX_SCAN_LENGTH),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -135,7 +136,7 @@ def reorder_rules(body: RuleOrder, db: Session = Depends(get_db), current_user: 
 
 
 class LinkIn(BaseModel):
-    code: str = Field(min_length=1, max_length=200)
+    code: str = Field(min_length=1, max_length=MAX_SCAN_LENGTH)
     replace: bool = False  # move the code off another item onto this one
 
 

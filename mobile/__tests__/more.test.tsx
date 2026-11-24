@@ -25,6 +25,16 @@ describe('MoreScreen', () => {
     );
   });
 
+  it('guides new sellers with three start steps', () => {
+    const screen = render(<MoreScreen />);
+    expect(screen.getByText('Start here')).toBeTruthy();
+    fireEvent.press(screen.getByText('1. Bring in your inventory'));
+    fireEvent.press(screen.getByText('2. Add or scan an item'));
+    fireEvent.press(screen.getByText('3. Make a sale'));
+    expect(mockPush.mock.calls).toEqual([['/inventory/import'], ['/inventory/add'], ['/inventory/sale']]);
+    ['Selling', 'Your numbers', 'Connect & scan', 'Account & help'].forEach((t) => expect(screen.getByText(t)).toBeTruthy());
+  });
+
   it('shows Catalog Admin only to catalog admins', async () => {
     (apiMock.isCatalogAdmin as jest.Mock).mockResolvedValueOnce(true);
     const screen = render(<MoreScreen />);

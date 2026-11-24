@@ -21,11 +21,28 @@ from app.models.barcode import BarcodeRule, ItemBarcode
 from app.models.inventory import InventoryItem
 
 LABEL_PREFIX = "RESQLO:ITEM:"
+CODE_LIMIT = 50  # fits every barcode column (inventory UPC is the narrowest)
+MAX_SCAN_LENGTH = 4096  # QR codes can hold whole URLs
+
+
+def fit_code(code: str, limit: int = CODE_LIMIT) -> str:
+    """Shorten an over-long code (a QR holding a URL) to a fixed form.
+
+    Plain truncation would make two URLs that share a beginning collide;
+    the hash of the full code keeps every long code distinct, and the same
+    code always shortens to the same value so it matches on every scan.
+    """
+    if len(code) <= limit:
+        return code
+    import hashlib
+
+    digest = hashlib.sha256(code.encode("utf-8")).hexdigest()[:16].upper()
+    return code[: limit - 17] + "H" + digest
 
 
 def clean_code(raw: str) -> str:
     """Trim scanner noise (whitespace, control chars) and fold case."""
-    return "".join(ch for ch in raw.strip() if ch.isprintable() and not ch.isspace()).upper()[:64]
+    return fit_code("".join(ch for ch in raw.strip() if ch.isprintable() and not ch.isspace()).upper())
 
 
 def rule_matches(rule: BarcodeRule, code: str) -> bool:
