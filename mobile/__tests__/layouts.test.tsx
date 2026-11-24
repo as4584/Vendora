@@ -66,7 +66,7 @@ jest.mock('react-native-safe-area-context', () => {
     useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 4, left: 0 }),
   };
 });
-jest.mock('../components/ui', () => ({ TabGlyph: () => null, Icon: () => null }));
+jest.mock('../components/ui', () => ({ Icon: () => null }));
 jest.mock('../services/offline', () => ({
   initOfflineSync: jest.fn(),
   isOnline: () => true,

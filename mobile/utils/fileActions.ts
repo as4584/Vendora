@@ -109,8 +109,6 @@ export async function downloadPdfFile(base64: string, filename: string) {
   return writeOrSharePdf(base64, filename);
 }
 
-export const openPdfFile = previewPdfFile;
-
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /**

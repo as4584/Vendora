@@ -879,21 +879,6 @@ export async function uploadItemPhotos(
   });
 }
 
-/**
- * Save size variants for a clothing item.
- * Variants are stored in custom_attributes.variants.
- */
-export async function updateItemVariants(
-  id: string,
-  variants: SizeVariant[]
-): Promise<InventoryItem> {
-  const item = await getItem(id);
-  const existing = item.custom_attributes ?? {};
-  return updateItem(id, {
-    custom_attributes: { ...existing, variants },
-  });
-}
-
 export interface ImportPreviewRow {
   /** Import row id; target of updateInventoryImportRow. */
   id: string | null;
@@ -2327,10 +2312,6 @@ export async function updateReconciliationIssue(
 }
 
 // ─── App Health ──────────────────────────────────────────
-
-export async function healthCheck(): Promise<{ status: string; version: string }> {
-  return request("/health");
-}
 
 // ─── Customers ───────────────────────────────────────
 

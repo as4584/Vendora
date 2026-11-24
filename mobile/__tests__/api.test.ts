@@ -254,14 +254,14 @@ describe('api.ts — request()', () => {
     fetchSpy.mockResolvedValueOnce(
       makeFetchResponse({ status: 500, contentType: 'text/html', body: 'Gateway failed' }),
     );
-    await expect(api.healthCheck()).rejects.toMatchObject({
+    await expect(api.getMe()).rejects.toMatchObject({
       message: 'Gateway failed',
       status: 500,
     });
     fetchSpy.mockResolvedValueOnce(
       makeFetchResponse({ status: 502, contentType: 'text/plain', body: '' }),
     );
-    await expect(api.healthCheck()).rejects.toMatchObject({
+    await expect(api.getMe()).rejects.toMatchObject({
       message: 'Request failed (502)',
       status: 502,
     });

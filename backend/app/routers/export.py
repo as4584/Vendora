@@ -32,7 +32,7 @@ def _require_pro(user: User):
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "error": "pro_required",
-                "message": "CSV export requires Pro tier ($20/mo).",
+                "message": "CSV export requires Pro.",
                 "feature": "csv_export",
             },
         )

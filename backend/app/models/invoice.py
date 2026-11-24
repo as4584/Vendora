@@ -13,7 +13,6 @@ import uuid
 from decimal import Decimal
 
 from sqlalchemy import Column, String, Numeric, Integer, ForeignKey, CheckConstraint, Index, UniqueConstraint, Uuid
-# from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
 from app.models import customer as _customer  # noqa: F401  (registers the customers FK target)

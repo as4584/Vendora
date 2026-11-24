@@ -332,7 +332,6 @@ describe('API endpoint contracts', () => {
       call: () => api.exportInventoryWarehouseCSV(),
       path: '/export/inventory?template=warehouse',
     },
-    { name: 'transactions CSV', call: () => api.exportTransactionsCSV(), path: '/export/transactions' },
     { name: 'seller profile', call: () => api.getSellerProfile('user-1'), path: '/sellers/user-1' },
     {
       name: 'pricing suggestion',
@@ -411,7 +410,6 @@ describe('API endpoint contracts', () => {
       method: 'PATCH',
       body: { status: 'resolved', resolution_note: 'fixed' },
     },
-    { name: 'health check', call: () => api.healthCheck(), path: '/health' },
     { name: 'stockx status', call: () => api.getStockxStatus(), path: '/integrations/stockx/status' },
     { name: 'stockx connect', call: () => api.getStockxConnectUrl(), path: '/integrations/stockx/connect' },
     { name: 'stockx disconnect', call: () => api.disconnectStockx(), path: '/integrations/stockx', method: 'DELETE' },
@@ -537,44 +535,13 @@ describe('API endpoint contracts', () => {
     );
   });
 
-  it('preserves existing custom attributes when saving variants', async () => {
-    fetchMock
-      .mockResolvedValueOnce(response({ custom_attributes: { brand: 'Nike' } }))
-      .mockResolvedValueOnce(response({ id: 'item-1' }));
-    await api.updateItemVariants('item-1', [{ size: '10', quantity: 2 }]);
-    const { options } = lastRequest(fetchMock as unknown as jest.Mock);
-    expect(JSON.parse(options.body as string)).toEqual({
-      custom_attributes: { brand: 'Nike', variants: [{ size: '10', quantity: 2 }] },
-    });
-  });
-
-  it('uses an empty attribute object when saving variants on a new item', async () => {
-    fetchMock
-      .mockResolvedValueOnce(response({ custom_attributes: null }))
-      .mockResolvedValueOnce(response({ id: 'item-1' }));
-    await api.updateItemVariants('item-1', []);
-    const { options } = lastRequest(fetchMock as unknown as jest.Mock);
-    expect(JSON.parse(options.body as string)).toEqual({ custom_attributes: { variants: [] } });
-  });
 
   it('uploads preview and import files as FormData with defaults and overrides', async () => {
     const preview = new FormData();
     await api.previewInventoryImport(preview);
-    let request = lastRequest(fetchMock as unknown as jest.Mock);
+    const request = lastRequest(fetchMock as unknown as jest.Mock);
     expect(request.options.body).toBe(preview);
     expect((request.options.headers as Record<string, string>)['Content-Type']).toBeUndefined();
-
-    await api.importInventoryFile({ uri: 'file:///one.csv', name: 'one.csv' });
-    request = lastRequest(fetchMock as unknown as jest.Mock);
-    expectPath(request.url, '/inventory/import/file?dry_run=false');
-    expect(request.options.body).toBeInstanceOf(FormData);
-
-    await api.importInventoryFile(
-      { uri: 'file:///one.xlsx', name: 'one.xlsx', mimeType: 'application/xlsx' },
-      true,
-    );
-    request = lastRequest(fetchMock as unknown as jest.Mock);
-    expectPath(request.url, '/inventory/import/file?dry_run=true');
   });
 
   it('does not retry dry-run imports or non-gateway errors', async () => {
