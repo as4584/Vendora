@@ -22,6 +22,8 @@ import { itemIdFromScan } from "../../../utils/labels";
 import { Card, Icon, Pill, SectionLabel } from "../../../components/ui";
 import { Button, IconButton, triggerHaptic } from "../../../components/Button";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
+import { UnknownBarcodeSheet } from "../../../components/UnknownBarcodeSheet";
+import { SCANNER_BARCODE_TYPES } from "../../../utils/barcodeRules";
 import { ReceiptSheet } from "../../../components/ReceiptSheet";
 import { maybeAskForRating, recordSale } from "../../../services/rating";
 import { BRAND, COLORS, FONT_SCALE, RADII, SPACING, TYPE } from "../../../theme/tokens";
@@ -35,6 +37,7 @@ import {
   HAGGLE_STEPS,
   paymentLabel,
   sameBarcode,
+  sameSku,
   sizeOptions,
   toCents,
   type DiscountMode,
@@ -111,6 +114,7 @@ export default function QuickSaleScreen() {
   // Last sold price per cart item, fetched once per item.
   const [lastSales, setLastSales] = useState<Record<string, api.LastSale | null>>({});
   const [scanNote, setScanNote] = useState<{ text: string; ok: boolean } | null>(null);
+  const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogRequest = useRef(0);
   const submissionInFlight = useRef(false);
@@ -339,11 +343,20 @@ export default function QuickSaleScreen() {
         hit = undefined;
       }
     } else if (!hit) {
+    let hit = items.find((item) => sameBarcode(item.upc, data) || sameSku(item.sku, data));
+    let reachable = true;
+    if (!hit) {
       try {
-        const res = await api.listItems({ upc: data, perPage: 5, availableOnly: true });
-        hit = res.items[0];
+        // Store tags, SKU stickers, label QRs and the seller's own rules.
+        hit = (await api.resolveBarcode(data)).item ?? undefined;
       } catch {
-        hit = undefined;
+        reachable = false;
+        try {
+          const res = await api.listItems({ upc: data, perPage: 5, availableOnly: true });
+          hit = res.items[0];
+        } catch {
+          hit = undefined;
+        }
       }
     }
     if (hit) {
@@ -353,9 +366,12 @@ export default function QuickSaleScreen() {
       addToCart(found);
       const inCart = (cart[found.id]?.qty ?? 0) + 1;
       showScanNote(`Added ${found.name}${inCart > 1 ? ` · ${inCart} in cart` : ""}`, true);
+    } else if (reachable) {
+      triggerHaptic("warning");
+      setUnknownCode(data);
     } else {
       triggerHaptic("warning");
-      showScanNote(`Not in stock: ${data}. Add it in Add Stock first.`, false);
+      showScanNote(`Not found offline: ${data}. Scan again when you're back online to link it.`, false);
     }
     scanLock.current = false;
   };
@@ -914,8 +930,8 @@ export default function QuickSaleScreen() {
           <CameraView
             style={styles.flex}
             facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] }}
-            onBarcodeScanned={onBarcodeScanned}
+            barcodeScannerSettings={{ barcodeTypes: [...SCANNER_BARCODE_TYPES] }}
+            onBarcodeScanned={unknownCode ? undefined : onBarcodeScanned}
           />
           <ScannerOverlay
             hint={cartLines.length ? `${cartLines.reduce((n, l) => n + l.qty, 0)} in cart · keep scanning` : "Scan items to add them to the sale"}
@@ -932,6 +948,25 @@ export default function QuickSaleScreen() {
               <Text numberOfLines={2} style={styles.scanNoteText}>{scanNote.text}</Text>
             </View>
           ) : null}
+          <UnknownBarcodeSheet
+            code={unknownCode}
+            onClose={() => setUnknownCode(null)}
+            onLinked={(item) => {
+              setUnknownCode(null);
+              addToCart(item);
+              showScanNote(`Linked and added ${item.name}`, true);
+            }}
+            onAddNew={(code) => {
+              setUnknownCode(null);
+              setScannerOpen(false);
+              router.push({ pathname: "/inventory/add", params: { upc: code } });
+            }}
+            onMakeRule={(code) => {
+              setUnknownCode(null);
+              setScannerOpen(false);
+              router.push({ pathname: "/settings/barcode-rules", params: { sample: code } });
+            }}
+          />
         </View>
       </Modal>
 

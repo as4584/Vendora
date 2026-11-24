@@ -111,6 +111,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="settings/support" options={{ href: null, headerTitle: "Support" }} />
       <Tabs.Screen name="settings/show-summary" options={{ href: null, headerTitle: "Show Summary" }} />
       <Tabs.Screen name="settings/tax-pack" options={{ href: null, headerTitle: "Tax Pack" }} />
+      <Tabs.Screen name="settings/barcode-rules" options={{ href: null, headerTitle: "Barcode Rules" }} />
+      <Tabs.Screen name="settings/catalog-admin" options={{ href: null, headerTitle: "Catalog Admin" }} />
       <Tabs.Screen name="customers/index" options={{ href: null, headerTitle: "Customers" }} />
       <Tabs.Screen name="customers/[id]" options={{ href: null, headerTitle: "Customer" }} />
     </Tabs>

@@ -288,7 +288,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView testID="settings-content" style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.sm }]}>
-      <HeaderTitle title="Settings" subtitle="Account, invoice details and connected stores" />
+      <HeaderTitle title="Settings" subtitle="Your profile, your logo, and the apps you connect" />
 
       <Card style={{ gap: SPACING.md }}>
         <SectionLabel>Account</SectionLabel>
@@ -309,7 +309,7 @@ export default function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.emailText}>{user?.email}</Text>
             <Text style={styles.helperText}>{user?.business_name || "Ninja Resale"}</Text>
-            <Text style={styles.helperText}>Tap profile photo to update the invoice identity.</Text>
+            <Text style={styles.helperText}>Tap your photo to change it. It shows on your invoices.</Text>
           </View>
           <Pill label={user?.is_partner ? "Partner" : user?.subscription_tier ? user.subscription_tier.charAt(0).toUpperCase() + user.subscription_tier.slice(1) : "Free"} tone={user?.is_partner ? "success" : "primary"} />
         </TouchableOpacity>
@@ -318,8 +318,8 @@ export default function SettingsScreen() {
       <InvoiceBrandingCard user={user} onSaved={refreshUser} />
 
       <Card style={{ gap: SPACING.sm }}>
-        <SectionLabel>Resqlo Plus</SectionLabel>
-        <Text style={styles.helperText}>Billing, analytics, storefront, and support are now available in the app.</Text>
+        <SectionLabel>Your plan</SectionLabel>
+        <Text style={styles.helperText}>Change your plan, see your numbers, or ask us for help.</Text>
         <View style={styles.productActions}>
           <ActionButton label="Plans & Billing" onPress={() => router.push("/settings/subscription")} tone="secondary" compact />
           <ActionButton label="Advanced Analytics" onPress={() => router.push("/settings/analytics")} tone="secondary" compact />
@@ -329,30 +329,31 @@ export default function SettingsScreen() {
       </Card>
 
       <Card style={{ gap: SPACING.sm }}>
-        <SectionLabel>Sync Overview</SectionLabel>
+        <SectionLabel>Connected apps</SectionLabel>
         <View style={styles.syncOverviewRow}>
           <View>
             <Text style={styles.syncStatValue}>{health.filter((entry) => entry.last_run_status === "completed" || entry.last_run_status === "partial").length}</Text>
-            <Text style={styles.syncStatLabel}>Healthy providers</Text>
+            <Text style={styles.syncStatLabel}>Working</Text>
           </View>
           <View>
             <Text style={styles.syncStatValue}>{issuesCount}</Text>
-            <Text style={styles.syncStatLabel}>Open issues</Text>
+            <Text style={styles.syncStatLabel}>Need a fix</Text>
           </View>
           <View>
             <Text style={styles.syncStatValue}>{health.length}</Text>
-            <Text style={styles.syncStatLabel}>Tracked providers</Text>
+            <Text style={styles.syncStatLabel}>Connected</Text>
           </View>
         </View>
-        <ActionButton label="Open Sync Center" onPress={() => router.push("/settings/sync-center")} tone="secondary" />
+        <ActionButton label="See connected apps" onPress={() => router.push("/settings/sync-center")} tone="secondary" />
       </Card>
 
-      <SectionLabel>Integrations</SectionLabel>
+      <SectionLabel>Connect an app</SectionLabel>
+      <Text style={styles.helperText}>Already sell on one of these? Connect it and your stock stays in sync on its own.</Text>
       <ProviderCard
         name="Lightspeed"
         connected={lsStatus?.connected ?? false}
         lastSynced={lsStatus?.last_synced_at}
-        helper="POS inventory source with recurring sync support."
+        helper="Your Lightspeed register. Stock syncs both ways."
         loading={lsLoading}
         onConnect={handleConnectLightspeed}
         onPush={handlePushLightspeed}
@@ -362,7 +363,7 @@ export default function SettingsScreen() {
         name="Square"
         connected={sqStatus?.connected ?? false}
         lastSynced={sqStatus?.last_synced_at}
-        helper="Connect Square to compare local inventory against your provider catalog."
+        helper="Your Square register. We keep counts matched."
         loading={sqLoading}
         onConnect={handleConnectSquare}
         onDisconnect={() => handleDisconnectPos("square")}
@@ -371,7 +372,7 @@ export default function SettingsScreen() {
         name="Clover"
         connected={cvStatus?.connected ?? false}
         lastSynced={cvStatus?.last_synced_at}
-        helper="Pull Clover inventory updates into the same stock dashboard."
+        helper="Your Clover register. Its stock shows up here."
         loading={cvLoading}
         onConnect={handleConnectClover}
         onDisconnect={() => handleDisconnectPos("clover")}
@@ -380,7 +381,7 @@ export default function SettingsScreen() {
         name="eBay"
         connected={ebStatus?.connected ?? false}
         lastSynced={ebStatus?.last_synced_at}
-        helper="Import your eBay listings and orders into Resqlo (read-only)."
+        helper="Brings in your eBay listings and sales. We never change eBay."
         loading={ebLoading}
         onConnect={handleConnectEbay}
         onDisconnect={handleDisconnectEbay}
@@ -460,7 +461,7 @@ export default function SettingsScreen() {
       </Modal>
 
       <Card style={{ gap: SPACING.sm }}>
-        <SectionLabel>Danger Zone</SectionLabel>
+        <SectionLabel>Delete account</SectionLabel>
         <Text style={styles.helperText}>Permanently deletes your account and Resqlo-owned data.</Text>
         <ActionButton label="Delete Account" onPress={() => setDeleteModalOpen(true)} tone="ghost" />
       </Card>

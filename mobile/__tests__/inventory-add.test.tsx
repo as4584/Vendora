@@ -11,8 +11,10 @@ const mockRequestCameraPermission = jest.fn();
 let mockCameraPermission: { granted: boolean } | null = { granted: true };
 const mockTakePicture = jest.fn(async () => ({ uri: 'file:///label.jpg' }));
 
+let mockAddParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, push: mockPush }),
+  useLocalSearchParams: () => mockAddParams,
 }));
 
 jest.mock('expo-image-picker', () => ({
@@ -111,6 +113,16 @@ describe('add inventory screen', () => {
     render(<AddItemScreen />);
     await waitFor(() => expect(smartScan.backfillScanMemoryOnce).toHaveBeenCalled());
     expect(smartScan.syncScanMemory).toHaveBeenCalled();
+  });
+
+  it('prefills the barcode when opened from an unknown scan', () => {
+    mockAddParams = { upc: 'STORE-42' };
+    try {
+      const screen = render(<AddItemScreen />);
+      expect(screen.getByLabelText('UPC or Barcode').props.value).toBe('STORE-42');
+    } finally {
+      mockAddParams = {};
+    }
   });
 
   it('requires an item name before creating inventory', () => {
@@ -355,6 +367,25 @@ describe('add inventory screen', () => {
     await waitFor(() => expect(mockRememberScan).toHaveBeenCalledWith('195866137738', expect.objectContaining({
       name: 'Nike Dunk Low Panda', style_code: 'DD1391-100', buy_price: '110.00',
     }), expect.any(Object)));
+  });
+
+  it('fills from the Resqlo catalog, and a Resqlo code is not kept as the UPC', async () => {
+    for (const [data, upc] of [['RQ-7F3K9XA', ''], ['196153282201', '196153282201']]) {
+      mockResolveScan.mockResolvedValueOnce({
+        barcode: data, match: 'catalog', times_seen: 0,
+        fields: { name: 'Jordan 4 Black Cat', style_code: 'CU1110-010', size: '10', rq_code: 'RQ-7F3K9XA' },
+      });
+      const screen = render(<AddItemScreen />);
+      fireEvent.press(screen.getByTestId('smart-scan-button'));
+      const camera = await screen.findByTestId('camera-view');
+      await act(async () => {
+        await camera.props.onBarcodeScanned({ data });
+      });
+      expect(screen.getByLabelText('Item Name').props.value).toBe('Jordan 4 Black Cat');
+      expect(screen.getByTestId('smart-scan-note')).toHaveTextContent(/Resqlo catalog/);
+      expect(screen.getByLabelText(/UPC/).props.value).toBe(upc);
+      screen.unmount();
+    }
   });
 
   it('reads the box label for a new barcode without overwriting typed fields', async () => {

@@ -17,6 +17,8 @@ from app.dependencies.auth import get_current_user
 from app.models.inventory import InventoryItem
 from app.models.scan_memory import ScanMemory
 from app.models.user import User
+from app.services import catalog
+from app.services.barcode_rules import MAX_SCAN_LENGTH, clean_code, fit_code
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -33,7 +35,7 @@ def normalize_barcode(raw: str) -> str:
     # A UPC-A read as EAN-13 gains a leading zero; store one canonical form.
     if len(code) == 13 and code.isdigit() and code.startswith("0"):
         code = code[1:]
-    return code
+    return fit_code(code)
 
 
 def normalize_style(raw: Optional[str]) -> Optional[str]:
@@ -56,7 +58,7 @@ def _clean_fields(raw: dict) -> dict:
 
 
 class LearnBody(BaseModel):
-    barcode: str = Field(min_length=4, max_length=64)
+    barcode: str = Field(min_length=4, max_length=MAX_SCAN_LENGTH)
     fields: dict
 
     @field_validator("barcode")
@@ -70,7 +72,7 @@ class LearnBody(BaseModel):
 
 class ScanResult(BaseModel):
     barcode: str
-    match: Optional[str]  # "memory" | "inventory" | "style" | None
+    match: Optional[str]  # "memory" | "inventory" | "catalog" | "style" | None
     fields: dict
     times_seen: int = 0
 
@@ -88,11 +90,17 @@ def _item_fields(item: InventoryItem) -> dict:
 
 @router.get("/lookup", response_model=ScanResult)
 def lookup(
-    barcode: str = Query(min_length=4, max_length=64),
+    barcode: str = Query(min_length=4, max_length=MAX_SCAN_LENGTH),
     style_code: Optional[str] = Query(default=None, max_length=64),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    raw = clean_code(barcode)
+    if catalog.is_rq_code(raw):
+        product = catalog.find(db, raw)
+        fields = catalog.product_fields(product) if product else {}
+        return ScanResult(barcode=raw, match="catalog" if product else None, fields=fields)
+
     code = normalize_barcode(barcode)
     mem = db.query(ScanMemory).filter_by(user_id=current_user.id, barcode=code).first()
     if mem:
@@ -108,6 +116,10 @@ def lookup(
     if item:
         return ScanResult(barcode=code, match="inventory", fields=_item_fields(item))
 
+    product = catalog.find(db, code)
+    if product:
+        return ScanResult(barcode=code, match="catalog", fields=catalog.product_fields(product))
+
     style = normalize_style(style_code)
     if style:
         sibling = (
@@ -118,6 +130,10 @@ def lookup(
         )
         if sibling:
             fields = {k: v for k, v in (sibling.fields or {}).items() if k not in PER_BOX_KEYS}
+            return ScanResult(barcode=code, match="style", fields=fields)
+        shared = catalog.first_of_style(db, style)
+        if shared:
+            fields = {k: v for k, v in catalog.product_fields(shared).items() if k not in (*PER_BOX_KEYS, "rq_code")}
             return ScanResult(barcode=code, match="style", fields=fields)
 
     return ScanResult(barcode=code, match=None, fields={})
@@ -148,6 +164,7 @@ def learn(
     else:
         mem = ScanMemory(user_id=current_user.id, barcode=body.barcode, style_code=style, fields=fields, times_seen=1)
         db.add(mem)
+    catalog.contribute(db, fields, body.barcode, confirmed=True)
     db.commit()
     db.refresh(mem)
     return ScanResult(barcode=mem.barcode, match="memory", fields=mem.fields, times_seen=mem.times_seen)

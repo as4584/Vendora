@@ -27,6 +27,8 @@ import { ProUpsell, isProRequired } from "../../../components/ProUpsell";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import { errorMessage } from "../../../services/errors";
+import { LinkedBarcodes } from "../../../components/LinkedBarcodes";
+import { ResqloCode } from "../../../components/ResqloCode";
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   in_stock: ["listed", "sold"],
@@ -362,6 +364,9 @@ export default function ItemDetailScreen() {
         <DetailRow label="UPC" value={item.upc || "Not set"} copy={!!item.upc} />
         <DetailRow label="Notes" value={item.notes || "No notes"} />
       </Card>
+
+      <ResqloCode itemId={item.id} />
+      <LinkedBarcodes itemId={item.id} />
 
       <Card>
         <SectionLabel>Sales History</SectionLabel>

@@ -23,7 +23,7 @@ import {
     Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
@@ -48,6 +48,7 @@ import {
 
 import { BRAND, COLORS, FONT_SCALE, TONES } from "../../../theme/tokens";
 import { playSound } from "../../../services/sounds";
+import { SCANNER_BARCODE_TYPES } from "../../../utils/barcodeRules";
 const CATEGORY_PREFIXES: Record<string, string> = {
     sneakers: "SNK",
     clothing: "CLO",
@@ -80,6 +81,15 @@ function generateSKU(category: string): string {
 
 type PhotoSide = "front" | "back";
 
+const RESQLO_CODE = /^RQ-[0-9A-HJKMNP-TV-Z]{7}$/i;
+const isResqloCode = (code: string) => RESQLO_CODE.test(code.trim());
+
+function scanNoteFor(match: "memory" | "inventory" | "catalog"): string {
+    if (match === "memory") return "Filled from your scan memory. Check it and save.";
+    if (match === "inventory") return "Filled from an item you already have. Check it and save.";
+    return "Filled from the Resqlo catalog. Check it and save.";
+}
+
 export default function AddItemScreen() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
@@ -88,7 +98,8 @@ export default function AddItemScreen() {
     const [name, setName] = useState("");
     const [category, setCategory] = useState("");
     const [sku, setSku] = useState("");
-    const [upc, setUpc] = useState("");
+    const { upc: scannedUpc } = useLocalSearchParams<{ upc?: string }>();
+    const [upc, setUpc] = useState(typeof scannedUpc === "string" ? scannedUpc : "");
     const [size, setSize] = useState("");
     const [color, setColor] = useState("");
     const [condition, setCondition] = useState("");
@@ -275,13 +286,10 @@ export default function AddItemScreen() {
             setUpc(barcode);
             try {
                 const hit = await resolveScan(barcode, read.style_code, session);
-                if (hit.match === "memory" || hit.match === "inventory") {
+                if (hit.match === "memory" || hit.match === "inventory" || hit.match === "catalog") {
                     // Remembered beats read.
                     fields = mergeFields(hit.fields, read);
-                    note =
-                        hit.match === "memory"
-                            ? "Filled from your scan memory. Check it and save."
-                            : "Filled from an item you already have. Check it and save.";
+                    note = scanNoteFor(hit.match);
                 } else if (hit.match) {
                     // Same shoe, new size: the box's size wins.
                     fields = { ...read, ...hit.fields, size: read.size ?? hit.fields.size };
@@ -345,13 +353,15 @@ export default function AddItemScreen() {
         try {
             const hit = await resolveScan(data, undefined, session);
             if (!isCurrentSession(session)) return;
-            if (hit.match === "memory" || hit.match === "inventory") {
+            if (hit.match === "memory" || hit.match === "inventory" || hit.match === "catalog") {
                 applyScanFields(hit.fields);
+                // A Resqlo code names the product, not this box's UPC.
+                if (isResqloCode(data)) setUpc("");
                 closeScanner();
                 setScanNote(
-                    hit.match === "memory"
-                        ? `Filled from your scan memory${hit.times_seen > 1 ? ` (seen ${hit.times_seen} times)` : ""}. Check it and save.`
-                        : "Filled from an item you already have. Check it and save.",
+                    hit.match === "memory" && hit.times_seen > 1
+                        ? `Filled from your scan memory (seen ${hit.times_seen} times). Check it and save.`
+                        : scanNoteFor(hit.match),
                 );
                 return;
             }
@@ -842,7 +852,7 @@ export default function AddItemScreen() {
                         ref={cameraRef}
                         style={styles.camera}
                         facing="back"
-                        barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] }}
+                        barcodeScannerSettings={{ barcodeTypes: [...SCANNER_BARCODE_TYPES] }}
                         onBarcodeScanned={scanned ? undefined : onBarcodeScanned}
                     />
                     {scanStep === "barcode" ? (

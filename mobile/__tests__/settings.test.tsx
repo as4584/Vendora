@@ -501,8 +501,8 @@ describe('SettingsScreen', () => {
       new Error('native unavailable'),
     );
     const screen = render(<SettingsScreen />);
-    await screen.findByText('Open Sync Center');
-    fireEvent.press(screen.getByText('Open Sync Center'));
+    await screen.findByText('See connected apps');
+    fireEvent.press(screen.getByText('See connected apps'));
     fireEvent.press(screen.getByText('Sign Out'));
     expect(mockPush).toHaveBeenCalledWith('/settings/sync-center');
     expect(backgroundSync.unregisterBackgroundSync).toHaveBeenCalled();

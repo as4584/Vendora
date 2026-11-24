@@ -19,6 +19,7 @@ from app.routers import auth, inventory, transactions, dashboard, invoices, webh
 from app.routers import export, features, sellers, integrations
 from app.routers import subscriptions, support, reset_bridge, legal_pages, scan, stockx, customers
 from app.routers import google_sheets, events, devices, trades
+from app.routers import google_sheets, events, devices, barcodes, catalog
 from app.config import settings
 from app.observability import init_sentry
 from app.rate_limit import limiter
@@ -135,6 +136,8 @@ app.include_router(google_sheets.router, prefix="/api/v1")
 app.include_router(subscriptions.router, prefix="/api/v1")
 app.include_router(support.router, prefix="/api/v1")
 app.include_router(scan.router, prefix="/api/v1")
+app.include_router(barcodes.router, prefix="/api/v1")
+app.include_router(catalog.router, prefix="/api/v1")
 app.include_router(customers.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
 app.include_router(devices.router, prefix="/api/v1")
