@@ -23,6 +23,7 @@ import { COLORS, FONT_SCALE, GRADIENTS, RADII, SPACING } from "../../theme/token
 import { loadSnapshot, peekSnapshot, saveSnapshot } from "../../services/offline/snapshot";
 import { SkeletonDashboard } from "../../components/Skeleton";
 import { SyncStatusPill } from "../../components/SyncStatusPill";
+import { SavingsCard } from "../../components/SavingsCard";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -176,6 +177,8 @@ export default function DashboardScreen() {
           </View>
         ) : null}
       </GradientCard>
+
+      <SavingsCard />
 
       {/* 2x2 stat grid */}
       <View style={styles.grid}>
