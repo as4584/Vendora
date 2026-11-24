@@ -54,6 +54,7 @@ jest.mock('../services/api', () => ({
   listItems: jest.fn(),
   exportInventoryWarehouseCSV: jest.fn(),
   bulkDeleteItems: jest.fn(),
+  bulkUpdateItems: jest.fn(),
   deleteItem: jest.fn(async () => undefined),
   getToken: jest.fn(async () => 'tok-123'),
   exportInventoryXlsxUrl: jest.fn(() => 'https://api.test/export/inventory?format=xlsx'),
@@ -404,6 +405,40 @@ describe('InventoryListScreen', () => {
     );
     fireEvent.press(screen.getByText('Delete 1'));
     await waitFor(() => expect(apiMock.bulkDeleteItems).toHaveBeenCalledWith(['item-1'], false));
+  });
+
+  it('bulk-edits the selected items and reports skipped ones', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [makeItem()], total: 1 });
+    (apiMock.bulkUpdateItems as jest.Mock).mockResolvedValue({
+      updated: 0, skipped: [{ id: 'item-1', reason: 'No list price to adjust' }],
+    });
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Jordan 1 Chicago');
+    fireEvent.press(screen.getByText('Select'));
+    fireEvent.press(screen.getByText('Jordan 1 Chicago'));
+    fireEvent.press(await screen.findByText('Edit 1'));
+    fireEvent.changeText(screen.getByLabelText('List price'), '-10');
+    fireEvent.press(screen.getByText('Listed'));
+    fireEvent.press(screen.getByText('Apply to 1'));
+    await waitFor(() => expect(apiMock.bulkUpdateItems).toHaveBeenCalledWith(
+      ['item-1'], { list_price: { mode: 'percent', value: -10 }, status: 'listed' },
+    ));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith(
+      'Updated', expect.stringContaining('1 skipped: No list price to adjust'),
+    ));
+  });
+
+  it('shows an error when bulk edit fails', async () => {
+    (apiMock.listItems as jest.Mock).mockResolvedValue({ ...PAGINATED_EMPTY, items: [makeItem()], total: 1 });
+    (apiMock.bulkUpdateItems as jest.Mock).mockRejectedValueOnce(new Error('update down'));
+    const screen = render(<InventoryListScreen />);
+    await screen.findByText('Jordan 1 Chicago');
+    fireEvent.press(screen.getByText('Select'));
+    fireEvent.press(screen.getByText('Jordan 1 Chicago'));
+    fireEvent.press(await screen.findByText('Edit 1'));
+    fireEvent.changeText(screen.getByLabelText('Cost'), '12.50');
+    fireEvent.press(screen.getByText('Apply to 1'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Update failed', 'update down'));
   });
 
   it('bulk-deletes from app + source and reports failures, then cancels select mode', async () => {

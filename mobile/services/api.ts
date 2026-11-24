@@ -821,6 +821,29 @@ export async function bulkDeleteItems(
   });
 }
 
+export interface BulkUpdatePayload {
+  list_price?: { mode: "set" | "percent" | "amount"; value: number };
+  buy_price?: number;
+  category?: string;
+  platform?: string;
+  status?: "in_stock" | "listed";
+}
+
+export interface BulkUpdateResult {
+  updated: number;
+  skipped: { id: string; reason: string }[];
+}
+
+export async function bulkUpdateItems(
+  itemIds: string[],
+  changes: BulkUpdatePayload
+): Promise<BulkUpdateResult> {
+  return request<BulkUpdateResult>("/inventory/bulk-update", {
+    method: "POST",
+    body: JSON.stringify({ item_ids: itemIds, ...changes }),
+  });
+}
+
 export async function updateItemStatus(
   id: string,
   status: string
