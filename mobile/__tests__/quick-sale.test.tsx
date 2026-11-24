@@ -131,6 +131,18 @@ describe('QuickSaleScreen (checkout)', () => {
     expect(mockReplace).toHaveBeenCalledWith('/(tabs)/dashboard');
   });
 
+  it('pre-fills the fee from where it sold, and keeps a typed fee', async () => {
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.press(screen.getByText('eBay'));
+    await waitFor(() => expect(screen.getByLabelText('Fee amount').props.value).toBe('46.64'));
+    fireEvent.changeText(screen.getByLabelText('Fee amount'), '40');
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await waitFor(() => expect(apiMock.createSaleOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ fee_amount: '40.00' }),
+    ));
+  });
+
   it('starts a new sale from the receipt', async () => {
     const screen = await ready();
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));

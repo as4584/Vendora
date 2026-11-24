@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PLATFORM_FEES, estimateFeeCents } from "../../../utils/platformFees";
 import {
   View,
   Text,
@@ -87,6 +88,8 @@ export default function QuickSaleScreen() {
   const [method, setMethod] = useState("cash");
   const [split, setSplit] = useState<PaymentRow[]>([]);
   const [feeAmount, setFeeAmount] = useState("");
+  const [soldOn, setSoldOn] = useState<string | null>(null);
+  const [feeEdited, setFeeEdited] = useState(false);
   const [discountMode, setDiscountMode] = useState<DiscountMode>("amount");
   const [discountValue, setDiscountValue] = useState("");
   const [taxOn, setTaxOn] = useState(false);
@@ -223,7 +226,10 @@ export default function QuickSaleScreen() {
     discountValue,
     taxRate: taxOn ? taxRate : "",
   });
-  const fee = toCents(feeAmount);
+  // Picking where it sold pre-fills that platform's typical fee until the
+  // seller types their own.
+  const feeText = soldOn && !feeEdited ? centsToString(estimateFeeCents(soldOn, totals.total)) : feeAmount;
+  const fee = toCents(feeText);
   const splitting = split.length > 0;
   const splitPaid = split.reduce((sum, row) => sum + toCents(row.amount), 0);
   const splitLeft = totals.total - splitPaid;
@@ -349,6 +355,8 @@ export default function QuickSaleScreen() {
     setMethod("cash");
     setSplit([]);
     setFeeAmount("");
+    setSoldOn(null);
+    setFeeEdited(false);
     setDiscountMode("amount");
     setDiscountValue("");
     setTaxRate(defaultTax);
@@ -799,13 +807,38 @@ export default function QuickSaleScreen() {
               </View>
             </View>
           )}
+          <Text style={styles.adjustLabel}>Sold on</Text>
+          <View style={styles.chipWrap}>
+            {PLATFORM_FEES.map((p) => (
+              <Chip
+                key={p.key}
+                label={p.label}
+                compact
+                active={soldOn === p.key}
+                onPress={() => {
+                  setFeeEdited(false);
+                  setFeeAmount("");
+                  setSoldOn(soldOn === p.key ? null : p.key);
+                }}
+              />
+            ))}
+          </View>
+          {soldOn ? (
+            <Text style={styles.helperText}>
+              Estimated {PLATFORM_FEES.find((p) => p.key === soldOn)?.label} fee
+              {PLATFORM_FEES.find((p) => p.key === soldOn)?.note ? ` (${PLATFORM_FEES.find((p) => p.key === soldOn)?.note})` : ""}. Edit it if yours differs.
+            </Text>
+          ) : null}
           <TextInput
             accessibilityLabel="Fee amount"
             style={styles.input}
             placeholder="Processing fee (optional)"
             placeholderTextColor={COLORS.textSoft}
-            value={feeAmount}
-            onChangeText={setFeeAmount}
+            value={feeText}
+            onChangeText={(text) => {
+              setFeeEdited(true);
+              setFeeAmount(text);
+            }}
             keyboardType="decimal-pad"
           />
           <TextInput
