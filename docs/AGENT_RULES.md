@@ -106,6 +106,17 @@ Agents must:
 - Always update coverage percentage
 - Always document dependency changes
 
+### Before pushing mobile changes
+
+The required "iPhone Smoke Tests" check fails on any of these, so run them
+from `mobile/` first:
+
+- `npm run lint` (errors fail CI; e.g. unescaped `'` in JSX, setState in an effect)
+- `npx tsc --noEmit`
+- `npx jest --coverage` (global function coverage must stay at or above 94%,
+  so every new screen or component needs a render test)
+- `npx expo-doctor` when dependencies change
+
 ---
 
 ## ⛔ 8. Agents Are NOT Allowed To
