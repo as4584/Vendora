@@ -1603,6 +1603,14 @@ export async function exportTransactionsCSV(): Promise<string> {
   return request<string>("/export/transactions");
 }
 
+export type LabelLayout = "thermal" | "sheet";
+
+/** Absolute URL for printable price labels (needs the auth header). */
+export function priceLabelsUrl(ids: string[], layout: LabelLayout = "thermal", perUnit = false): string {
+  const q = new URLSearchParams({ ids: ids.join(","), layout, per_unit: String(perUnit) });
+  return `${API_BASE_URL}/inventory/labels.pdf?${q.toString()}`;
+}
+
 /** Absolute URL for a checkout's branded PDF receipt (needs the auth header). */
 export function orderReceiptPdfUrl(orderId: string): string {
   return `${API_BASE_URL}/transactions/order/${encodeURIComponent(orderId)}/receipt.pdf`;

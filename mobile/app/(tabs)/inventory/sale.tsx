@@ -18,6 +18,7 @@ import * as api from "../../../services/api";
 import { CustomerPicker } from "../../../components/CustomerPicker";
 import { isOnline } from "../../../services/offline";
 import { useConMode } from "../../../services/conMode";
+import { itemIdFromScan } from "../../../utils/labels";
 import { Card, Icon, Pill, SectionLabel } from "../../../components/ui";
 import { Button, IconButton, triggerHaptic } from "../../../components/Button";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
@@ -328,8 +329,16 @@ export default function QuickSaleScreen() {
     if (lastScan.current && lastScan.current.code === data && now - lastScan.current.at < REPEAT_COOLDOWN_MS) return;
     scanLock.current = true;
     lastScan.current = { code: data, at: now };
-    let hit = items.find((item) => sameBarcode(item.upc, data));
-    if (!hit) {
+    const labelId = itemIdFromScan(data);
+    let hit = labelId ? items.find((item) => item.id === labelId) : items.find((item) => sameBarcode(item.upc, data));
+    if (!hit && labelId) {
+      try {
+        const item = await api.getItem(labelId);
+        hit = resolveQty(item) > 0 ? item : undefined;
+      } catch {
+        hit = undefined;
+      }
+    } else if (!hit) {
       try {
         const res = await api.listItems({ upc: data, perPage: 5, availableOnly: true });
         hit = res.items[0];
