@@ -15,5 +15,5 @@ python-multipart==0.0.33
 fpdf2>=2.9.0,<3.0.0
 segno>=1.6,<2.0
 slowapi==0.1.10
-stripe>=14.4.2,<15.0.0
+stripe>=15.6.2,<16.0.0
 sentry-sdk[fastapi]==2.74.0
