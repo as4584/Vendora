@@ -2373,4 +2373,13 @@ export interface Savings {
 /** Work Resqlo's integrations did for the seller this month. */
 export async function getSavings(): Promise<Savings> {
   return request<Savings>("/dashboard/savings");
+export interface AgingStock {
+  days: number;
+  count: number;
+  items: { id: string; name: string; expected_sell_price: string | null; buy_price: string | null; days_old: number }[];
+}
+
+/** In-stock/listed items that have sat unsold the longest. */
+export async function getAgingStock(days = 60): Promise<AgingStock> {
+  return request<AgingStock>(`/inventory/aging?days=${days}`);
 }

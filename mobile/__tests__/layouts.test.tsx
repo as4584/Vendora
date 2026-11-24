@@ -127,6 +127,7 @@ describe('router layouts', () => {
       'inventory/import',
       'inventory/batch-scan',
         'inventory/add-costs',
+      'inventory/aging',
       'settings/sync-center',
       'settings/subscription',
       'settings/analytics',

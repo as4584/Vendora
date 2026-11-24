@@ -24,6 +24,7 @@ import { loadSnapshot, peekSnapshot, saveSnapshot } from "../../services/offline
 import { SkeletonDashboard } from "../../components/Skeleton";
 import { SyncStatusPill } from "../../components/SyncStatusPill";
 import { SavingsCard } from "../../components/SavingsCard";
+import { AgingCard } from "../../components/AgingCard";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -179,6 +180,7 @@ export default function DashboardScreen() {
       </GradientCard>
 
       <SavingsCard />
+      <AgingCard />
 
       {/* 2x2 stat grid */}
       <View style={styles.grid}>
