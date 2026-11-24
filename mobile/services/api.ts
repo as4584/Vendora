@@ -18,6 +18,8 @@ import {
   queueUpdateItem,
   queueQuickSale,
   queueSaleOrder,
+  queueTrade,
+  flushInBackground,
   queueCreateInvoice,
   getPendingInvoices,
   getPendingInvoice,
@@ -26,6 +28,8 @@ import {
   readCachedDashboard,
 } from "./offline";
 import type { SortKey } from "../utils/inventorySort";
+import { isConMode } from "./conMode";
+import { cachedComps } from "./compsCache";
 import { accountKey, OfflineStorageError, readAccountJSON, tempId, writeAccountJSON } from "./offline/store";
 import {
   assertSession, captureSession, replaceSession, requireAccount, SessionChangedError, type SessionContext,
@@ -661,6 +665,8 @@ export interface ListItemsParams {
   upc?: string;
   /** Sort menu order; server default is newest. */
   sort?: SortKey;
+  /** Only items with no buy price. */
+  missingCost?: boolean;
 }
 
 export async function listItems(
@@ -690,6 +696,7 @@ export async function listItems(
   if (params.source) qs.set("source", params.source);
   if (params.availableOnly) qs.set("available_only", "true");
   if (params.upc) qs.set("upc", params.upc);
+  if (params.missingCost) qs.set("missing_cost", "true");
   if (params.sort && params.sort !== "newest") qs.set("sort", params.sort);
 
   if (!isOnline()) return offlineListItems(normalized, session);
@@ -821,6 +828,29 @@ export async function bulkDeleteItems(
   });
 }
 
+export interface BulkUpdatePayload {
+  list_price?: { mode: "set" | "percent" | "amount"; value: number };
+  buy_price?: number;
+  category?: string;
+  platform?: string;
+  status?: "in_stock" | "listed";
+}
+
+export interface BulkUpdateResult {
+  updated: number;
+  skipped: { id: string; reason: string }[];
+}
+
+export async function bulkUpdateItems(
+  itemIds: string[],
+  changes: BulkUpdatePayload
+): Promise<BulkUpdateResult> {
+  return request<BulkUpdateResult>("/inventory/bulk-update", {
+    method: "POST",
+    body: JSON.stringify({ item_ids: itemIds, ...changes }),
+  });
+}
+
 export async function updateItemStatus(
   id: string,
   status: string
@@ -846,21 +876,6 @@ export async function uploadItemPhotos(
       photo_front: photoFront ?? null,
       photo_back: photoBack ?? null,
     }),
-  });
-}
-
-/**
- * Save size variants for a clothing item.
- * Variants are stored in custom_attributes.variants.
- */
-export async function updateItemVariants(
-  id: string,
-  variants: SizeVariant[]
-): Promise<InventoryItem> {
-  const item = await getItem(id);
-  const existing = item.custom_attributes ?? {};
-  return updateItem(id, {
-    custom_attributes: { ...existing, variants },
   });
 }
 
@@ -924,6 +939,70 @@ export async function previewInventoryImport(
   });
 }
 
+/**
+ * Preview a spreadsheet too big for one request: upload it in chunks, then
+ * build the preview server-side. A failed chunk is retried, and the server
+ * ignores a chunk it already has, so a flaky connection can't corrupt it.
+ */
+export async function previewInventoryImportChunked(
+  file: { uri: string; name: string; size: number },
+  readChunk: (uri: string, offset: number, length: number) => Promise<string>,
+  onProgress?: (fraction: number) => void,
+  onPhotos?: (done: number, total: number) => void,
+  pollMs = 1000
+): Promise<InventoryImportPreview> {
+  const started = await request<{ upload_id: string; chunk_bytes: number }>("/inventory/imports/uploads", {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name, size: file.size }),
+  });
+  const chunkBytes = started.chunk_bytes;
+  const total = Math.max(1, Math.ceil(file.size / chunkBytes));
+  for (let index = 0; index < total; index += 1) {
+    const data = await readChunk(file.uri, index * chunkBytes, chunkBytes);
+    const send = () =>
+      request(`/inventory/imports/uploads/${started.upload_id}`, {
+        method: "PUT",
+        body: JSON.stringify({ index, data }),
+      });
+    try {
+      await send();
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) throw error;
+      await send();
+    }
+    onProgress?.((index + 1) / total);
+  }
+  const finished = await request<InventoryImportPreview | { job_id: string; status: "pending" }>(
+    `/inventory/imports/uploads/${started.upload_id}/preview`,
+    { method: "POST", body: JSON.stringify({ filename: file.name }) }
+  );
+  if (finished.status !== "pending") return finished as InventoryImportPreview;
+  return waitForImportPreview(finished.job_id, onPhotos, pollMs);
+}
+
+export interface ImportJobStatus {
+  id: string;
+  status: "pending" | "previewed" | "committed" | "failed";
+  progress?: { done: number; total: number } | null;
+  error?: string | null;
+}
+
+/** Excel files are read on the server in the background (photos take a while); poll until the preview is ready. */
+export async function waitForImportPreview(
+  jobId: string,
+  onPhotos?: (done: number, total: number) => void,
+  pollMs = 1000
+): Promise<InventoryImportPreview> {
+  for (;;) {
+    const job = await request<ImportJobStatus>(`/inventory/imports/${jobId}`);
+    if (job.status === "failed") throw new ApiError(job.error || "Couldn't read this spreadsheet.", 400);
+    if (job.status !== "pending") break;
+    if (job.progress) onPhotos?.(job.progress.done, job.progress.total);
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  return request<InventoryImportPreview>(`/inventory/imports/${jobId}/preview`);
+}
+
 export async function importInventoryFromLink(
   url: string,
   dryRun = false
@@ -973,6 +1052,41 @@ export async function importInventoryFile(
   );
 }
 
+export type SalesPlatform = "poshmark" | "mercari" | "whatnot" | "depop" | "other_csv";
+
+export interface SalesImportResult {
+  platform: SalesPlatform;
+  dry_run: boolean;
+  columns: Record<string, string>;
+  rows: number;
+  new_sales: number;
+  duplicates: number;
+  imported: number;
+  gross_total: string;
+  fee_total: string;
+  missing_dates: number;
+  errors: { row: number; reason: string }[];
+}
+
+/** Preview (dryRun) or import sales from a marketplace sales-report CSV. */
+export async function importSalesCsv(
+  file: { uri: string; name: string; mimeType?: string },
+  platform: SalesPlatform,
+  dryRun: boolean
+): Promise<SalesImportResult> {
+  const formData = new FormData();
+  if (Platform.OS === "web") {
+    const blob = await fetch(file.uri).then((response) => response.blob());
+    formData.append("file", blob, file.name);
+  } else {
+    formData.append("file", { uri: file.uri, name: file.name, type: file.mimeType || "text/csv" } as any);
+  }
+  return request<SalesImportResult>(
+    `/transactions/import/sales?platform=${platform}&dry_run=${dryRun ? "true" : "false"}`,
+    { method: "POST", body: formData }
+  );
+}
+
 export type ImportRowEditableField =
   | "name" | "category" | "sku" | "upc" | "size" | "color" | "condition" | "quantity"
   | "buy_price" | "expected_sell_price" | "notes";
@@ -995,6 +1109,152 @@ export async function commitInventoryImport(
   return request<InventoryImportCommit>(`/inventory/imports/${jobId}/commit`, {
     method: "POST",
   });
+}
+
+// ─── Barcode control ───────────────────────────────────
+
+export interface BarcodeResolution {
+  code: string;
+  matched_by: "label" | "linked" | "upc" | "sku" | null;
+  rule_name: string | null;
+  item: InventoryItem | null;
+}
+
+export interface BarcodeRuleInput {
+  name: string;
+  prefix?: string | null;
+  suffix?: string | null;
+  min_length?: number | null;
+  max_length?: number | null;
+  strip_prefix?: boolean;
+  strip_suffix?: boolean;
+  slice_start?: number | null;
+  slice_length?: number | null;
+  lookup_field?: "auto" | "sku" | "upc" | "linked";
+  enabled?: boolean;
+}
+
+export interface BarcodeRule extends Required<BarcodeRuleInput> {
+  id: string;
+  position: number;
+}
+
+export interface LinkedBarcode {
+  code: string;
+  inventory_item_id: string;
+}
+
+/** What a scanned code means for this seller: label QR, rules, links, UPC, SKU. */
+export async function resolveBarcode(code: string): Promise<BarcodeResolution> {
+  return request<BarcodeResolution>(`/scan/resolve?code=${encodeURIComponent(code)}`);
+}
+
+export async function listBarcodeRules(): Promise<BarcodeRule[]> {
+  return request<BarcodeRule[]>("/scan/rules");
+}
+
+export async function createBarcodeRule(body: BarcodeRuleInput): Promise<BarcodeRule> {
+  return request<BarcodeRule>("/scan/rules", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateBarcodeRule(id: string, body: BarcodeRuleInput): Promise<BarcodeRule> {
+  return request<BarcodeRule>(`/scan/rules/${id}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export async function deleteBarcodeRule(id: string): Promise<void> {
+  await request<void>(`/scan/rules/${id}`, { method: "DELETE" });
+}
+
+export async function reorderBarcodeRules(ids: string[]): Promise<BarcodeRule[]> {
+  return request<BarcodeRule[]>("/scan/rules/order", { method: "POST", body: JSON.stringify({ ids }) });
+}
+
+export async function listItemBarcodes(itemId: string): Promise<LinkedBarcode[]> {
+  return request<LinkedBarcode[]>(`/inventory/${itemId}/barcodes`);
+}
+
+/** Teach Resqlo that a store's own barcode means this item. */
+export async function linkBarcode(itemId: string, code: string, replace = false): Promise<LinkedBarcode> {
+  return request<LinkedBarcode>(`/inventory/${itemId}/barcodes`, {
+    method: "POST",
+    body: JSON.stringify({ code, replace }),
+  });
+}
+
+export async function unlinkBarcode(itemId: string, code: string): Promise<void> {
+  await request<void>(`/inventory/${itemId}/barcodes/${encodeURIComponent(code)}`, { method: "DELETE" });
+}
+
+export interface CatalogProduct {
+  rq_code: string;
+  style_code: string;
+  size: string | null;
+  name: string;
+  brand: string | null;
+  category: string | null;
+  color: string | null;
+  times_confirmed: number;
+}
+
+export interface CatalogStats {
+  products: number;
+  styles: number;
+  barcodes: number;
+}
+
+/** The item's Resqlo code: one code per product (style + size), the same in every store. */
+export async function getResqloCode(itemId: string): Promise<CatalogProduct> {
+  return request<CatalogProduct>(`/inventory/${itemId}/rq-code`, { method: "POST" });
+}
+
+export async function lookupCatalog(code: string): Promise<CatalogProduct> {
+  return request<CatalogProduct>(`/catalog/${encodeURIComponent(code)}`);
+}
+
+export async function getCatalogStats(): Promise<CatalogStats> {
+  return request<CatalogStats>("/catalog/stats");
+}
+
+// Catalog admin: fix wrong entries in the shared Resqlo catalog.
+export interface AdminCatalogProduct extends CatalogProduct {
+  barcodes: string[];
+}
+
+export interface AdminCatalogUpdate {
+  name: string;
+  style_code: string;
+  size: string | null;
+  brand: string | null;
+  category: string | null;
+  color: string | null;
+}
+
+/** Whether this account may fix the shared catalog. False when offline or on error. */
+export async function isCatalogAdmin(): Promise<boolean> {
+  try {
+    return (await request<{ admin: boolean }>("/catalog/admin/access")).admin;
+  } catch {
+    return false;
+  }
+}
+
+export async function searchCatalogAdmin(q: string): Promise<AdminCatalogProduct[]> {
+  return request<AdminCatalogProduct[]>(`/catalog/admin/products?q=${encodeURIComponent(q)}`);
+}
+
+export async function updateCatalogProduct(rqCode: string, body: AdminCatalogUpdate): Promise<AdminCatalogProduct> {
+  return request<AdminCatalogProduct>(`/catalog/admin/products/${encodeURIComponent(rqCode)}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteCatalogProduct(rqCode: string): Promise<void> {
+  await request<void>(`/catalog/admin/products/${encodeURIComponent(rqCode)}`, { method: "DELETE" });
+}
+
+export async function unlinkCatalogBarcode(code: string): Promise<void> {
+  await request<void>(`/catalog/admin/barcodes/${encodeURIComponent(code)}`, { method: "DELETE" });
 }
 
 // ─── Transaction Endpoints ───────────────────────────
@@ -1096,12 +1356,20 @@ export interface CreateTransactionPayload {
   client_request_id?: string;
 }
 
+/** Con Mode: the receipt comes from the local journal; the send happens right after. */
+async function instant<T>(queued: Promise<T>): Promise<T> {
+  const result = await queued;
+  flushInBackground();
+  return result;
+}
+
 export async function createTransaction(
   payload: CreateTransactionPayload
 ): Promise<Transaction> {
   const session = captureSession();
   const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("sale") };
   if (!isOnline()) return queueQuickSale(body, session);
+  if (isConMode()) return instant(queueQuickSale(body, session));
   try {
     return await request<Transaction>("/transactions", {
       method: "POST",
@@ -1118,6 +1386,7 @@ export async function createSaleOrder(payload: CreateSaleOrderPayload): Promise<
   const session = captureSession();
   const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("order") };
   if (!isOnline()) return queueSaleOrder(body, session);
+  if (isConMode()) return instant(queueSaleOrder(body, session));
   try {
     return await request<SaleOrder>("/transactions/order", {
       method: "POST",
@@ -1127,6 +1396,54 @@ export async function createSaleOrder(payload: CreateSaleOrderPayload): Promise<
     if (isNetworkError(e)) return queueSaleOrder(body, session);
     throw e;
   }
+}
+
+export interface TradeGivePayload { item_id: string; quantity?: number; size?: string; value: string }
+export interface TradeGetPayload {
+  name: string; size?: string; upc?: string; sku?: string; category?: string; condition?: string;
+  value: string; list_price?: string;
+}
+export type TradeCashMethod = "cash" | "card" | "venmo" | "cashapp" | "paypal" | "zelle" | "other";
+export interface CreateTradePayload {
+  give: TradeGivePayload[];
+  get: TradeGetPayload[];
+  /** + they pay me, - I pay them. */
+  cash_amount: string;
+  cash_method?: TradeCashMethod;
+  notes?: string;
+  customer_id?: string;
+  client_request_id?: string;
+}
+export interface Trade {
+  id: string;
+  order_id: string;
+  value_out: string;
+  value_in: string;
+  cash_amount: string;
+  cash_method: string | null;
+  profit: string | null;
+  transaction_ids: string[];
+  received_item_ids: string[];
+  created_at: string | null;
+  /** Saved on this phone, waiting to sync. */
+  pending?: boolean;
+}
+
+/** Record a trade; offline (or on a dropped connection) it is queued and synced later. */
+export async function createTrade(payload: CreateTradePayload): Promise<Trade> {
+  const session = captureSession();
+  const body = { ...payload, client_request_id: payload.client_request_id ?? requestKey("trade") };
+  if (!isOnline()) return queueTrade(body, session);
+  try {
+    return await request<Trade>("/trades", { method: "POST", body: JSON.stringify(body) }, true, session);
+  } catch (e) {
+    if (isNetworkError(e)) return queueTrade(body, session);
+    throw e;
+  }
+}
+
+export async function listTrades(limit = 50): Promise<Trade[]> {
+  return request<Trade[]>(`/trades?limit=${limit}`);
 }
 
 export async function listTransactions(
@@ -1481,9 +1798,43 @@ export async function exportTransactionsCSV(): Promise<string> {
   return request<string>("/export/transactions");
 }
 
+export type LabelLayout = "thermal" | "sheet";
+
+/** Absolute URL for printable price labels (needs the auth header). */
+export function priceLabelsUrl(ids: string[], layout: LabelLayout = "thermal", perUnit = false): string {
+  const q = new URLSearchParams({ ids: ids.join(","), layout, per_unit: String(perUnit) });
+  return `${API_BASE_URL}/inventory/labels.pdf?${q.toString()}`;
+}
+
 /** Absolute URL for a checkout's branded PDF receipt (needs the auth header). */
 export function orderReceiptPdfUrl(orderId: string): string {
   return `${API_BASE_URL}/transactions/order/${encodeURIComponent(orderId)}/receipt.pdf`;
+}
+
+export interface TaxTotals {
+  gross_sales: string;
+  refunds: string;
+  fees: string;
+  cost_of_goods: string;
+  net_profit: string;
+  sales_count: number;
+}
+
+export interface TaxSummary extends TaxTotals {
+  year: number;
+  sales_missing_cost: number;
+  by_month: (TaxTotals & { month: number })[];
+  by_channel: (TaxTotals & { channel: string; label: string })[];
+}
+
+/** Year-end profit and loss by month and sales channel (Pro). */
+export async function getTaxSummary(year: number): Promise<TaxSummary> {
+  return request<TaxSummary>(`/export/tax-summary?year=${year}`);
+}
+
+/** Absolute URL for the year's tax pack CSV (Pro). */
+export function taxPackCsvUrl(year: number): string {
+  return `${API_BASE_URL}/export/tax-pack?year=${year}`;
 }
 
 /** Absolute URL for the styled .xlsx export with embedded item photos (Pro). */
@@ -2042,11 +2393,14 @@ export async function listEbayFees(): Promise<EbayOrderFees[]> {
 }
 
 export async function getItemEbayComps(itemId: string): Promise<EbayComps> {
-  return request<EbayComps>(`/inventory/${encodeURIComponent(itemId)}/ebay-comps`);
+  return cachedComps(`item:${itemId}`, () => request<EbayComps>(`/inventory/${encodeURIComponent(itemId)}/ebay-comps`),
+    { preferCache: isConMode() });
 }
 
 export async function searchEbayComps(q: string): Promise<EbayComps> {
-  return request<EbayComps>(`/integrations/ebay/comps?q=${encodeURIComponent(q)}`);
+  const key = q.trim().toLowerCase();
+  return cachedComps(`q:${key}`, () => request<EbayComps>(`/integrations/ebay/comps?q=${encodeURIComponent(q)}`),
+    { preferCache: isConMode() });
 }
 
 /** One shared marketplace write job (StockX ask removal, eBay quantity push). */
@@ -2168,10 +2522,6 @@ export async function updateReconciliationIssue(
 }
 
 // ─── App Health ──────────────────────────────────────────
-
-export async function healthCheck(): Promise<{ status: string; version: string }> {
-  return request("/health");
-}
 
 // ─── Customers ───────────────────────────────────────
 
@@ -2331,3 +2681,31 @@ export const updateGoogleSheetSettings = (settings: { source_of_truth?: boolean;
   request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "PATCH", body: JSON.stringify(settings) });
 export const unlinkGoogleSheet = () => request<GoogleSheetsStatus>(`${GS}/sheet`, { method: "DELETE" });
 export const syncGoogleSheets = () => request<GoogleSheetsSyncResult>(`${GS}/sync`, { method: "POST" });
+
+export interface Savings {
+  since: string;
+  minutes_saved: number;
+  items_imported: number;
+  sales_imported: number;
+  stock_updates: number;
+  fees_tracked: string;
+  minutes_per_item: number;
+  minutes_per_sale: number;
+  minutes_per_stock_update: number;
+}
+
+/** Work Resqlo's integrations did for the seller this month. */
+export async function getSavings(): Promise<Savings> {
+  return request<Savings>("/dashboard/savings");
+}
+
+export interface AgingStock {
+  days: number;
+  count: number;
+  items: { id: string; name: string; expected_sell_price: string | null; buy_price: string | null; days_old: number }[];
+}
+
+/** In-stock/listed items that have sat unsold the longest. */
+export async function getAgingStock(days = 60): Promise<AgingStock> {
+  return request<AgingStock>(`/inventory/aging?days=${days}`);
+}

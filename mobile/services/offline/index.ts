@@ -3,6 +3,7 @@
  */
 import { initNetwork, isOnline, subscribeNetwork } from "./net";
 import { flushInBackground } from "./inventory";
+import { loadConMode } from "../conMode";
 import { subscribeSession } from "../session";
 
 export { isOnline, subscribeNetwork } from "./net";
@@ -15,10 +16,12 @@ export {
   queueUpdateItem,
   queueQuickSale,
   queueSaleOrder,
+  queueTrade,
   queueCreateInvoice,
   getPendingInvoices,
   getPendingInvoice,
   flushOutbox,
+  flushInBackground,
   subscribeSync,
   getSyncState,
   getFailedSyncs,
@@ -27,6 +30,7 @@ export {
   readCachedDashboard,
   isTempId,
 } from "./inventory";
+export type { FailedSync } from "./inventory";
 export { peekSnapshot, loadSnapshot, saveSnapshot } from "./snapshot";
 export { setSender } from "./sender";
 
@@ -37,6 +41,7 @@ let stopSync: (() => void) | null = null;
  * online. Idempotent — safe to call from the app root on every mount.
  */
 export function initOfflineSync(): () => void {
+  void loadConMode();
   if (stopSync) return stopSync;
   const stopNet = initNetwork();
 

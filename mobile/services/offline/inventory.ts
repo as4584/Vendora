@@ -5,7 +5,7 @@
  */
 import type {
   InventoryItem, PaginatedItems, ListItemsParams, CreateItemPayload,
-  CreateTransactionPayload, CreateSaleOrderPayload, SaleOrder, Transaction,
+  CreateTransactionPayload, CreateSaleOrderPayload, SaleOrder, Transaction, CreateTradePayload, Trade,
   Dashboard, CreateInvoicePayload, InvoiceData,
 } from "../api";
 import { smartSearch } from "../smartSearch";
@@ -17,7 +17,7 @@ import { tryGetSender } from "./sender";
 import { readAccountJSON, writeAccountJSON, updateAccountJSON, tempId, isTempId } from "./store";
 
 type Mirror = Record<string, InventoryItem>;
-type OutboxKind = "create_item" | "update_item" | "quick_sale" | "sale_order" | "create_invoice";
+type OutboxKind = "create_item" | "update_item" | "quick_sale" | "sale_order" | "create_invoice" | "trade";
 interface OutboxEntry {
   id: string;
   kind: OutboxKind;
@@ -85,6 +85,14 @@ function applyRemap(entry: OutboxEntry, remap: Record<string, string>): OutboxEn
       })),
     };
   }
+  if (Array.isArray(body?.give)) {
+    body = {
+      ...body,
+      give: body.give.map((line: CreateTradePayload["give"][number]) => ({
+        ...line, item_id: remap[line.item_id] ?? line.item_id,
+      })),
+    };
+  }
   if (Array.isArray(body?.items)) {
     body = {
       ...body,
@@ -104,7 +112,10 @@ function applyStockChange(
   const lines: { item_id?: string; quantity: number; size?: string }[] =
     entry.kind === "quick_sale"
       ? [{ item_id: entry.body.item_id, quantity: entry.body.quantity ?? 1 }]
-      : entry.kind === "sale_order" ? entry.body.lines : [];
+      : entry.kind === "sale_order" ? entry.body.lines
+      : entry.kind === "trade"
+        ? entry.body.give.map((g: CreateTradePayload["give"][number]) => ({ ...g, quantity: g.quantity ?? 1 }))
+        : [];
   for (const line of lines) {
     if (!line.item_id || !mirror[line.item_id]) continue;
     const item = { ...mirror[line.item_id] };
@@ -270,6 +281,24 @@ export async function queueSaleOrder(payload: CreateSaleOrderPayload, session = 
   }));
 }
 
+/** One durable entry per trade. Pairs given leave stock now; pairs received appear after sync. */
+export async function queueTrade(payload: CreateTradePayload, session = captureSession()): Promise<Trade> {
+  const account = requireAccount(session);
+  const now = new Date().toISOString();
+  const entryId = tempId("ob");
+  const out = payload.give.reduce((sum, g) => sum + toCents(g.value) * (g.quantity ?? 1), 0);
+  const inn = payload.get.reduce((sum, g) => sum + toCents(g.value), 0);
+  return enqueue(account, {
+    id: entryId, kind: "trade", path: "/trades", method: "POST",
+    body: { ...payload, client_request_id: payload.client_request_id ?? entryId },
+    createdAt: now, attempts: 0,
+  }, () => ({
+    id: tempId("trade"), order_id: tempId("order"), value_out: centsToString(out),
+    value_in: centsToString(inn), cash_amount: payload.cash_amount, cash_method: payload.cash_method ?? null,
+    profit: null, transaction_ids: [], received_item_ids: [], created_at: now, pending: true,
+  }));
+}
+
 export async function getPendingInvoices(session = captureSession()): Promise<InvoiceData[]> {
   assertSession(session);
   if (!session.ownerId) return [];
@@ -406,6 +435,7 @@ export async function flushOutbox(): Promise<void> {
           applyStockChange(journal.mirror, entry, false);
         }
         journal.outbox.shift();
+        journal.lastSync = new Date().toISOString();
       });
       notifySync();
     }

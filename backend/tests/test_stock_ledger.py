@@ -217,8 +217,9 @@ class TestCSVImport:
         )
         assert resp.status_code == 201
         data = resp.json()
-        assert data["rows_errored"] == 1
-        assert data["rows"][0]["action"] == "error"
+        # No name column: the row is named by its SKU instead of being rejected.
+        assert data["rows_errored"] == 0
+        assert data["rows"][0]["mapped_data"]["name"] == "NO-NAME-001"
 
     def test_commit_creates_items(self, client, auth_headers):
         csv_bytes = self._make_csv([
@@ -276,7 +277,7 @@ class TestCSVImport:
         assert resp.json()["id"] == job_id
         assert resp.json()["status"] == "previewed"
 
-    def test_non_csv_rejected(self, client, auth_headers):
+    def test_corrupt_spreadsheet_rejected(self, client, auth_headers):
         resp = client.post(
             "/api/v1/inventory/imports/preview",
             files={"file": ("data.xlsx", b"binary", "application/vnd.ms-excel")},

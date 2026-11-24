@@ -5,7 +5,6 @@ import {
   downloadAndShareRemote,
   downloadPdfFile,
   downloadTextFile,
-  openPdfFile,
   previewPdfFile,
 } from '../utils/fileActions';
 
@@ -95,7 +94,6 @@ describe('fileActions', () => {
       dialogTitle: 'invoice.pdf',
       UTI: 'com.adobe.pdf',
     });
-    expect(openPdfFile).toBe(previewPdfFile);
   });
 
   it('reports native PDF storage and sharing failures', async () => {

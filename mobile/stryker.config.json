@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Mutation testing for money math and inventory logic: does a test fail when the code is subtly wrong? Run: npm run test:mutation",
+  "testRunner": "jest",
+  "jest": { "projectType": "custom", "enableFindRelatedTests": true },
+  "mutate": [
+    "utils/checkout.ts",
+    "utils/inventory.ts",
+    "utils/inventorySort.ts",
+    "services/profit.ts"
+  ],
+  "coverageAnalysis": "perTest",
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "htmlReporter": { "fileName": "reports/mutation/index.html" },
+  "jsonReporter": { "fileName": "reports/mutation/mutation.json" },
+  "thresholds": { "high": 85, "low": 70, "break": 60 },
+  "concurrency": 4,
+  "timeoutMS": 20000,
+  "tempDirName": ".stryker-tmp"
+}

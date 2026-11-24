@@ -9,7 +9,7 @@ import type { ScanFields } from "./parseLabel";
 import { readAccountJSON, updateAccountJSON, tempId } from "../offline/store";
 import { assertSession, captureSession, requireAccount, type AccountContext } from "../session";
 
-export type ScanMatch = "memory" | "inventory" | "style" | null;
+export type ScanMatch = "memory" | "inventory" | "catalog" | "style" | null;
 export type ScanEntry = { fields: ScanFields; times_seen: number; updated_at: string; revision?: string };
 export type ScanResolution = { barcode: string; match: ScanMatch; fields: ScanFields; times_seen: number };
 

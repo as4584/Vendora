@@ -32,6 +32,7 @@ import { SkeletonList } from "../../../components/Skeleton";
 import { SwipeRow, SWIPE_COLORS } from "../../../components/SwipeRow";
 import { UndoBar, useUndo } from "../../../components/UndoBar";
 import { SORT_OPTIONS, sortLabel, type SortKey } from "../../../utils/inventorySort";
+import { BulkEditSheet } from "../../../components/BulkEditSheet";
 
 type ListSnapshot = { items: api.InventoryItem[]; total: number; pages: number; sort: SortKey };
 const LIST_SNAPSHOT = "inventory:list";
@@ -100,6 +101,8 @@ export default function InventoryListScreen() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -212,6 +215,26 @@ export default function InventoryListScreen() {
       Alert.alert("Delete failed", errorMessage(err, "Could not delete the selected items."));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const runBulkUpdate = async (changes: api.BulkUpdatePayload) => {
+    const ids = Array.from(selectedIds);
+    setBulkSaving(true);
+    try {
+      const result = await api.bulkUpdateItems(ids, changes);
+      setBulkEditOpen(false);
+      exitSelect();
+      await fetchItems({ page: 1, refresh: true });
+      const reasons = Array.from(new Set(result.skipped.map((s) => s.reason)));
+      const extra = result.skipped.length
+        ? `\n\n${result.skipped.length} skipped: ${reasons.join("; ")}.`
+        : "";
+      Alert.alert("Updated", `${result.updated} item${result.updated === 1 ? "" : "s"} updated.${extra}`);
+    } catch (err) {
+      Alert.alert("Update failed", errorMessage(err, "Could not update the selected items."));
+    } finally {
+      setBulkSaving(false);
     }
   };
 
@@ -467,15 +490,31 @@ export default function InventoryListScreen() {
       {selectMode && selectedIds.size > 0 ? (
         <View style={styles.bulkBar}>
           <Text style={styles.bulkCount}>{selectedIds.size} selected</Text>
-          <ActionButton
-            label={deleting ? "Deleting..." : `Delete ${selectedIds.size}`}
-            onPress={confirmBulkDelete}
-            tone="primary"
-            compact
-            disabled={deleting}
-          />
+          <View style={styles.bulkActions}>
+            <ActionButton
+              label={`Edit ${selectedIds.size}`}
+              onPress={() => setBulkEditOpen(true)}
+              tone="secondary"
+              compact
+              disabled={deleting || bulkSaving}
+            />
+            <ActionButton
+              label={deleting ? "Deleting..." : `Delete ${selectedIds.size}`}
+              onPress={confirmBulkDelete}
+              tone="primary"
+              compact
+              disabled={deleting || bulkSaving}
+            />
+          </View>
         </View>
       ) : null}
+      <BulkEditSheet
+        visible={bulkEditOpen}
+        count={selectedIds.size}
+        saving={bulkSaving}
+        onClose={() => setBulkEditOpen(false)}
+        onApply={runBulkUpdate}
+      />
 
       <Modal visible={exporting} transparent animationType="fade">
         <View style={styles.exportOverlay}>
@@ -619,6 +658,7 @@ const styles = StyleSheet.create({
     borderRadius: 16, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
   },
   bulkCount: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
+  bulkActions: { flexDirection: "row", gap: SPACING.xs },
   empty: { alignItems: "center", paddingVertical: SPACING.lg, gap: SPACING.xs },
   emptyTitle: { color: COLORS.text, fontSize: 16, fontWeight: "600", marginTop: SPACING.sm, textAlign: "center" },
   emptyText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, textAlign: "center", maxWidth: 260 },

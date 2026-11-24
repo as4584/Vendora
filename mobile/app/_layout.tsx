@@ -7,7 +7,9 @@ import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "../context/auth";
 import { NetworkProvider } from "../context/network";
 import { OfflineBanner } from "../components/OfflineBanner";
-import { View, ActivityIndicator, Platform, StyleSheet } from "react-native";
+import { Platform } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
+import { BrandIntro, BrandLoader, hasSeenIntro } from "../components/BrandIntro";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { COLORS, IS_LIGHT } from "../theme/tokens";
@@ -22,6 +24,8 @@ import { captureSession, isCurrentSession } from "../services/session";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/build/react-navigation/native";
 
 initCrashReporting();
+// Keep the native splash up until our identical-looking branded screen paints.
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 // Navigation theme follows the phone's light/dark setting, painted with our
 // tokens so screen transitions never flash a mismatched background.
 const BASE_NAV = IS_LIGHT ? DefaultTheme : DarkTheme;
@@ -42,6 +46,16 @@ function RootLayoutNav() {
     const { replace } = useRouter();
     const userId = user?.id ? String(user.id) : null;
     const [onboarding, setOnboarding] = useState<OnboardingState>("unknown");
+    const [intro, setIntro] = useState<"checking" | "show" | "done">("checking");
+
+    useEffect(() => {
+        void SplashScreen.hideAsync().catch(() => undefined);
+        let live = true;
+        void hasSeenIntro().then((seen) => live && setIntro(seen ? "done" : "show"));
+        return () => {
+            live = false;
+        };
+    }, []);
 
     useEffect(() => subscribeOnboarding(setOnboarding), []);
     useEffect(() => {
@@ -62,7 +76,8 @@ function RootLayoutNav() {
     }, [userId]);
 
     useEffect(() => {
-        if (isLoading) return;
+        // No navigator is mounted yet while the loader shows.
+        if (isLoading || intro === "checking") return;
 
         const inAuthGroup = segments[0] === "(auth)";
         const inPublicSeller = segments[0] === "seller";
@@ -76,15 +91,18 @@ function RootLayoutNav() {
             // A reset link must open the reset screen even while signed in.
             replace(onboarding === "needed" ? "/onboarding" : "/(tabs)/dashboard");
         }
-    }, [isAuthenticated, isLoading, onboarding, replace, segments]);
+    }, [intro, isAuthenticated, isLoading, onboarding, replace, segments]);
 
-    if (isLoading) {
+    if (intro === "show") {
+        // First open on this device: the app keeps loading underneath.
         return (
-            <View style={styles.loader}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-            </View>
+            <>
+                {!isLoading && <Slot />}
+                <BrandIntro businessName={user?.business_name} onDone={() => setIntro("done")} />
+            </>
         );
     }
+    if (isLoading || intro === "checking") return <BrandLoader />;
 
     return <Slot />;
 }
@@ -117,12 +135,3 @@ export default function RootLayout() {
         </GestureHandlerRootView>
     );
 }
-
-const styles = StyleSheet.create({
-    loader: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: COLORS.bg,
-    },
-});

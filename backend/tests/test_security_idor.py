@@ -15,6 +15,8 @@ from decimal import Decimal
 import pytest
 
 from app.main import app
+from app.routers import inventory as inventory_router
+from app.models.barcode import BarcodeRule, ItemBarcode
 from app.models.customer import Customer
 from app.models.inventory import InventoryImportJob, InventoryImportRow, InventoryItem
 from app.models.invoice import Invoice
@@ -30,6 +32,11 @@ PARAM = re.compile(r"\{(\w+)\}")
 PUBLIC_ROUTES = {
     # Public seller storefront: by design readable by anyone.
     "/api/v1/sellers/{user_id}",
+    # Shared Resqlo catalog: one entry per product for every store, not owned by a user.
+    # Fixing entries is admin-only (tested in test_resqlo_catalog.py).
+    "/api/v1/catalog/{code}",
+    "/api/v1/catalog/admin/products/{rq_code}",
+    "/api/v1/catalog/admin/barcodes/{code}",
 }
 
 
@@ -56,12 +63,18 @@ def _param_kind(path: str, name: str) -> str:
         "barcode": "barcode",
         "customer_id": "customer",
         "row_id": "import_row",
+        "upload_id": "import_upload",
+        "rule_id": "barcode_rule",
+        "code": "barcode_link",
     }[name]
 
 
 @pytest.fixture()
-def victim_objects(db, test_user):
+def victim_objects(db, test_user, tmp_path, monkeypatch):
     uid = test_user.id
+    monkeypatch.setattr(inventory_router, "IMPORT_UPLOAD_DIR", tmp_path)
+    upload_id = uuid.uuid4()
+    inventory_router._upload_path(test_user, upload_id).write_bytes(b"Product Name,Victim")
     item = InventoryItem(user_id=uid, name="Victim sneaker", quantity=3, status="in_stock",
                          buy_price=Decimal("40.00"), expected_sell_price=Decimal("100.00"))
     db.add(item)
@@ -84,23 +97,27 @@ def victim_objects(db, test_user):
     memory = ScanMemory(user_id=uid, barcode="0012345678905", fields={"name": "Victim product"})
     import_row = InventoryImportRow(job_id=job.id, row_number=1, action="create",
                                     raw_data={"name": "Victim row"}, mapped_data={"name": "Victim row"})
-    db.add_all([issue, outbox, listing, memory, customer, import_row])
+    rule = BarcodeRule(user_id=uid, name="Victim rule", prefix="VIC")
+    link = ItemBarcode(user_id=uid, inventory_item_id=item.id, code="VICTIMTAG")
+    db.add_all([issue, outbox, listing, memory, customer, import_row, rule, link])
     db.flush()
     return {
         "item": item.id, "order": order_id, "txn": txn.id, "invoice": invoice.id,
         "import_job": job.id, "run": run.id, "issue": issue.id, "outbox": outbox.id,
         "stockx_listing": listing.id, "barcode": "0012345678905",
         "customer": customer.id, "import_row": import_row.id,
+        "import_upload": upload_id,
+        "barcode_rule": rule.id, "barcode_link": "VICTIMTAG",
     }
 
 
 BODIES = {
-    "PUT": {"name": "pwned", "customer_name": "pwned",
+    "PUT": {"name": "pwned", "customer_name": "pwned", "index": 0, "data": "cHduZWQ=", "prefix": "PWN",
             "items": [{"description": "x", "quantity": 1, "unit_price": "1.00"}]},
     "PATCH": {"status": "sold", "price": "1.00", "quantity": 0, "amount": "1.00",
               "photo_front": None, "resolution_note": "x"},
     "POST": {"amount": "1.00", "method": "cash", "price": "1.00", "quantity": 1,
-             "product_id": "p", "variant_id": "v"},
+             "product_id": "p", "variant_id": "v", "filename": "pwned.csv", "code": "PWNED"},
 }
 
 
@@ -114,7 +131,7 @@ def test_other_user_cannot_touch_object(client, db, victim_objects, second_auth_
     assert response.status_code == 404, (method, path, response.status_code, response.text[:300])
 
 
-def test_victim_objects_unchanged_after_attacks(client, db, victim_objects, second_auth_headers):
+def test_victim_objects_unchanged_after_attacks(client, db, victim_objects, second_auth_headers, test_user):
     """Belt and braces: after every mutating attempt, A's data is intact."""
     for method, path in sorted(set(_routes())):
         if method == "GET":
@@ -130,8 +147,12 @@ def test_victim_objects_unchanged_after_attacks(client, db, victim_objects, seco
     assert inv.customer_name == "Victim customer"
     assert db.get(ReconciliationIssue, victim_objects["issue"]).status == "open"
     assert db.get(Customer, victim_objects["customer"]).name == "Victim buyer"
+    assert db.get(BarcodeRule, victim_objects["barcode_rule"]).name == "Victim rule"
+    assert db.query(ItemBarcode).filter_by(code="VICTIMTAG", inventory_item_id=item.id).count() == 1
     row = db.get(InventoryImportRow, victim_objects["import_row"])
     assert row.action == "create" and row.mapped_data == {"name": "Victim row"}
+    upload = inventory_router._upload_path(test_user, victim_objects["import_upload"])
+    assert upload.read_bytes() == b"Product Name,Victim"
 
 
 def test_owner_can_read_own_item(client, victim_objects, auth_headers):

@@ -32,7 +32,7 @@ def _require_pro(user: User):
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "error": "pro_required",
-                "message": "CSV export requires Pro tier ($20/mo).",
+                "message": "CSV export requires Pro.",
                 "feature": "csv_export",
             },
         )
@@ -72,6 +72,59 @@ def export_inventory(
         io.BytesIO(csv_content.encode("utf-8-sig")),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _tax_year(year: int | None) -> int:
+    from datetime import datetime, timezone
+
+    this_year = datetime.now(timezone.utc).year
+    year = year or this_year
+    if not 2000 <= year <= this_year:
+        raise HTTPException(status_code=400, detail="Pick a year up to this one.")
+    return year
+
+
+@router.get("/tax-summary")
+def tax_summary(
+    year: int | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Year-end profit and loss, by month and channel (Pro only)."""
+    from app.services.tax_pack import build_tax_summary
+
+    _require_pro(current_user)
+    from decimal import Decimal
+
+    def exact(value):
+        # Money as exact 2-decimal strings, never floats.
+        if isinstance(value, Decimal):
+            return str(value.quantize(Decimal("0.01")))
+        if isinstance(value, dict):
+            return {k: exact(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [exact(v) for v in value]
+        return value
+
+    return exact(build_tax_summary(db, current_user.id, _tax_year(year)))
+
+
+@router.get("/tax-pack")
+def tax_pack_csv(
+    year: int | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download the year's tax pack as CSV for an accountant (Pro only)."""
+    from app.services.tax_pack import build_tax_csv
+
+    _require_pro(current_user)
+    year = _tax_year(year)
+    return StreamingResponse(
+        io.BytesIO(build_tax_csv(db, current_user.id, year).encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=resqlo_tax_pack_{year}.csv"},
     )
 
 

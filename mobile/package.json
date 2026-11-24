@@ -15,7 +15,8 @@
     "build:web": "node scripts/build-web.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test:mutation": "stryker run"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -63,6 +64,8 @@
     "@expo/ngrok": "^4.1.3",
     "@playwright/test": "^1.65.1",
     "@react-native/jest-preset": "^0.86.3",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/jest-runner": "^9.6.1",
     "@testing-library/react-native": "^13.3.3",
     "@types/react": "~19.2.4",
     "decode-uri-component": "file:./shims/decode-uri-component",
@@ -121,5 +124,22 @@
     "image-size": "$image-size",
     "decode-uri-component": "$decode-uri-component"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "install": {
+      "exclude": [
+        "expo",
+        "expo-asset",
+        "expo-background-fetch",
+        "expo-constants",
+        "expo-image-picker",
+        "expo-notifications",
+        "expo-router",
+        "expo-sharing",
+        "expo-splash-screen",
+        "expo-task-manager",
+        "expo-updates"
+      ]
+    }
+  }
 }

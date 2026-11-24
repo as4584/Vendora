@@ -193,6 +193,27 @@ describe('EbayCompsCard', () => {
     expect(use).toHaveBeenCalledWith('250.00');
   });
 
+  it('loads on a new scan and shows net after fees, profit and a verdict', async () => {
+    m.searchEbayComps.mockResolvedValue(COMPS);
+    const screen = render(<EbayCompsCard query="jordan" buyPrice="120" autoLoadKey="0123:jordan" />);
+    await act(async () => {});
+    expect(m.searchEbayComps).toHaveBeenCalledWith('jordan');
+    const check = screen.getByTestId('buy-check');
+    expect(check).toBeTruthy();
+    // 200/250/300 less eBay 13.6% + $0.40 -> 172/216/259; minus $120 cost.
+    expect(screen.getByText(/After eBay fees you'd keep \$172–\$259 \(typical \$216\)/)).toBeTruthy();
+    expect(screen.getByText('Good buy')).toBeTruthy();
+    expect(screen.getByText('Profit at $120: $52 to $139')).toBeTruthy();
+    expect(screen.getByText(/asking prices, so real sale prices may be lower/)).toBeTruthy();
+  });
+
+  it('asks for a cost when none is entered', async () => {
+    m.getItemEbayComps.mockResolvedValue(COMPS);
+    const screen = render(<EbayCompsCard itemId="item-1" />);
+    await act(async () => { fireEvent.press(screen.getByTestId('ebay-comps-button')); });
+    expect(screen.getByText("Enter what you'd pay to see your profit.")).toBeTruthy();
+  });
+
   it('handles empty results, missing query and errors', async () => {
     const empty = render(<EbayCompsCard query="" />);
     await act(async () => { fireEvent.press(empty.getByTestId('ebay-comps-button')); });

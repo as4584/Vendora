@@ -100,11 +100,19 @@ export default function TabsLayout() {
       <Tabs.Screen name="inventory/components/ItemQuickSheet" options={{ href: null }} />
       <Tabs.Screen name="inventory/import" options={{ href: null, headerTitle: "Import Inventory" }} />
       <Tabs.Screen name="inventory/batch-scan" options={{ href: null, headerTitle: "Batch Scan" }} />
+      <Tabs.Screen name="inventory/add-costs" options={{ href: null, headerTitle: "Add Costs" }} />
+      <Tabs.Screen name="inventory/aging" options={{ href: null, headerTitle: "Not Selling" }} />
+      <Tabs.Screen name="inventory/trade" options={{ href: null, headerTitle: "Trade" }} />
+      <Tabs.Screen name="inventory/labels" options={{ href: null, headerTitle: "Price Labels" }} />
       <Tabs.Screen name="settings/sync-center" options={{ href: null, headerTitle: "Sync Center" }} />
+      <Tabs.Screen name="settings/import-sales" options={{ href: null, headerTitle: "Import Sales" }} />
       <Tabs.Screen name="settings/subscription" options={{ href: null, headerTitle: "Plans & Billing" }} />
       <Tabs.Screen name="settings/analytics" options={{ href: null, headerTitle: "Advanced Analytics" }} />
       <Tabs.Screen name="settings/support" options={{ href: null, headerTitle: "Support" }} />
       <Tabs.Screen name="settings/show-summary" options={{ href: null, headerTitle: "Show Summary" }} />
+      <Tabs.Screen name="settings/tax-pack" options={{ href: null, headerTitle: "Tax Pack" }} />
+      <Tabs.Screen name="settings/barcode-rules" options={{ href: null, headerTitle: "Barcode Rules" }} />
+      <Tabs.Screen name="settings/catalog-admin" options={{ href: null, headerTitle: "Catalog Admin" }} />
       <Tabs.Screen name="customers/index" options={{ href: null, headerTitle: "Customers" }} />
       <Tabs.Screen name="customers/[id]" options={{ href: null, headerTitle: "Customer" }} />
     </Tabs>

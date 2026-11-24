@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     # Owner-only funnel readout (GET /api/v1/events/funnel). Empty = endpoint disabled.
     ANALYTICS_ADMIN_TOKEN: str = ""
+    # Comma-separated emails allowed to fix the shared Resqlo catalog. Empty = nobody.
+    CATALOG_ADMIN_EMAILS: str = ""
     # Crash/error reporting. Empty = Sentry off.
     SENTRY_DSN: str = ""
     # Expo push for eBay sale alerts.
@@ -58,7 +60,7 @@ class Settings(BaseSettings):
     # Stripe
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_PRO_PRICE_ID: str = ""  # Stripe Price ID for Pro tier ($20/mo)
+    STRIPE_PRO_PRICE_ID: str = ""  # Stripe Price ID for the Pro tier
     STRIPE_PARTNER_PRICE_ID: str = ""  # Stripe Price ID for Partner add-on ($5/mo)
     # RevenueCat (iOS in-app purchases). The webhook sends this exact value in
     # the Authorization header; set the same string in the RevenueCat dashboard.

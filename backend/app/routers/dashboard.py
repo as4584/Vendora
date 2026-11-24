@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.dashboard import (
     AdvancedAnalyticsResponse,
     DashboardResponse,
+    SavingsResponse,
     ShowStartRequest,
     ShowSummaryResponse,
 )
@@ -216,3 +217,14 @@ def end_show(
     current_user.show_started_at = None
     db.add(current_user)
     db.commit()
+
+
+@router.get("/savings", response_model=SavingsResponse)
+def get_savings_this_month(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Time and fees Resqlo handled for the seller this calendar month."""
+    from app.services.savings import get_savings
+
+    return get_savings(db, current_user.id)

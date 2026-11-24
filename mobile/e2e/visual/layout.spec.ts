@@ -55,8 +55,8 @@ const SCREENS: {
     fullPage: true,
   },
   { name: 'import', path: '/inventory/import' },
-  { name: 'import-review', path: '/inventory/import', ready: 'Choose CSV File', upload: true, fullPage: true },
-  { name: 'import-review-edit', path: '/inventory/import', ready: 'Choose CSV File', upload: true, steps: ['Fix'] },
+  { name: 'import-review', path: '/inventory/import', ready: 'Choose CSV or Excel File', upload: true, fullPage: true },
+  { name: 'import-review-edit', path: '/inventory/import', ready: 'Choose CSV or Excel File', upload: true, steps: ['Fix'] },
   { name: 'more', path: '/more' },
   { name: 'settings', path: '/settings' },
   { name: 'settings-google-sheets', path: '/settings', ready: 'Sheet is the source of truth', fullPage: true },
@@ -201,7 +201,7 @@ async function openScreen(page: Page, screen: Screen, size: { width: number; hei
   }
   if (screen.upload) {
     const chooser = page.waitForEvent('filechooser');
-    await page.getByText('Choose CSV File', { exact: true }).first().click();
+    await page.getByText('Choose CSV or Excel File', { exact: true }).first().click();
     await (await chooser).setFiles({
       name: 'show-pickups.csv',
       mimeType: 'text/csv',

@@ -21,6 +21,9 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('../components/GetStarted', () => ({ GetStarted: () => null }));
+jest.mock('../components/SyncStatusPill', () => ({ SyncStatusPill: () => null }));
+jest.mock('../components/SavingsCard', () => ({ SavingsCard: () => null }));
+jest.mock('../components/AgingCard', () => ({ AgingCard: () => null }));
 jest.mock('../services/offline/snapshot', () => ({
   peekSnapshot: () => undefined,
   loadSnapshot: async () => undefined,

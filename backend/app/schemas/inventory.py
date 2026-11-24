@@ -4,7 +4,20 @@ from decimal import Decimal
 from uuid import UUID
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, BeforeValidator, Field
+
+from app.services.barcode_rules import CODE_LIMIT, clean_code
+
+
+def _fit_upc(value):
+    """A long QR scanned into the UPC field is shortened, not rejected."""
+    if isinstance(value, str):
+        value = value.strip()
+        # Long codes take the same short form a scan resolves to.
+        return clean_code(value) if len(value) > CODE_LIMIT else value
+    return value
 
 
 class SizeVariant(BaseModel):
@@ -50,7 +63,7 @@ class ItemCreate(BaseModel):
     name: str = Field(..., max_length=255)
     category: str | None = Field(None, max_length=100)
     sku: str | None = Field(None, max_length=100)
-    upc: str | None = Field(None, max_length=50)
+    upc: Annotated[str | None, BeforeValidator(_fit_upc)] = Field(None, max_length=50)
     size: str | None = Field(None, max_length=50)
     color: str | None = Field(None, max_length=50)
     condition: str | None = Field(None, max_length=50)
@@ -71,7 +84,7 @@ class ItemUpdate(BaseModel):
     name: str | None = Field(None, max_length=255)
     category: str | None = Field(None, max_length=100)
     sku: str | None = Field(None, max_length=100)
-    upc: str | None = Field(None, max_length=50)
+    upc: Annotated[str | None, BeforeValidator(_fit_upc)] = Field(None, max_length=50)
     size: str | None = Field(None, max_length=50)
     color: str | None = Field(None, max_length=50)
     condition: str | None = Field(None, max_length=50)
@@ -186,6 +199,9 @@ class ImportJobResponse(BaseModel):
     rows_errored: int
     created_at: datetime
     updated_at: datetime
+    # While a big .xlsx is processed in the background (status "pending").
+    progress: Optional[dict[str, int]] = None   # {"done": photos read, "total": photos}
+    error: Optional[str] = None                 # why a background preview failed
 
     model_config = {"from_attributes": True}
 

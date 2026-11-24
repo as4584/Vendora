@@ -73,9 +73,23 @@ def _auto_sync_once() -> None:
         db.close()
 
 
+def _aging_alerts_once() -> None:
+    from app.database import SessionLocal
+    from app.services.aging import run_daily
+
+    db = SessionLocal()
+    try:
+        asyncio.run(run_daily(db))
+    except Exception:  # noqa: BLE001 - worker must never crash the app
+        logger.exception("aging alerts sweep failed")
+    finally:
+        db.close()
+
+
 async def sweep_forever() -> None:  # pragma: no cover - long-running loop
     while True:
         await asyncio.sleep(SWEEP_SECONDS)
         await asyncio.to_thread(_pull_sheets_once)
         await asyncio.to_thread(_auto_sync_once)
+        await asyncio.to_thread(_aging_alerts_once)
         await asyncio.to_thread(_run_once)

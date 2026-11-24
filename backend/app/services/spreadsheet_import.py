@@ -26,14 +26,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-MAX_CSV_IMPORT_BYTES = 8 * 1024 * 1024
-MAX_XLSX_IMPORT_BYTES = 50 * 1024 * 1024
-MAX_EMBEDDED_IMAGE_BYTES = 12 * 1024 * 1024
+MAX_CSV_IMPORT_BYTES = 500 * 1024 * 1024
+MAX_XLSX_IMPORT_BYTES = 500 * 1024 * 1024
+MAX_EMBEDDED_IMAGE_BYTES = 40 * 1024 * 1024
 # Zip-bomb guard for XLSX (a zip archive): total inflated size, member count,
 # and per-member compression ratio (legit XML compresses ~10-20x).
-MAX_XLSX_UNCOMPRESSED_BYTES = 300 * 1024 * 1024
-MAX_XLSX_MEMBERS = 5000
+MAX_XLSX_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
+MAX_XLSX_MEMBERS = 50000
 MAX_XLSX_COMPRESSION_RATIO = 1000
+# Pictures inside an .xlsx; the text-only reader never opens them.
+MEDIA_PREFIXES = ("xl/media/", "xl/embeddings/", "xl/drawings/")
 MAX_EMBEDDED_IMAGE_DIMENSION = 640
 JPEG_THUMBNAIL_QUALITY = 76
 
@@ -400,6 +402,9 @@ def _reject_html_download(content: bytes, content_type: str | None = None) -> No
         )
 
 
+STRONG_HEADER_SCORE = 7
+
+
 def _header_score(values: list[Any]) -> int:
     fields = [resolve_field(str(value)) for value in values if str(value or "").strip()]
     unique_fields = {field for field in fields if field}
@@ -573,13 +578,26 @@ def _display_size_label(value: Any) -> str:
     }.get(normalized, raw.upper())
 
 
+GRID_NAME_HEADERS = {"itemname", "productname", "name", "product", "item", "model", "style"}
+
+
+def _is_shoe_size_header(value: Any) -> bool:
+    """A header cell that is a shoe size: 4 to 18, whole or half (8, 8.5, "10.5")."""
+    if isinstance(value, bool):
+        return False
+    label = _compact_text(value)
+    if not re.fullmatch(r"\d{1,2}(\.[05])?", label):
+        return False
+    return 1 <= float(label) <= 18
+
+
 def _horizontal_size_table_rows_to_dicts(table_rows: list[list[Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     current_category: str | None = None
 
     for header_idx, row in enumerate(table_rows):
         normalized = [normalize_header(value) for value in row]
-        name_cols = [idx for idx, value in enumerate(normalized) if value in {"itemname", "productname", "name"}]
+        name_cols = [idx for idx, value in enumerate(normalized) if value in GRID_NAME_HEADERS]
         if not name_cols:
             non_empty = [_compact_text(value) for value in row if _compact_text(value)]
             if "inventory" in normalized and non_empty:
@@ -590,9 +608,11 @@ def _horizontal_size_table_rows_to_dicts(table_rows: list[list[Any]]) -> list[di
         size_cols = [
             (idx, _display_size_label(row[idx]))
             for idx, value in enumerate(normalized)
-            if idx > name_col and value in HORIZONTAL_SIZE_HEADERS
+            if idx > name_col and (value in HORIZONTAL_SIZE_HEADERS or _is_shoe_size_header(row[idx]))
         ]
-        if not size_cols:
+        # Numbers as headers could be anything; two or more shoe sizes make it a grid.
+        numeric = sum(1 for idx, _ in size_cols if _is_shoe_size_header(row[idx]))
+        if not size_cols or (numeric and len(size_cols) < 2):
             continue
 
         total_cols = [
@@ -704,19 +724,23 @@ def _warehouse_matrix_rows_to_dicts(
     return rows
 
 
-def assert_safe_xlsx_archive(content: bytes) -> None:
+def assert_safe_xlsx_archive(content: bytes | str, skip_media: bool = False) -> None:
     """Refuse zip bombs before openpyxl or our own reader inflates anything.
 
     The declared uncompressed sizes in the central directory are checked; a
     member that lies about its size is still capped because zipfile verifies
-    the size/CRC while reading.
+    the size/CRC while reading. With ``skip_media`` (photos are never read),
+    pictures don't count toward the limits, so a sheet with thousands of
+    photos is fine.
     """
     try:
-        archive = zipfile.ZipFile(io.BytesIO(content))
+        archive = zipfile.ZipFile(io.BytesIO(content) if isinstance(content, bytes) else content)
     except zipfile.BadZipFile:
         return  # not a zip at all: nothing to inflate; the parser reports it
 
     infos = archive.infolist()
+    if skip_media:
+        infos = [info for info in infos if not info.filename.startswith(MEDIA_PREFIXES)]
     total = sum(info.file_size for info in infos)
     if len(infos) > MAX_XLSX_MEMBERS or total > MAX_XLSX_UNCOMPRESSED_BYTES or any(
         info.file_size > 0 and info.compress_size > 0
@@ -742,6 +766,8 @@ def _image_data_url(image_bytes: bytes, path: str) -> str | None:
     if Image is not None:
         try:
             with Image.open(io.BytesIO(image_bytes)) as image:
+                # Decode a big JPEG straight at reduced size: much less memory and time.
+                image.draft("RGB", (MAX_EMBEDDED_IMAGE_DIMENSION, MAX_EMBEDDED_IMAGE_DIMENSION))
                 image.thumbnail(
                     (MAX_EMBEDDED_IMAGE_DIMENSION, MAX_EMBEDDED_IMAGE_DIMENSION),
                     Image.Resampling.LANCZOS,
@@ -774,85 +800,194 @@ def _resolve_xlsx_relationship_path(base_path: str, target: str) -> str:
     return posixpath.normpath(posixpath.join(posixpath.dirname(base_path), target))
 
 
-def _xlsx_first_sheet_images(content: bytes) -> list[EmbeddedImage]:
-    namespaces = {
-        "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
-        "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
-        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-        "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
-        "xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
-    }
+XLSX_NS = {
+    "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+    "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
+    "rv": "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata",
+    "xlrd": "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata",
+}
+_CELL_REF = re.compile(r"^([A-Z]+)(\d+)$")
 
+
+def _col_number(letters: str) -> int:
+    n = 0
+    for ch in letters:
+        n = n * 26 + (ord(ch) - 64)
+    return n
+
+
+def _rels(archive: zipfile.ZipFile, rels_path: str) -> dict[str, str]:
     try:
-        archive = zipfile.ZipFile(io.BytesIO(content))
+        root = ElementTree.fromstring(archive.read(rels_path))
+    except KeyError:
+        return {}
+    return {r.attrib.get("Id"): r.attrib.get("Target") for r in root.findall("rel:Relationship", XLSX_NS)}
+
+
+def _rels_path(part: str) -> str:
+    return posixpath.join(posixpath.dirname(part), "_rels", f"{posixpath.basename(part)}.rels")
+
+
+def _drawing_picture_anchors(archive: zipfile.ZipFile, sheet_path: str) -> list[tuple[int, int, str]]:
+    """Pictures floating over the sheet: (row, col, media path) of each top-left corner."""
+    out: list[tuple[int, int, str]] = []
+    sheet_rels = _rels(archive, _rels_path(sheet_path))
+    for target in sheet_rels.values():
+        if not target or "drawings/" not in target or target.endswith(".vml"):
+            continue
+        drawing_path = _resolve_xlsx_relationship_path(sheet_path, target)
+        try:
+            drawing_root = ElementTree.fromstring(archive.read(drawing_path))
+        except KeyError:
+            continue
+        media = _rels(archive, _rels_path(drawing_path))
+        for anchor_name in ("oneCellAnchor", "twoCellAnchor"):
+            for anchor in drawing_root.findall(f"xdr:{anchor_name}", XLSX_NS):
+                marker = anchor.find("xdr:from", XLSX_NS)
+                blip = anchor.find(".//a:blip", XLSX_NS)
+                if marker is None or blip is None:
+                    continue
+                media_target = media.get(blip.attrib.get(f"{{{XLSX_NS['r']}}}embed"))
+                if not media_target:
+                    continue
+                row = int(marker.findtext("xdr:row", default="0", namespaces=XLSX_NS)) + 1
+                col = int(marker.findtext("xdr:col", default="0", namespaces=XLSX_NS)) + 1
+                out.append((row, col, _resolve_xlsx_relationship_path(drawing_path, media_target)))
+    return out
+
+
+def _in_cell_picture_anchors(archive: zipfile.ZipFile, sheet_path: str) -> list[tuple[int, int, str]]:
+    """Excel 365 "Place in Cell" pictures: cell vm -> metadata -> rich value -> media."""
+    names = set(archive.namelist())
+    if "xl/metadata.xml" not in names or "xl/richData/rdrichvalue.xml" not in names:
+        return []
+    try:
+        meta = ElementTree.fromstring(archive.read("xl/metadata.xml"))
+        future = [
+            int(rvb.attrib.get("i", "-1"))
+            for bk in meta.findall("main:futureMetadata/main:bk", XLSX_NS)
+            for rvb in bk.iter(f"{{{XLSX_NS['xlrd']}}}rvb")
+        ]
+        value_meta = [
+            int(bk.find("main:rc", XLSX_NS).attrib.get("v", "-1"))
+            for bk in meta.findall("main:valueMetadata/main:bk", XLSX_NS)
+        ]
+        # Which position in a rich value holds the picture's relationship index.
+        rel_pos: dict[int, int] = {}
+        if "xl/richData/rdrichvaluestructure.xml" in names:
+            structs = ElementTree.fromstring(archive.read("xl/richData/rdrichvaluestructure.xml"))
+            for s_idx, struct in enumerate(structs.findall("rv:s", XLSX_NS)):
+                for k_idx, key in enumerate(struct.findall("rv:k", XLSX_NS)):
+                    if key.attrib.get("n") == "_rvRel:LocalImageIdentifier":
+                        rel_pos[s_idx] = k_idx
+        values: list[int | None] = []
+        for rv in ElementTree.fromstring(archive.read("xl/richData/rdrichvalue.xml")).findall("rv:rv", XLSX_NS):
+            parts = [v.text or "" for v in rv.findall("rv:v", XLSX_NS)]
+            pos = rel_pos.get(int(rv.attrib.get("s", "0")), 0)
+            values.append(int(parts[pos]) if pos < len(parts) and parts[pos].isdigit() else None)
+        rel_ids = [
+            rel.attrib.get(f"{{{XLSX_NS['r']}}}id")
+            for rel in ElementTree.fromstring(archive.read("xl/richData/richValueRel.xml"))
+            if rel.tag.endswith("rel")
+        ]
+        rel_targets = _rels(archive, "xl/richData/_rels/richValueRel.xml.rels")
+    except (KeyError, ValueError, AttributeError, ElementTree.ParseError):
+        return []
+
+    out: list[tuple[int, int, str]] = []
+    with archive.open(sheet_path) as sheet:
+        for _, cell in ElementTree.iterparse(sheet):
+            if not cell.tag.endswith("}c"):
+                continue
+            vm = cell.attrib.get("vm")
+            ref = _CELL_REF.match(cell.attrib.get("r", ""))
+            cell.clear()
+            if not vm or not ref:
+                continue
+            try:
+                rel_index = values[future[value_meta[int(vm) - 1]]]
+                target = rel_targets.get(rel_ids[rel_index])
+            except (IndexError, TypeError, ValueError):
+                continue
+            if target:
+                media = _resolve_xlsx_relationship_path("xl/richData/richValueRel.xml", target)
+                out.append((int(ref.group(2)), _col_number(ref.group(1)), media))
+    return out
+
+
+def _first_sheet_path(archive: zipfile.ZipFile) -> str:
+    try:
+        workbook = ElementTree.fromstring(archive.read("xl/workbook.xml"))
+        first = workbook.find("main:sheets/main:sheet", XLSX_NS)
+        rid = first.attrib.get(f"{{{XLSX_NS['r']}}}id") if first is not None else None
+        target = _rels(archive, "xl/_rels/workbook.xml.rels").get(rid)
+        if target:
+            return _resolve_xlsx_relationship_path("xl/workbook.xml", target)
+    except (KeyError, ElementTree.ParseError):
+        pass
+    return "xl/worksheets/sheet1.xml"
+
+
+def _xlsx_first_sheet_images(content: bytes | str, on_progress=None) -> list[EmbeddedImage]:
+    """Every picture on the first sheet, shrunk to a thumbnail one at a time.
+
+    ``content`` is the file's bytes or its path on disk. ``on_progress(done,
+    total)`` is called as pictures are processed.
+    """
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content) if isinstance(content, bytes) else content)
     except zipfile.BadZipFile:
         return []
+    with archive:
+        sheet_path = _first_sheet_path(archive)
+        if sheet_path not in archive.namelist():
+            return []
+        try:
+            anchors = _drawing_picture_anchors(archive, sheet_path) + _in_cell_picture_anchors(archive, sheet_path)
+        except ElementTree.ParseError:
+            return []
 
-    try:
-        sheet_xml = archive.read("xl/worksheets/sheet1.xml")
-        sheet_rels_xml = archive.read("xl/worksheets/_rels/sheet1.xml.rels")
-    except KeyError:
-        return []
+        images: list[EmbeddedImage] = []
+        cache: dict[str, str | None] = {}
+        for done, (row, col, media_path) in enumerate(anchors, start=1):
+            if media_path not in cache:
+                try:
+                    too_big = archive.getinfo(media_path).file_size > MAX_EMBEDDED_IMAGE_BYTES
+                    cache[media_path] = None if too_big else _image_data_url(archive.read(media_path), media_path)
+                except (KeyError, zipfile.BadZipFile, OSError):
+                    cache[media_path] = None  # missing or damaged picture: skip it, keep the row
+            if cache[media_path]:
+                images.append(EmbeddedImage(row=row, col=col, data_url=cache[media_path]))
+            if on_progress and (done % 25 == 0 or done == len(anchors)):
+                on_progress(done, len(anchors))
+        return images
 
-    sheet_root = ElementTree.fromstring(sheet_xml)
-    drawing = sheet_root.find("main:drawing", namespaces)
-    if drawing is None:
-        return []
-    drawing_rel_id = drawing.attrib.get(f"{{{namespaces['r']}}}id")
-    if not drawing_rel_id:
-        return []
 
-    sheet_rels = ElementTree.fromstring(sheet_rels_xml)
-    drawing_target = None
-    for relationship in sheet_rels.findall("rel:Relationship", namespaces):
-        if relationship.attrib.get("Id") == drawing_rel_id:
-            drawing_target = relationship.attrib.get("Target")
-            break
-    if not drawing_target:
-        return []
-
-    drawing_path = _resolve_xlsx_relationship_path("xl/worksheets/sheet1.xml", drawing_target)
-    drawing_rels_path = posixpath.join(
-        posixpath.dirname(drawing_path),
-        "_rels",
-        f"{posixpath.basename(drawing_path)}.rels",
-    )
-
-    try:
-        drawing_root = ElementTree.fromstring(archive.read(drawing_path))
-        drawing_rels = ElementTree.fromstring(archive.read(drawing_rels_path))
-    except KeyError:
-        return []
-
-    media_targets = {
-        relationship.attrib.get("Id"): relationship.attrib.get("Target")
-        for relationship in drawing_rels.findall("rel:Relationship", namespaces)
-    }
-
-    images: list[EmbeddedImage] = []
-    for anchor_name in ("oneCellAnchor", "twoCellAnchor"):
-        for anchor in drawing_root.findall(f"xdr:{anchor_name}", namespaces):
-            marker = anchor.find("xdr:from", namespaces)
-            blip = anchor.find(".//a:blip", namespaces)
-            if marker is None or blip is None:
-                continue
-            embed_id = blip.attrib.get(f"{{{namespaces['r']}}}embed")
-            media_target = media_targets.get(embed_id)
-            if not media_target:
-                continue
-
-            media_path = _resolve_xlsx_relationship_path(drawing_path, media_target)
-            try:
-                data_url = _image_data_url(archive.read(media_path), media_path)
-            except KeyError:
-                data_url = None
-            if not data_url:
-                continue
-
-            row = int(marker.findtext("xdr:row", default="0", namespaces=namespaces)) + 1
-            col = int(marker.findtext("xdr:col", default="0", namespaces=namespaces)) + 1
-            images.append(EmbeddedImage(row=row, col=col, data_url=data_url))
-    return images
+def _attach_row_photos(rows: list[tuple[int, dict[str, Any]]], images: list[EmbeddedImage]) -> None:
+    """Give each item row the pictures sitting on that row, left to right."""
+    by_row: dict[int, list[EmbeddedImage]] = {}
+    for image in images:
+        by_row.setdefault(image.row, []).append(image)
+    for sheet_row, row in rows:
+        photos = sorted(by_row.get(sheet_row, []), key=lambda image: image.col)
+        if not photos:
+            continue
+        # Excel shows an in-cell picture's cell value as #VALUE!; it isn't text.
+        for key in [k for k, v in row.items() if v == "#VALUE!"]:
+            del row[key]
+        # A photo link already in the row wins for the front photo.
+        has_link = any(
+            looks_like_url(v) for k, v in row.items()
+            if "photo" in str(k).lower() or "image" in str(k).lower()
+        )
+        keys = [k for k in ("Front Photo", "Back Photo") if k not in row]
+        if has_link and "Front Photo" in keys:
+            keys.remove("Front Photo")
+        for key, image in zip(keys, photos):
+            row[key] = image.data_url
 
 
 def _closest_matrix_image(
@@ -885,20 +1020,23 @@ def _table_rows_to_dicts(
     if horizontal_rows:
         return horizontal_rows
 
-    matrix_rows = _warehouse_matrix_rows_to_dicts(table_rows, embedded_images or [])
-    if matrix_rows:
-        return matrix_rows
-
     candidates = [
         (idx, _header_score(row))
         for idx, row in enumerate(table_rows[:25])
         if any(str(value or "").strip() for value in row)
     ]
+    best = max(candidates, key=lambda item: item[1]) if candidates else None
+    # Name + SKU/qty/price headers: an ordinary sheet, even with title rows on top.
+    if not best or best[1] < STRONG_HEADER_SCORE:
+        matrix_rows = _warehouse_matrix_rows_to_dicts(table_rows, embedded_images or [])
+        if matrix_rows:
+            return matrix_rows
     if not candidates:
         return []
 
-    header_idx, score = max(candidates, key=lambda item: item[1])
-    if score < 3:
+    header_idx, score = best
+    # A short sheet ("Name" only, or "Item, Qty") is fine as long as a column is recognised.
+    if score < 3 and not any(resolve_field(value) for value in table_rows[header_idx] if value):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -908,19 +1046,23 @@ def _table_rows_to_dicts(
         )
 
     headers = _unique_headers(table_rows[header_idx])
-    rows: list[dict[str, Any]] = []
-    for row in table_rows[header_idx + 1:]:
+    numbered: list[tuple[int, dict[str, Any]]] = []
+    for sheet_row, row in enumerate(table_rows[header_idx + 1:], start=header_idx + 2):
         if not any(value not in (None, "") for value in row):
             continue
-        rows.append({
+        numbered.append((sheet_row, {
             headers[idx]: value
             for idx, value in enumerate(row)
             if idx < len(headers) and value not in (None, "")
-        })
-    return rows
+        }))
+    if embedded_images:
+        _attach_row_photos(numbered, embedded_images)
+    return [row for _, row in numbered]
 
 
-def rows_from_bytes(content: bytes, file_format: str, content_type: str | None = None) -> list[dict[str, Any]]:
+def rows_from_bytes(
+    content: bytes, file_format: str, content_type: str | None = None, with_images: bool = True,
+) -> list[dict[str, Any]]:
     max_bytes = MAX_XLSX_IMPORT_BYTES if file_format == "xlsx" else MAX_CSV_IMPORT_BYTES
     max_mb = max_bytes // (1024 * 1024)
     if len(content) > max_bytes:
@@ -938,7 +1080,8 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="XLSX import support is not installed on the server.",
             ) from exc
-        assert_safe_xlsx_archive(content)
+        # Pictures are read one at a time, each with its own cap, so they don't count here.
+        assert_safe_xlsx_archive(content, skip_media=True)
 
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         last_error: HTTPException | None = None
@@ -946,7 +1089,7 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
             for sheet_idx, sheet in enumerate(workbook.worksheets):
                 table_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
                 try:
-                    embedded_images = _xlsx_first_sheet_images(content) if sheet_idx == 0 else []
+                    embedded_images = _xlsx_first_sheet_images(content) if sheet_idx == 0 and with_images else []
                     return _table_rows_to_dicts(table_rows, embedded_images=embedded_images)
                 except HTTPException as exc:
                     last_error = exc
@@ -964,12 +1107,44 @@ def rows_from_bytes(content: bytes, file_format: str, content_type: str | None =
         text = content.decode("cp1252", errors="replace")
     sample = text[:2048]
     try:
-        dialect = csv.Sniffer().sniff(sample) if sample.strip() else csv.excel
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;	|") if sample.strip() else csv.excel
     except csv.Error:
         dialect = csv.excel
     if getattr(dialect, "delimiter", ",") in {"\r", "\n"}:
         dialect = csv.excel
-    return _table_rows_to_dicts([list(row) for row in csv.reader(io.StringIO(text), dialect=dialect)])
+    # newline="" lets the csv module handle \r\n, \n and old-Mac \r endings (and newlines inside quotes).
+    return _table_rows_to_dicts([list(row) for row in csv.reader(io.StringIO(text, newline=""), dialect=dialect)])
+
+
+def xlsx_rows_from_path(path: str, with_images: bool = True, on_progress=None) -> list[dict[str, Any]]:
+    """Read an .xlsx straight from disk at any file size.
+
+    Rows stream from the file (openpyxl read-only mode). Pictures are read
+    one at a time and kept only as small thumbnails, so memory follows the
+    number of items, not the file size.
+    """
+    with open(path, "rb") as handle:
+        _reject_html_download(handle.read(512))
+    assert_safe_xlsx_archive(path, skip_media=True)
+    from openpyxl import load_workbook
+
+    # A file handle (not the path): openpyxl rejects paths not ending in .xlsx.
+    with open(path, "rb") as handle:
+        workbook = load_workbook(handle, read_only=True, data_only=True)
+        last_error: HTTPException | None = None
+        try:
+            for sheet_idx, sheet in enumerate(workbook.worksheets):
+                table_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
+                try:
+                    images = _xlsx_first_sheet_images(path, on_progress) if sheet_idx == 0 and with_images else []
+                    return _table_rows_to_dicts(table_rows, embedded_images=images)
+                except HTTPException as exc:
+                    last_error = exc
+        finally:
+            workbook.close()
+    if last_error:
+        raise last_error
+    return []
 
 
 def parse_inventory_rows(rows: list[dict[str, Any]]) -> list[ParsedImportRow]:

@@ -130,7 +130,7 @@ test.describe('Completed product surfaces', () => {
       await expect.poll(() => page.locator('body').innerText()).toContain('More');
       await page.getByText('More', { exact: true }).click();
       await page.getByText('Settings', { exact: true }).click();
-      await expect(page.getByText('Resqlo Plus')).toBeVisible();
+      await expect(page.getByText('Your plan', { exact: true })).toBeVisible();
     };
     await openSettings();
     expect(errors).toEqual([]);

@@ -27,6 +27,8 @@ import { ProUpsell, isProRequired } from "../../../components/ProUpsell";
 import { COLORS, SPACING } from "../../../theme/tokens";
 import { formatCompactDate, formatCurrency, resolveQty, resolvedPhoto, sizeBreakdown, SOURCE_LABELS, STATUS_LABELS } from "../../../utils/inventory";
 import { errorMessage } from "../../../services/errors";
+import { LinkedBarcodes } from "../../../components/LinkedBarcodes";
+import { ResqloCode } from "../../../components/ResqloCode";
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   in_stock: ["listed", "sold"],
@@ -363,6 +365,9 @@ export default function ItemDetailScreen() {
         <DetailRow label="Notes" value={item.notes || "No notes"} />
       </Card>
 
+      <ResqloCode itemId={item.id} />
+      <LinkedBarcodes itemId={item.id} />
+
       <Card>
         <SectionLabel>Sales History</SectionLabel>
         {transactions.length === 0 ? (
@@ -403,6 +408,14 @@ export default function ItemDetailScreen() {
         <View style={[styles.actionRow, { marginTop: SPACING.sm }]}><ActionButton label={pricingLoading ? "Checking..." : "Check Market Price"} onPress={loadMarketPricing} disabled={pricingLoading} tone="secondary" compact /><ActionButton label={publishing ? "Publishing..." : "Publish to Lightspeed"} onPress={publishToLightspeed} disabled={publishing} tone="secondary" compact /></View>
       </Card>
       <StockxItemCard itemId={item.id} />
+
+      <Button
+        testID="print-item-label"
+        label="Print price label"
+        variant="secondary"
+        leadingIcon="print-outline"
+        onPress={() => push({ pathname: "/inventory/labels", params: { ids: item.id } })}
+      />
 
       <EbayCompsCard itemId={item.id} />
 

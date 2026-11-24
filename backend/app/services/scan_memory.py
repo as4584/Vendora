@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models.inventory import InventoryItem
 from app.models.scan_memory import ScanMemory
+from app.services import catalog
 from app.routers.scan import _item_fields, normalize_barcode, normalize_style
 
 
@@ -23,7 +24,7 @@ def remember_items(db: Session, user_id, items: Iterable[InventoryItem]) -> dict
     by_code: dict[str, dict] = {}
     skipped = 0
     for item in items:
-        code = normalize_barcode(item.upc or "") if item.upc else ""
+        code = normalize_barcode(item.upc or "")[:64] if item.upc else ""
         fields = _item_fields(item)
         if len(code) < 4 or not fields.get("name"):
             skipped += 1
@@ -31,6 +32,7 @@ def remember_items(db: Session, user_id, items: Iterable[InventoryItem]) -> dict
         style = normalize_style(fields.get("style_code"))
         if style:
             fields["style_code"] = style
+        catalog.contribute(db, fields, code)
         # Later rows of the same barcode only fill gaps, like existing memory.
         by_code[code] = {**fields, **by_code.get(code, {})}
 

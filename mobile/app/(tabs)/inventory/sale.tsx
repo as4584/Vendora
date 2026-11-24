@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PLATFORM_FEES, estimateFeeCents } from "../../../utils/platformFees";
 import {
   View,
   Text,
@@ -9,15 +10,20 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Pressable,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as api from "../../../services/api";
 import { CustomerPicker } from "../../../components/CustomerPicker";
 import { isOnline } from "../../../services/offline";
+import { useConMode } from "../../../services/conMode";
+import { itemIdFromScan } from "../../../utils/labels";
 import { Card, Icon, Pill, SectionLabel } from "../../../components/ui";
 import { Button, IconButton, triggerHaptic } from "../../../components/Button";
 import { ScannerOverlay } from "../../../components/ScannerOverlay";
+import { UnknownBarcodeSheet } from "../../../components/UnknownBarcodeSheet";
+import { SCANNER_BARCODE_TYPES } from "../../../utils/barcodeRules";
 import { ReceiptSheet } from "../../../components/ReceiptSheet";
 import { maybeAskForRating, recordSale } from "../../../services/rating";
 import { BRAND, COLORS, FONT_SCALE, RADII, SPACING, TYPE } from "../../../theme/tokens";
@@ -31,6 +37,7 @@ import {
   HAGGLE_STEPS,
   paymentLabel,
   sameBarcode,
+  sameSku,
   sizeOptions,
   toCents,
   type DiscountMode,
@@ -87,6 +94,8 @@ export default function QuickSaleScreen() {
   const [method, setMethod] = useState("cash");
   const [split, setSplit] = useState<PaymentRow[]>([]);
   const [feeAmount, setFeeAmount] = useState("");
+  const [soldOn, setSoldOn] = useState<string | null>(null);
+  const [feeEdited, setFeeEdited] = useState(false);
   const [discountMode, setDiscountMode] = useState<DiscountMode>("amount");
   const [discountValue, setDiscountValue] = useState("");
   const [taxOn, setTaxOn] = useState(false);
@@ -105,6 +114,7 @@ export default function QuickSaleScreen() {
   // Last sold price per cart item, fetched once per item.
   const [lastSales, setLastSales] = useState<Record<string, api.LastSale | null>>({});
   const [scanNote, setScanNote] = useState<{ text: string; ok: boolean } | null>(null);
+  const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogRequest = useRef(0);
   const submissionInFlight = useRef(false);
@@ -223,7 +233,10 @@ export default function QuickSaleScreen() {
     discountValue,
     taxRate: taxOn ? taxRate : "",
   });
-  const fee = toCents(feeAmount);
+  // Picking where it sold pre-fills that platform's typical fee until the
+  // seller types their own.
+  const feeText = soldOn && !feeEdited ? centsToString(estimateFeeCents(soldOn, totals.total)) : feeAmount;
+  const fee = toCents(feeText);
   const splitting = split.length > 0;
   const splitPaid = split.reduce((sum, row) => sum + toCents(row.amount), 0);
   const splitLeft = totals.total - splitPaid;
@@ -320,13 +333,31 @@ export default function QuickSaleScreen() {
     if (lastScan.current && lastScan.current.code === data && now - lastScan.current.at < REPEAT_COOLDOWN_MS) return;
     scanLock.current = true;
     lastScan.current = { code: data, at: now };
-    let hit = items.find((item) => sameBarcode(item.upc, data));
-    if (!hit) {
+    const labelId = itemIdFromScan(data);
+    let hit = labelId
+      ? items.find((item) => item.id === labelId)
+      : items.find((item) => sameBarcode(item.upc, data) || sameSku(item.sku, data));
+    let reachable = true;
+    if (!hit && labelId) {
+      // A printed Resqlo price label: fetch the item it names.
       try {
-        const res = await api.listItems({ upc: data, perPage: 5, availableOnly: true });
-        hit = res.items[0];
+        const item = await api.getItem(labelId);
+        hit = resolveQty(item) > 0 ? item : undefined;
       } catch {
         hit = undefined;
+      }
+    } else if (!hit) {
+      try {
+        // Store tags, SKU stickers, label QRs and the seller's own rules.
+        hit = (await api.resolveBarcode(data)).item ?? undefined;
+      } catch {
+        reachable = false;
+        try {
+          const res = await api.listItems({ upc: data, perPage: 5, availableOnly: true });
+          hit = res.items[0];
+        } catch {
+          hit = undefined;
+        }
       }
     }
     if (hit) {
@@ -336,9 +367,16 @@ export default function QuickSaleScreen() {
       addToCart(found);
       const inCart = (cart[found.id]?.qty ?? 0) + 1;
       showScanNote(`Added ${found.name}${inCart > 1 ? ` · ${inCart} in cart` : ""}`, true);
-    } else {
+    } else if (labelId) {
+      // Our own label: the pair is sold out or gone, not an unknown code.
       triggerHaptic("warning");
       showScanNote(`Not in stock: ${data}. Add it in Add Stock first.`, false);
+    } else if (reachable) {
+      triggerHaptic("warning");
+      setUnknownCode(data);
+    } else {
+      triggerHaptic("warning");
+      showScanNote(`Not found offline: ${data}. Scan again when you're back online to link it.`, false);
     }
     scanLock.current = false;
   };
@@ -349,6 +387,8 @@ export default function QuickSaleScreen() {
     setMethod("cash");
     setSplit([]);
     setFeeAmount("");
+    setSoldOn(null);
+    setFeeEdited(false);
     setDiscountMode("amount");
     setDiscountValue("");
     setTaxRate(defaultTax);
@@ -478,16 +518,42 @@ export default function QuickSaleScreen() {
     }
   };
 
+  const [conMode, setConMode] = useConMode();
   const step = cartLines.length === 0 ? "Add items" : `${cartLines.length} item${cartLines.length === 1 ? "" : "s"} in cart`;
 
   return (
     <View style={styles.container}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Pressable
+          testID="con-mode-toggle"
+          style={[styles.conMode, conMode && styles.conModeOn]}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: conMode }}
+          accessibilityLabel="Con Mode"
+          accessibilityHint="Checkout never waits on wifi; sales sync in the background"
+          onPress={() => { triggerHaptic("light"); setConMode(!conMode); }}
+        >
+          <Icon name={conMode ? "flash" : "flash-outline"} size={20} color={conMode ? "#FFFFFF" : COLORS.textSoft} />
+          <View style={styles.flex}>
+            <Text style={[styles.conModeTitle, conMode && styles.conModeTitleOn]}>Con Mode {conMode ? "on" : "off"}</Text>
+            <Text style={[styles.conModeHint, conMode && styles.conModeTitleOn]}>
+              {conMode ? "Instant checkout. Sales sync in the background." : "Turn on at a show for instant checkout on bad wifi."}
+            </Text>
+          </View>
+        </Pressable>
         <Card style={{ gap: SPACING.md }}>
           <View style={styles.sectionHead}>
             <SectionLabel>Items</SectionLabel>
             <Text style={styles.stepText}>{step}</Text>
           </View>
+          <Button
+            testID="sale-start-trade"
+            label="Trade instead"
+            variant="secondary"
+            size="sm"
+            leadingIcon="swap-horizontal-outline"
+            onPress={() => router.push("/inventory/trade")}
+          />
           <View style={styles.searchRow}>
             <TextInput
               accessibilityLabel="Search sale inventory"
@@ -799,13 +865,38 @@ export default function QuickSaleScreen() {
               </View>
             </View>
           )}
+          <Text style={styles.adjustLabel}>Sold on</Text>
+          <View style={styles.chipWrap}>
+            {PLATFORM_FEES.map((p) => (
+              <Chip
+                key={p.key}
+                label={p.label}
+                compact
+                active={soldOn === p.key}
+                onPress={() => {
+                  setFeeEdited(false);
+                  setFeeAmount("");
+                  setSoldOn(soldOn === p.key ? null : p.key);
+                }}
+              />
+            ))}
+          </View>
+          {soldOn ? (
+            <Text style={styles.helperText}>
+              Estimated {PLATFORM_FEES.find((p) => p.key === soldOn)?.label} fee
+              {PLATFORM_FEES.find((p) => p.key === soldOn)?.note ? ` (${PLATFORM_FEES.find((p) => p.key === soldOn)?.note})` : ""}. Edit it if yours differs.
+            </Text>
+          ) : null}
           <TextInput
             accessibilityLabel="Fee amount"
             style={styles.input}
             placeholder="Processing fee (optional)"
             placeholderTextColor={COLORS.textSoft}
-            value={feeAmount}
-            onChangeText={setFeeAmount}
+            value={feeText}
+            onChangeText={(text) => {
+              setFeeEdited(true);
+              setFeeAmount(text);
+            }}
             keyboardType="decimal-pad"
           />
           <TextInput
@@ -844,8 +935,8 @@ export default function QuickSaleScreen() {
           <CameraView
             style={styles.flex}
             facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] }}
-            onBarcodeScanned={onBarcodeScanned}
+            barcodeScannerSettings={{ barcodeTypes: [...SCANNER_BARCODE_TYPES] }}
+            onBarcodeScanned={unknownCode ? undefined : onBarcodeScanned}
           />
           <ScannerOverlay
             hint={cartLines.length ? `${cartLines.reduce((n, l) => n + l.qty, 0)} in cart · keep scanning` : "Scan items to add them to the sale"}
@@ -862,6 +953,25 @@ export default function QuickSaleScreen() {
               <Text numberOfLines={2} style={styles.scanNoteText}>{scanNote.text}</Text>
             </View>
           ) : null}
+          <UnknownBarcodeSheet
+            code={unknownCode}
+            onClose={() => setUnknownCode(null)}
+            onLinked={(item) => {
+              setUnknownCode(null);
+              addToCart(item);
+              showScanNote(`Linked and added ${item.name}`, true);
+            }}
+            onAddNew={(code) => {
+              setUnknownCode(null);
+              setScannerOpen(false);
+              router.push({ pathname: "/inventory/add", params: { upc: code } });
+            }}
+            onMakeRule={(code) => {
+              setUnknownCode(null);
+              setScannerOpen(false);
+              router.push({ pathname: "/settings/barcode-rules", params: { sample: code } });
+            }}
+          />
         </View>
       </Modal>
 
@@ -1005,7 +1115,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.bgElevated,
   },
-  chipCompact: { minHeight: 36, paddingHorizontal: 12 },
+  chipCompact: { minHeight: 44, paddingHorizontal: 12 },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipDisabled: { opacity: 0.4 },
   chipText: { ...TYPE.footnote, color: COLORS.textMuted, fontWeight: "600" },
@@ -1017,12 +1127,12 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   cartTop: { flexDirection: "row", alignItems: "flex-start", gap: SPACING.sm },
-  lastSold: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32 },
+  lastSold: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44 },
   lastSoldText: { ...TYPE.footnote, color: COLORS.textMuted, flex: 1 },
   lastSoldPrice: { color: COLORS.text, fontWeight: "600" },
   lastSoldUse: { ...TYPE.footnote, color: COLORS.primaryBright, fontWeight: "600" },
   haggleRow: { flexDirection: "row", gap: SPACING.xs, flexWrap: "wrap" },
-  haggleChip: { minHeight: 36, paddingHorizontal: SPACING.sm, justifyContent: "center", borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
+  haggleChip: { minHeight: 44, paddingHorizontal: SPACING.sm, justifyContent: "center", borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
   haggleText: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
   cartControls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: SPACING.sm },
   qtyStepper: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
@@ -1049,6 +1159,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     textAlign: "right",
   },
+  conMode: {
+    flexDirection: "row", alignItems: "center", gap: SPACING.sm, minHeight: 56, padding: SPACING.sm,
+    borderRadius: RADII.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card,
+  },
+  conModeOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  conModeTitle: { ...TYPE.body, fontWeight: "700", color: COLORS.text },
+  conModeTitleOn: { color: "#FFFFFF" },
+  conModeHint: { ...TYPE.caption, color: COLORS.textSoft },
   divider: { height: 1, backgroundColor: COLORS.border, marginVertical: SPACING.xs },
   subRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   subLabel: { color: COLORS.textMuted, fontSize: 14, fontWeight: "600" },

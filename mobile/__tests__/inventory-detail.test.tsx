@@ -46,6 +46,10 @@ jest.mock('expo-image-picker', () => ({
 
 jest.mock('../services/api', () => ({
   getItem: jest.fn(),
+  listItemBarcodes: jest.fn(async () => []),
+  getResqloCode: jest.fn(async () => { throw new Error('offline'); }),
+  linkBarcode: jest.fn(),
+  unlinkBarcode: jest.fn(),
   getItemActivity: jest.fn(async () => []),
   listTransactions: jest.fn(async () => ({ items: [], total: 0, page: 1, per_page: 10, pages: 0 })),
   listInvoices: jest.fn(async () => ({ items: [], total: 0, page: 1, per_page: 10, pages: 0 })),
@@ -109,6 +113,13 @@ describe('ItemDetailScreen', () => {
     fireEvent.press(screen.getByText('Publish to Lightspeed'));
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Published to Lightspeed', 'A linked Lightspeed catalog item was created.'));
     alertSpy.mockRestore();
+  });
+
+  it('opens price labels for this item', async () => {
+    const screen = render(<ItemDetailScreen />);
+    await screen.findByTestId('print-item-label');
+    fireEvent.press(screen.getByTestId('print-item-label'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/inventory/labels', params: { ids: expect.any(String) } });
   });
 
   it('copies the SKU and UPC with a tap', async () => {

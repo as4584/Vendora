@@ -12,7 +12,7 @@ import uuid
 from decimal import Decimal
 
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -431,6 +431,26 @@ def get_sale_receipt_pdf(
     )
 
 
+@router.post("/import/sales")
+async def import_sales_csv(
+    file: UploadFile = File(...),
+    platform: str = Query(..., pattern="^(poshmark|mercari|whatnot|depop|other_csv)$"),
+    dry_run: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import sales from a marketplace sales-report CSV. dry_run previews."""
+    from app.services.sales_import import import_sales
+
+    max_bytes = 5 * 1024 * 1024
+    content = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        content.extend(chunk)
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail="That file is too large (5 MB max).")
+    return import_sales(db, current_user.id, platform, bytes(content), dry_run)
+
+
 @router.get("", response_model=TransactionListResponse)
 def list_transactions(
     page: int = Query(1, ge=1),
@@ -501,6 +521,14 @@ def refund_transaction(
         raise HTTPException(status_code=409, detail={
             "error": "invoice_refund_unsupported",
             "message": "Invoice payments can't be refunded from transaction history.",
+        })
+
+    if original.method == "trade":
+        # The pairs received are already in inventory; a money refund would
+        # double count. Undo a trade by trading back.
+        raise HTTPException(status_code=409, detail={
+            "error": "trade_refund_unsupported",
+            "message": "Trades can't be refunded. Record a trade back instead.",
         })
 
     if original.is_refund:

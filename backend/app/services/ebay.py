@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, ClassVar, Optional
 import uuid
+import xml.etree.ElementTree as ET
 from urllib.parse import urlencode
 
 import httpx
@@ -39,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 _PAGE_SIZE = 100
 _ORDER_PAGE_SIZE = 50
+_LISTING_PAGE_SIZE = 200
+_TRADING_NS = {"e": "urn:ebay:apis:eBLBaseComponents"}
 _RATE_LIMIT_SLEEP = 0.2  # small pause between paged/offer calls
 
 # Scope identifiers are host-fixed to api.ebay.com for BOTH sandbox and production.
@@ -357,6 +360,94 @@ class EbayService(ProviderAdapter):
             await asyncio.sleep(_RATE_LIMIT_SLEEP)
         return results
 
+    @property
+    def trading_url(self) -> str:
+        if self._sandbox:
+            return "https://api.sandbox.ebay.com/ws/api.dll"
+        return "https://api.ebay.com/ws/api.dll"
+
+    async def _get_seller_hub_listings(self, access_token: str) -> list[dict[str, Any]]:
+        """Active listings made in Seller Hub or the eBay app (Trading API).
+
+        The Inventory API only returns listings created through it, so most
+        sellers' existing listings are only visible here.
+        """
+        results: list[dict[str, Any]] = []
+        page = 1
+        headers = {
+            "X-EBAY-API-CALL-NAME": "GetMyeBaySelling",
+            "X-EBAY-API-SITEID": "0",
+            "X-EBAY-API-COMPATIBILITY-LEVEL": "1193",
+            "X-EBAY-API-IAF-TOKEN": access_token,
+            "Content-Type": "text/xml",
+        }
+        async with httpx.AsyncClient(timeout=30, transport=self.transport) as client:
+            while True:
+                body = (
+                    '<?xml version="1.0" encoding="utf-8"?>'
+                    '<GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+                    "<ActiveList><Include>true</Include><Pagination>"
+                    f"<EntriesPerPage>{_LISTING_PAGE_SIZE}</EntriesPerPage><PageNumber>{page}</PageNumber>"
+                    "</Pagination></ActiveList><DetailLevel>ReturnAll</DetailLevel>"
+                    "</GetMyeBaySellingRequest>"
+                )
+                try:
+                    resp = await client.post(self.trading_url, content=body, headers=headers)
+                except httpx.HTTPError as exc:
+                    logger.error("eBay Trading API request failed: %s", exc)
+                    break
+                if resp.status_code != 200:
+                    logger.error("eBay Trading API error %s: %s", resp.status_code, resp.text[:500])
+                    break
+                listings, total_pages = self._parse_my_ebay_selling(resp.text)
+                results.extend(listings)
+                if page >= total_pages:
+                    break
+                page += 1
+                await asyncio.sleep(_RATE_LIMIT_SLEEP)
+        return results
+
+    @classmethod
+    def _parse_my_ebay_selling(cls, xml_text: str) -> tuple[list[dict[str, Any]], int]:
+        """Parse a GetMyeBaySelling response into (listings, total_pages)."""
+        # eBay never sends a DTD; refuse one rather than expand entities.
+        if "<!DOCTYPE" in xml_text or "<!ENTITY" in xml_text:
+            logger.error("eBay Trading API response contained a DTD; ignoring")
+            return [], 0
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError:
+            logger.error("eBay Trading API returned unparseable XML")
+            return [], 0
+        ack = root.findtext("e:Ack", default="", namespaces=_TRADING_NS)
+        if ack not in ("Success", "Warning"):
+            msg = root.findtext("e:Errors/e:LongMessage", default="", namespaces=_TRADING_NS)
+            logger.error("eBay GetMyeBaySelling failed: %s %s", ack, msg)
+            return [], 0
+        active = root.find("e:ActiveList", _TRADING_NS)
+        if active is None:
+            return [], 0
+        pages_text = active.findtext("e:PaginationResult/e:TotalNumberOfPages", default="1", namespaces=_TRADING_NS)
+        total_pages = int(pages_text) if pages_text.isdigit() else 1
+        listings: list[dict[str, Any]] = []
+        for node in active.findall("e:ItemArray/e:Item", _TRADING_NS):
+            def text(path: str) -> str:
+                return (node.findtext(path, default="", namespaces=_TRADING_NS) or "").strip()
+            item_id = text("e:ItemID")
+            if not item_id:
+                continue
+            available = text("e:QuantityAvailable") or text("e:Quantity") or "0"
+            price = text("e:SellingStatus/e:CurrentPrice") or text("e:BuyItNowPrice")
+            listings.append({
+                "item_id": item_id,
+                "sku": text("e:SKU"),
+                "title": text("e:Title") or "eBay Item",
+                "price": cls._safe_decimal(price) if price else None,
+                "quantity": int(available) if available.isdigit() else 0,
+                "image": text("e:PictureDetails/e:GalleryURL") or None,
+            })
+        return listings, max(total_pages, 1)
+
     # ── Upsert logic ──────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -372,6 +463,7 @@ class EbayService(ProviderAdapter):
         user_id: uuid.UUID,
         eb_item: dict,
         sell_price: Optional[Decimal],
+        item_sku: Optional[str] = None,
     ) -> tuple[Optional[InventoryItem], bool]:
         """Insert/update an InventoryItem from an eBay inventory_item record.
 
@@ -381,6 +473,9 @@ class EbayService(ProviderAdapter):
         sku = str(eb_item.get("sku", "")).strip()
         if not sku:
             return None, False
+        # `sku` is the link key; the item's visible SKU can differ (Seller Hub
+        # listings without a SKU are keyed "listing:<ItemID>").
+        shown_sku = sku if item_sku is None else (item_sku or None)
         now = datetime.now(timezone.utc)
 
         product = eb_item.get("product") or {}
@@ -428,7 +523,7 @@ class EbayService(ProviderAdapter):
         if item:
             old_qty = item.quantity
             item.name = name
-            item.sku = sku
+            item.sku = shown_sku
             item.upc = upc or item.upc
             if sell_price is not None:
                 item.expected_sell_price = sell_price
@@ -456,7 +551,7 @@ class EbayService(ProviderAdapter):
         item = InventoryItem(
             user_id=user_id,
             name=name,
-            sku=sku,
+            sku=shown_sku,
             upc=upc,
             expected_sell_price=sell_price,
             quantity=new_qty,
@@ -557,21 +652,29 @@ class EbayService(ProviderAdapter):
         deducted = 0
         for line in eb_order.get("lineItems") or []:
             sku = str(line.get("sku") or "").strip()
+            legacy_id = str(line.get("legacyItemId") or "").strip()
             line_id = str(line.get("lineItemId") or "").strip()
             qty = int(line.get("quantity") or 1)
-            if not sku or not line_id or qty < 1:
+            # Seller Hub listings without a SKU are linked by listing ID.
+            link_keys = [k for k in (sku, f"listing:{legacy_id}" if legacy_id else "") if k]
+            if not link_keys or not line_id or qty < 1:
                 continue
-            link = (
-                db.query(InventoryExternalLink)
-                .filter(
-                    InventoryExternalLink.user_id == user_id,
-                    InventoryExternalLink.provider == "ebay",
-                    InventoryExternalLink.external_id == sku,
+            link = None
+            for link_key in link_keys:
+                link = (
+                    db.query(InventoryExternalLink)
+                    .filter(
+                        InventoryExternalLink.user_id == user_id,
+                        InventoryExternalLink.provider == "ebay",
+                        InventoryExternalLink.external_id == link_key,
+                    )
+                    .one_or_none()
                 )
-                .one_or_none()
-            )
+                if link:
+                    break
             if not link:
                 continue
+            sku = link.external_id
             if created_at and link.created_at and created_at < link.created_at:
                 continue
             item = (
@@ -658,6 +761,29 @@ class EbayService(ProviderAdapter):
             else:
                 result.items_updated += 1
             await asyncio.sleep(_RATE_LIMIT_SLEEP)
+        db.commit()
+
+        # --- Seller Hub listings (invisible to the Inventory API) ---
+        inventory_skus = {str(i.get("sku", "")).strip() for i in eb_items}
+        for listing in await self._get_seller_hub_listings(access_token):
+            if listing["sku"] and listing["sku"] in inventory_skus:
+                continue  # already synced through the Inventory API above
+            key = listing["sku"] or f"listing:{listing['item_id']}"
+            eb_item = {
+                "sku": key,
+                "product": {"title": listing["title"], "imageUrls": [listing["image"]] if listing["image"] else []},
+                "availability": {"shipToLocationAvailability": {"quantity": listing["quantity"]}},
+            }
+            item, created = self._upsert_inventory_item(
+                db, user_id, eb_item, listing["price"], item_sku=listing["sku"],
+            )
+            if item is None:
+                result.items_skipped += 1
+                continue
+            if created:
+                result.items_imported += 1
+            else:
+                result.items_updated += 1
         db.commit()
         logger.info(
             "eBay item sync: %d imported, %d updated, %d skipped for user %s",

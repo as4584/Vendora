@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ViewStyle,
   TextStyle,
-  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -226,56 +225,6 @@ export function ActionButton({
   );
 }
 
-export function MetricCard({
-  label,
-  value,
-  accent = COLORS.primary,
-  helper,
-  wide = false,
-}: {
-  label: string;
-  value: string;
-  accent?: string;
-  helper?: string;
-  wide?: boolean;
-}) {
-  return (
-    <View style={[styles.metricCard, wide && { flex: 2 }]}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={[styles.metricValue, { color: accent }]}>{value}</Text>
-      {helper ? <Text style={styles.metricHelper}>{helper}</Text> : null}
-    </View>
-  );
-}
-
-export function ActionTile({
-  glyph,
-  label,
-  helper,
-  onPress,
-}: {
-  glyph: string;
-  label: string;
-  helper?: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      accessibilityRole="button"
-      accessibilityLabel={helper ? `${label}. ${helper}` : label}
-      style={styles.actionTile}
-      onPress={onPress}
-      activeOpacity={0.82}
-    >
-      <View style={styles.glyphWrap}>
-        <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.glyphText}>{glyph}</Text>
-      </View>
-      <Text style={styles.actionTileLabel}>{label}</Text>
-      {helper ? <Text style={styles.actionTileHelper}>{helper}</Text> : null}
-    </TouchableOpacity>
-  );
-}
-
 export function Stepper({
   steps,
   active,
@@ -305,37 +254,6 @@ export function Stepper({
         );
       })}
     </View>
-  );
-}
-
-export function TabGlyph({
-  glyph,
-  active,
-}: {
-  glyph: string;
-  active: boolean;
-}) {
-  return (
-    <View
-      style={[
-        styles.tabGlyph,
-        active ? styles.tabGlyphActive : styles.tabGlyphInactive,
-      ]}
-    >
-      <Text maxFontSizeMultiplier={FONT_SCALE.chrome} style={styles.tabGlyphText}>{glyph}</Text>
-    </View>
-  );
-}
-
-export function ChipRow({ children }: { children: React.ReactNode }) {
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipRow}
-    >
-      {children}
-    </ScrollView>
   );
 }
 

@@ -48,6 +48,8 @@ jest.mock('../services/api', () => ({
   getMe: jest.fn(),
   updateProfile: jest.fn(),
   getLastSale: jest.fn(),
+  resolveBarcode: jest.fn(async (code: string) => ({ code, matched_by: null, rule_name: null, item: null })),
+  linkBarcode: jest.fn(async (id: string, code: string) => ({ code, inventory_item_id: id })),
 }));
 
 const ITEM = {
@@ -99,6 +101,17 @@ describe('QuickSaleScreen (checkout)', () => {
     expect(screen.queryByText('Quick Sale')).toBeNull();
   });
 
+  it('toggles Con Mode for instant checkout', async () => {
+    const { isConMode, resetConModeForTests } = require('../services/conMode');
+    resetConModeForTests();
+    const screen = render(<QuickSaleScreen />);
+    await waitFor(() => expect(screen.getByText('Con Mode off')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('con-mode-toggle'));
+    expect(screen.getByText('Con Mode on')).toBeTruthy();
+    expect(isConMode()).toBe(true);
+    resetConModeForTests();
+  });
+
   it('logs the whole cart as ONE order and shows a shareable receipt', async () => {
     const screen = await ready();
     fireEvent.press(screen.getByText('Jordan 1 Retro High'));
@@ -129,6 +142,18 @@ describe('QuickSaleScreen (checkout)', () => {
 
     fireEvent.press(screen.getByText('Done'));
     expect(mockReplace).toHaveBeenCalledWith('/(tabs)/dashboard');
+  });
+
+  it('pre-fills the fee from where it sold, and keeps a typed fee', async () => {
+    const screen = await ready();
+    fireEvent.press(screen.getByText('Jordan 1 Retro High'));
+    fireEvent.press(screen.getByText('eBay'));
+    await waitFor(() => expect(screen.getByLabelText('Fee amount').props.value).toBe('46.64'));
+    fireEvent.changeText(screen.getByLabelText('Fee amount'), '40');
+    fireEvent.press(screen.getByText(/Log Sale/));
+    await waitFor(() => expect(apiMock.createSaleOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ fee_amount: '40.00' }),
+    ));
   });
 
   it('starts a new sale from the receipt', async () => {
@@ -409,6 +434,25 @@ describe('QuickSaleScreen (checkout)', () => {
     await screen.findByText('Sale complete');
   });
 
+  it('scans a Resqlo price-label QR straight into the cart', async () => {
+    const screen = await ready();
+    fireEvent.press(screen.getByLabelText('Scan barcode to add'));
+    await waitFor(() => expect(mockOnScan).toBeDefined());
+    // The server resolves a label QR whose item isn't in the loaded list.
+    (apiMock.resolveBarcode as jest.Mock).mockResolvedValueOnce({ code: 'x', matched_by: 'label', rule_name: null, item: ITEM2 });
+    await act(async () => mockOnScan!({ data: 'resqlo:item:item-2' }));
+    expect(screen.getByText(/Cart · 1 item/)).toBeTruthy();
+    // A tag for a pair not in the loaded list is fetched; sold-out pairs are refused.
+    (apiMock.getItem as jest.Mock).mockResolvedValueOnce({ ...ITEM2, id: 'abcdef12-0000', quantity: 0 });
+    await act(async () => mockOnScan!({ data: 'RESQLO:ITEM:abcdef12-0000' }));
+    expect(screen.getByText(/Not in stock: RESQLO:ITEM/)).toBeTruthy();
+    (apiMock.getItem as jest.Mock).mockRejectedValueOnce(new Error('404'));
+    await act(async () => mockOnScan!({ data: 'resqlo:item:abcdef12-9999' }));
+    (apiMock.getItem as jest.Mock).mockResolvedValueOnce({ ...ITEM2, id: 'abcdef12-1111', name: 'Tagged pair' });
+    await act(async () => mockOnScan!({ data: 'resqlo:item:abcdef12-1111' }));
+    expect(screen.getByText(/Added Tagged pair/)).toBeTruthy();
+  });
+
   it('scans a barcode to add the item, and explains unknown codes', async () => {
     const screen = await ready();
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
@@ -421,25 +465,61 @@ describe('QuickSaleScreen (checkout)', () => {
     await act(async () => mockOnScan!({ data: '12345678905' }));
     expect(screen.getByText(/Cart · 1 item/)).toBeTruthy();
 
-    (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [], total: 0, page: 1, per_page: 5, pages: 0 });
-    await act(async () => mockOnScan!({ data: '999' }));
-    expect(apiMock.listItems).toHaveBeenLastCalledWith({ upc: '999', perPage: 5, availableOnly: true });
-    // Unknown codes are explained inline; no popup interrupts scanning.
-    expect(screen.getByText('Not in stock: 999. Add it in Add Stock first.')).toBeTruthy();
+    // An unknown store code opens the link sheet instead of a dead end.
+    await act(async () => mockOnScan!({ data: 'STORE-999' }));
+    expect(apiMock.resolveBarcode).toHaveBeenLastCalledWith('STORE-999');
+    expect(screen.getByTestId('unknown-barcode-sheet')).toBeTruthy();
+    expect(screen.getByText('STORE-999')).toBeTruthy();
+    const linkButton = await screen.findByLabelText('Link to Sony WH-1000XM5');
+    await act(async () => fireEvent.press(linkButton));
+    expect(apiMock.linkBarcode).toHaveBeenCalledWith('item-2', 'STORE-999', false);
+    expect(screen.queryByTestId('unknown-barcode-sheet')).toBeNull();
+    expect(screen.getByText('Linked and added Sony WH-1000XM5')).toBeTruthy();
+    expect(screen.getByText(/Cart · 2 items/)).toBeTruthy();
     expect(Alert.alert).not.toHaveBeenCalled();
+  });
+
+  it('matches store SKU stickers locally and routes unknown codes to add or rules', async () => {
+    const screen = await ready();
+    fireEvent.press(screen.getByLabelText('Scan barcode to add'));
+    await waitFor(() => expect(mockOnScan).toBeDefined());
+    await act(async () => mockOnScan!({ data: 'sony-1' }));
+    expect(screen.getByLabelText('Remove Sony WH-1000XM5 from cart')).toBeTruthy();
+    expect(apiMock.resolveBarcode).not.toHaveBeenCalled();
+
+    await act(async () => mockOnScan!({ data: 'TAG-1' }));
+    fireEvent.press(await screen.findByText('Add as new item'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/inventory/add', params: { upc: 'TAG-1' } });
+
+    fireEvent.press(screen.getByLabelText('Scan barcode to add'));
+    await act(async () => mockOnScan!({ data: 'TAG-2' }));
+    fireEvent.press(await screen.findByText('Make a rule for codes like this'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/settings/barcode-rules', params: { sample: 'TAG-2' } });
+
+    fireEvent.press(screen.getByLabelText('Scan barcode to add'));
+    await act(async () => mockOnScan!({ data: 'TAG-3' }));
+    fireEvent.press(await screen.findByText('Skip'));
+    expect(screen.queryByTestId('unknown-barcode-sheet')).toBeNull();
   });
 
   it('finds scanned items on the server when not loaded, and survives lookup errors', async () => {
     const FAR = { ...ITEM2, id: 'item-9', name: 'Far Item', upc: '777' };
     const screen = await ready();
-    (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [FAR], total: 1, page: 1, per_page: 5, pages: 1 });
+    (apiMock.resolveBarcode as jest.Mock).mockResolvedValueOnce({ code: '777', matched_by: 'upc', rule_name: null, item: FAR });
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
     await act(async () => mockOnScan!({ data: '777' }));
     expect(screen.getByLabelText('Remove Far Item from cart')).toBeTruthy();
 
+    // Offline: resolve fails, fall back to the UPC list, and say so plainly.
+    (apiMock.resolveBarcode as jest.Mock).mockRejectedValueOnce(new Error('offline'));
     (apiMock.listItems as jest.Mock).mockRejectedValueOnce(new Error('down'));
     await act(async () => mockOnScan!({ data: '555' }));
-    expect(screen.getByText('Not in stock: 555. Add it in Add Stock first.')).toBeTruthy();
+    expect(screen.getByText("Not found offline: 555. Scan again when you're back online to link it.")).toBeTruthy();
+
+    (apiMock.resolveBarcode as jest.Mock).mockRejectedValueOnce(new Error('offline'));
+    (apiMock.listItems as jest.Mock).mockResolvedValueOnce({ items: [{ ...FAR, id: 'item-10', name: 'Cached Item' }] });
+    await act(async () => mockOnScan!({ data: '556' }));
+    expect(screen.getByLabelText('Remove Cached Item from cart')).toBeTruthy();
   });
 
   it('asks for camera permission before scanning', async () => {

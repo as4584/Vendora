@@ -20,6 +20,7 @@ jest.mock('expo-document-picker', () => ({
 
 jest.mock('../services/api', () => ({
   previewInventoryImport: jest.fn(),
+  previewInventoryImportChunked: jest.fn(),
   commitInventoryImport: jest.fn(),
   importInventoryFromLink: jest.fn(),
   updateInventoryImportRow: jest.fn(),
@@ -57,7 +58,7 @@ describe('InventoryImportScreen', () => {
     const screen = render(<InventoryImportScreen />);
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Choose CSV File'));
+      fireEvent.press(screen.getByText('Choose CSV or Excel File'));
     });
 
     await waitFor(() => {
@@ -98,7 +99,7 @@ describe('InventoryImportScreen', () => {
     const screen = render(<InventoryImportScreen />);
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Choose CSV File'));
+      fireEvent.press(screen.getByText('Choose CSV or Excel File'));
     });
 
     await waitFor(() => {
@@ -157,16 +158,16 @@ describe('InventoryImportScreen', () => {
   it('ignores a canceled picker and reports preview failures', async () => {
     (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValueOnce({ canceled: true });
     const screen = render(<InventoryImportScreen />);
-    fireEvent.press(screen.getByText('Choose CSV File'));
+    fireEvent.press(screen.getByText('Choose CSV or Excel File'));
     await waitFor(() => expect(DocumentPicker.getDocumentAsync).toHaveBeenCalled());
     expect(apiMock.previewInventoryImport).not.toHaveBeenCalled();
 
     (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValueOnce({
       canceled: false,
-      assets: [{ name: 'bad.xlsx', uri: 'file:///bad.xlsx' }],
+      assets: [{ name: 'bad.csv', uri: 'file:///bad.csv' }],
     });
     (apiMock.previewInventoryImport as jest.Mock).mockRejectedValueOnce(new Error('invalid sheet'));
-    fireEvent.press(screen.getByText('Choose CSV File'));
+    fireEvent.press(screen.getByText('Choose CSV or Excel File'));
     await waitFor(() =>
       expect(Alert.alert).toHaveBeenCalledWith('Import preview failed', 'invalid sheet'),
     );
@@ -194,13 +195,62 @@ describe('InventoryImportScreen', () => {
     });
     try {
       const screen = render(<InventoryImportScreen />);
-      fireEvent.press(screen.getByText('Choose CSV File'));
+      fireEvent.press(screen.getByText('Choose CSV or Excel File'));
       await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith('blob:browser'));
       expect(apiMock.previewInventoryImport).toHaveBeenCalledWith(expect.any(FormData));
     } finally {
       fetchSpy.mockRestore();
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalPlatform });
     }
+  });
+
+  it('sends files over the direct limit in chunks and shows progress', async () => {
+    (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ name: 'huge.xlsx', uri: 'file:///huge.xlsx', size: 200 * 1024 * 1024 }],
+    });
+    let finish: (value: unknown) => void = () => undefined;
+    let photos: (done: number, total: number) => void = () => undefined;
+    let upload: (f: number) => void = () => undefined;
+    (apiMock.previewInventoryImportChunked as jest.Mock).mockImplementation(
+      (_file, _read, onProgress: (f: number) => void, onPhotos: (d: number, t: number) => void) => {
+        upload = onProgress;
+        photos = onPhotos;
+        onProgress(0.5);
+        return new Promise((resolve) => { finish = resolve; });
+      },
+    );
+    const screen = render(<InventoryImportScreen />);
+    fireEvent.press(screen.getByText('Choose CSV or Excel File'));
+    expect(await screen.findByText('Uploading 50%...')).toBeTruthy();
+    act(() => upload(1));
+    expect(screen.getByText('Preparing Preview...')).toBeTruthy();
+    act(() => photos(1200, 4000));
+    expect(screen.getByText(`Reading photos ${(1200).toLocaleString()} of ${(4000).toLocaleString()}...`)).toBeTruthy();
+    expect(apiMock.previewInventoryImport).not.toHaveBeenCalled();
+    expect((apiMock.previewInventoryImportChunked as jest.Mock).mock.calls[0][0]).toEqual({
+      uri: 'file:///huge.xlsx', name: 'huge.xlsx', size: 200 * 1024 * 1024,
+    });
+    await act(async () => {
+      finish({ job_id: 'big', filename: 'huge.xlsx', status: 'previewed', total_rows: 0,
+        rows_to_create: 0, rows_to_update: 0, rows_errored: 0, rows: [] });
+    });
+    expect(await screen.findByText('Choose CSV or Excel File')).toBeTruthy();
+  });
+
+  it('sends every Excel file through the background path, even a small one', async () => {
+    (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ name: 'Stock.XLSX', uri: 'file:///s.xlsx', size: 2048 }],
+    });
+    (apiMock.previewInventoryImportChunked as jest.Mock).mockResolvedValue({
+      job_id: 'small', filename: 'Stock.XLSX', status: 'previewed', total_rows: 0,
+      rows_to_create: 0, rows_to_update: 0, rows_errored: 0, rows: [],
+    });
+    const screen = render(<InventoryImportScreen />);
+    fireEvent.press(screen.getByText('Choose CSV or Excel File'));
+    await waitFor(() => expect(apiMock.previewInventoryImportChunked).toHaveBeenCalled());
+    expect(apiMock.previewInventoryImport).not.toHaveBeenCalled();
   });
 
   it('reports commit failures after a successful preview', async () => {
@@ -229,7 +279,7 @@ describe('InventoryImportScreen', () => {
     });
     (apiMock.commitInventoryImport as jest.Mock).mockRejectedValueOnce(new Error('commit rejected'));
     const screen = render(<InventoryImportScreen />);
-    fireEvent.press(screen.getByText('Choose CSV File'));
+    fireEvent.press(screen.getByText('Choose CSV or Excel File'));
     await screen.findByText('Add 1 item to inventory');
     expect(screen.getByText('2 items · 1 needs a fix')).toBeTruthy();
     fireEvent.press(screen.getByText('Add 1 item to inventory'));

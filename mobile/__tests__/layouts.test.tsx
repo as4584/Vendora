@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import RootLayout from '../app/_layout';
 import Index from '../app/index';
 import AuthLayout from '../app/(auth)/_layout';
@@ -47,6 +47,16 @@ jest.mock('../services/pushAlerts', () => ({
   syncPushToken: jest.fn(async () => false),
   maybePromptSaleAlerts: jest.fn(async () => undefined),
 }));
+let mockIntroSeen = true;
+jest.mock('expo-splash-screen', () => ({ preventAutoHideAsync: jest.fn(async () => true), hideAsync: jest.fn(async () => true) }));
+jest.mock('../components/BrandIntro', () => {
+  const { Text } = require('react-native');
+  return {
+    hasSeenIntro: async () => mockIntroSeen,
+    BrandLoader: () => <Text>brand-loader</Text>,
+    BrandIntro: ({ onDone }: { onDone: () => void }) => <Text onPress={onDone}>brand-intro</Text>,
+  };
+});
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 jest.mock('react-native-safe-area-context', () => {
   const ReactModule = require('react');
@@ -56,7 +66,7 @@ jest.mock('react-native-safe-area-context', () => {
     useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 4, left: 0 }),
   };
 });
-jest.mock('../components/ui', () => ({ TabGlyph: () => null, Icon: () => null }));
+jest.mock('../components/ui', () => ({ Icon: () => null }));
 jest.mock('../services/offline', () => ({
   initOfflineSync: jest.fn(),
   isOnline: () => true,
@@ -70,13 +80,25 @@ describe('router layouts', () => {
     jest.clearAllMocks();
     mockSegments.splice(0);
     mockAuthState = { isAuthenticated: false, isLoading: false };
+    mockIntroSeen = true;
   });
 
-  it('shows a loader while authentication state is being restored', () => {
+  it('shows a loader while authentication state is being restored', async () => {
     mockAuthState = { isAuthenticated: false, isLoading: true };
     const screen = render(<RootLayout />);
-    expect(screen.UNSAFE_getByType(require('react-native').ActivityIndicator)).toBeTruthy();
+    await act(async () => {});
+    expect(screen.getByText('brand-loader')).toBeTruthy();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('plays the branded intro on first open, then continues into the app', async () => {
+    mockIntroSeen = false;
+    mockSegments.push('(tabs)');
+    const screen = render(<RootLayout />);
+    await waitFor(() => expect(screen.getByText('brand-intro')).toBeTruthy());
+    fireEvent.press(screen.getByText('brand-intro'));
+    await waitFor(() => expect(screen.queryByText('brand-intro')).toBeNull());
+    expect(mockReplace).toHaveBeenCalledWith('/(auth)/login');
   });
 
   it('redirects signed-out users to login outside the auth group', async () => {
@@ -110,7 +132,7 @@ describe('router layouts', () => {
   it('registers visible and hidden tab routes with safe-area padding', () => {
     mockAuthState = { isAuthenticated: true, isLoading: false, user: { id: 'seller' } };
     render(<TabsLayout />);
-    expect(mockTabsScreen).toHaveBeenCalledTimes(20);
+    expect(mockTabsScreen).toHaveBeenCalledTimes(28);
     const routeNames = mockTabsScreen.mock.calls.map(([props]) => props.name);
     expect(routeNames).toEqual([
       'dashboard',
@@ -126,11 +148,19 @@ describe('router layouts', () => {
       'inventory/components/ItemQuickSheet',
       'inventory/import',
       'inventory/batch-scan',
+      'inventory/add-costs',
+      'inventory/aging',
+      'inventory/trade',
+      'inventory/labels',
       'settings/sync-center',
+      'settings/import-sales',
       'settings/subscription',
       'settings/analytics',
       'settings/support',
       'settings/show-summary',
+      'settings/tax-pack',
+      'settings/barcode-rules',
+      'settings/catalog-admin',
       'customers/index',
       'customers/[id]',
     ]);

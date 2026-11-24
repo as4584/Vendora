@@ -4,13 +4,23 @@ Soft-delete 404 rule: All GET/PUT/PATCH filter WHERE deleted_at IS NULL.
 Soft-deleted records return 404, never exposed.
 """
 import logging
+import re
 import csv
 import asyncio
 import io
 import ipaddress
 import math
 import socket
+import os
+import shutil
 import uuid
+import threading
+import base64
+import binascii
+import tempfile
+import time
+from pathlib import Path
+from types import SimpleNamespace
 from decimal import Decimal
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -19,13 +29,14 @@ from uuid import UUID
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel as _PydBase
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.services import analytics
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models.user import User
 from app.models.inventory import (
     InventoryItem,
@@ -60,7 +71,14 @@ from app.services.spreadsheet_import import (
     google_sheet_export_urls,
     google_sheet_csv_url,
     parse_inventory_rows,
+    extract_url,
+    normalize_header,
+    parse_money,
+    parse_quantity,
+    resolve_field,
     rows_from_bytes,
+    unescape_cell,
+    xlsx_rows_from_path,
     MAX_CSV_IMPORT_BYTES,
     MAX_XLSX_IMPORT_BYTES,
 )
@@ -282,11 +300,12 @@ def _find_import_match(
         if match:
             return match
     if payload.get("sku"):
-        match = db.query(InventoryItem).filter(
+        same_sku = db.query(InventoryItem).filter(
             InventoryItem.user_id == user_id,
             InventoryItem.deleted_at.is_(None),
             InventoryItem.sku == payload["sku"],
-        ).first()
+        ).all()
+        match = _match_existing(same_sku, payload.get("size"))
         if match:
             return match
     return db.query(InventoryItem).filter(
@@ -383,7 +402,7 @@ def _import_inventory_content(
             touched.append(item)
 
     if not dry_run:
-        remember_items(db, current_user.id, touched)
+        _remember_imported(db, current_user.id, touched)
         db.commit()
 
     return InventoryImportResult(**result)
@@ -462,6 +481,7 @@ def list_items(
     source_filter: Optional[str] = Query(None, alias="source", description="Filter by source (e.g. lightspeed)"),
     available_only: bool = Query(False, description="Only items with quantity > 0 and status in (in_stock, listed)"),
     upc: Optional[str] = Query(None, max_length=50, description="Exact barcode (UPC/EAN) match, for scan-to-sell"),
+    missing_cost: bool = Query(False, description="Only items with no buy price (profit can't be computed)"),
     sort: str = Query(
         "newest",
         pattern="^(newest|oldest|price_high|price_low|profit|qty|name)$",
@@ -489,6 +509,9 @@ def list_items(
 
     if source_filter:
         base_query = base_query.filter(InventoryItem.source == source_filter)
+
+    if missing_cost:
+        base_query = base_query.filter(InventoryItem.buy_price.is_(None))
 
     if available_only:
         base_query = base_query.filter(
@@ -841,6 +864,71 @@ def get_pricing_suggestion(
     }
 
 
+class AgingItem(_PydBase):
+    id: UUID
+    name: str
+    expected_sell_price: Optional[Decimal] = None
+    buy_price: Optional[Decimal] = None
+    days_old: int
+
+
+class AgingResponse(_PydBase):
+    days: int
+    count: int
+    items: list[AgingItem]
+
+
+@router.get("/aging", response_model=AgingResponse)
+def get_aging_items(
+    days: int = Query(60, ge=7, le=730),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """In-stock/listed items older than `days`, oldest first (up to 100)."""
+    from app.services.aging import aging_items
+
+    now = datetime.now(timezone.utc)
+    count, items = aging_items(db, current_user.id, days=days, now=now)
+    return AgingResponse(
+        days=days,
+        count=count,
+        items=[
+            AgingItem(
+                id=i.id, name=i.name, expected_sell_price=i.expected_sell_price, buy_price=i.buy_price,
+                days_old=(now - (i.created_at if i.created_at.tzinfo else i.created_at.replace(tzinfo=timezone.utc))).days,
+            )
+            for i in items
+        ],
+    )
+@router.get("/labels.pdf")
+def get_price_labels(
+    ids: str = Query(..., description="Comma-separated item ids (max 200)"),
+    layout: Literal["thermal", "sheet"] = Query("thermal"),
+    per_unit: bool = Query(False, description="One label per unit in stock"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Printable price labels with a scan-to-sell QR code."""
+    from app.services.labels import build_labels_pdf, expand
+
+    try:
+        wanted = list(dict.fromkeys(UUID(part.strip()) for part in ids.split(",") if part.strip()))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="ids must be item UUIDs")
+    if not wanted or len(wanted) > 200:
+        raise HTTPException(status_code=422, detail="Pick between 1 and 200 items")
+    found = {
+        item.id: item for item in db.query(InventoryItem).filter(
+            InventoryItem.id.in_(wanted), InventoryItem.user_id == current_user.id, InventoryItem.deleted_at.is_(None),
+        ).all()
+    }
+    if not found:
+        raise HTTPException(status_code=404, detail="Items not found")
+    pdf = build_labels_pdf(expand([found[i] for i in wanted if i in found], per_unit), layout)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="resqlo-labels.pdf"'})
+
+
 @router.get("/{item_id}", response_model=ItemResponse)
 def get_item(
     item_id: UUID,
@@ -1056,6 +1144,111 @@ def bulk_delete_items(
     )
 
 
+class PriceChange(_PydBase):
+    # "set": price = value; "percent": price *= 1 + value/100; "amount": price += value
+    mode: Literal["set", "percent", "amount"]
+    value: Decimal
+
+
+class BulkUpdateRequest(_PydBase):
+    item_ids: list[str]
+    list_price: Optional[PriceChange] = None
+    buy_price: Optional[Decimal] = None
+    category: Optional[str] = None
+    platform: Optional[str] = None
+    # Marking sold goes through the sell flow so a sale is recorded.
+    status: Optional[Literal["in_stock", "listed"]] = None
+
+
+class BulkSkipped(_PydBase):
+    id: str
+    reason: str
+
+
+class BulkUpdateResponse(_PydBase):
+    updated: int
+    skipped: list[BulkSkipped] = []
+
+
+def _apply_price_change(current: Optional[Decimal], change: PriceChange) -> Optional[Decimal]:
+    if change.mode == "set":
+        new = change.value
+    elif current is None:
+        return None
+    elif change.mode == "percent":
+        new = current * (1 + change.value / 100)
+    else:
+        new = current + change.value
+    return max(Decimal("0"), new).quantize(Decimal("0.01"))
+
+
+@router.post("/bulk-update", response_model=BulkUpdateResponse)
+def bulk_update_items(
+    payload: BulkUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit many inventory items at once (owned + active only).
+
+    Items an edit can't apply to (no list price to adjust by %, a status
+    transition the state machine forbids) are skipped and reported, not failed.
+    """
+    from app.services.inventory import validate_transition
+
+    if not payload.item_ids:
+        raise HTTPException(status_code=400, detail="item_ids is required")
+    if payload.list_price and payload.list_price.mode == "set" and payload.list_price.value < 0:
+        raise HTTPException(status_code=400, detail="Price can't be negative")
+    if payload.buy_price is not None and payload.buy_price < 0:
+        raise HTTPException(status_code=400, detail="Cost can't be negative")
+    if not any([payload.list_price, payload.buy_price is not None, payload.category is not None,
+                payload.platform is not None, payload.status]):
+        raise HTTPException(status_code=400, detail="Nothing to update")
+
+    updated = 0
+    skipped: list[BulkSkipped] = []
+    for item_id in payload.item_ids[:500]:
+        try:
+            item_uuid = UUID(item_id)
+        except ValueError:
+            skipped.append(BulkSkipped(id=item_id, reason="Not found"))
+            continue
+        item = (
+            db.query(InventoryItem)
+            .filter(
+                InventoryItem.id == item_uuid,
+                InventoryItem.user_id == current_user.id,
+                InventoryItem.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not item:
+            skipped.append(BulkSkipped(id=item_id, reason="Not found"))
+            continue
+        if payload.status and item.status != payload.status and not validate_transition(item.status, payload.status):
+            skipped.append(BulkSkipped(id=item_id, reason=f"Can't move a {item.status} item to {payload.status}"))
+            continue
+        if payload.list_price:
+            new_price = _apply_price_change(item.expected_sell_price, payload.list_price)
+            if new_price is None:
+                skipped.append(BulkSkipped(id=item_id, reason="No list price to adjust"))
+                continue
+            item.expected_sell_price = new_price
+        if payload.buy_price is not None:
+            item.buy_price = payload.buy_price
+        if payload.category is not None:
+            item.category = payload.category.strip() or None
+        if payload.platform is not None:
+            item.platform = payload.platform.strip() or None
+        if payload.status:
+            item.status = payload.status
+        db.add(item)
+        _sheet_push(db, item)
+        updated += 1
+    db.commit()
+    return BulkUpdateResponse(updated=updated, skipped=skipped)
+
+
 @router.patch("/{item_id}/photos", response_model=ItemResponse)
 def update_item_photos(
     item_id: UUID,
@@ -1093,7 +1286,10 @@ def update_status(
 
 def _parse_csv_bytes(content: bytes) -> tuple[list[str], list[dict]]:
     """Return (headers, rows) from raw CSV bytes."""
-    text = content.decode("utf-8-sig", errors="replace")  # handle BOM
+    try:
+        text = content.decode("utf-8-sig")  # handle BOM
+    except UnicodeDecodeError:
+        text = content.decode("cp1252", errors="replace")  # Excel-on-Windows CSV
     reader = csv.DictReader(io.StringIO(text))
     if not reader.fieldnames:
         raise HTTPException(status_code=400, detail="CSV file has no header row.")
@@ -1102,76 +1298,397 @@ def _parse_csv_bytes(content: bytes) -> tuple[list[str], list[dict]]:
     return headers, rows
 
 
+# Item fields the preview/commit flow can write.
+PREVIEW_FIELDS = {
+    "name", "category", "sku", "upc", "size", "color", "condition", "buy_price",
+    "expected_sell_price", "actual_sell_price", "quantity", "vendor_name", "notes",
+    "platform", "photo_front_url", "photo_back_url", "_import_id",
+}
+
+
 def _detect_mapping(headers: list[str]) -> dict[str, str]:
-    """Map CSV column names to canonical InventoryItem fields."""
+    """Map spreadsheet column names to item fields.
+
+    Known exact names first, then the importer's wide alias list ("Style
+    Code", "Retail", "On Hand", "Colour", ...). One column per field: a column
+    named exactly like the field wins, otherwise the first one does.
+    """
     mapping: dict[str, str] = {}
+    exact: dict[str, bool] = {}
     for h in headers:
-        canonical = IMPORT_HEADER_MAP.get(h.strip().lower())
-        if canonical:
-            mapping[h] = canonical
+        if str(h).startswith("__"):
+            continue
+        key = str(h).strip().lower()
+        canonical = IMPORT_HEADER_MAP.get(key) or resolve_field(h)
+        if canonical not in PREVIEW_FIELDS:
+            continue
+        is_exact = normalize_header(h) == normalize_header(canonical)
+        owner = next((col for col, c in mapping.items() if c == canonical), None)
+        if owner is not None:
+            if exact[owner] or not is_exact:
+                continue
+            del mapping[owner]
+        mapping[h] = canonical
+        exact[h] = is_exact
     return mapping
 
 
 DECIMAL_FIELDS = {"buy_price", "expected_sell_price", "actual_sell_price"}
 INT_FIELDS = {"quantity"}
+PHOTO_URL_FIELDS = {"photo_front_url", "photo_back_url"}
+# Database column sizes: longer values are trimmed instead of failing the commit.
+_FIELD_MAX = {
+    col.name: col.type.length
+    for col in InventoryItem.__table__.columns
+    if getattr(col.type, "length", None)
+}
 
 
 def _coerce_row(raw: dict, mapping: dict[str, str]) -> tuple[dict, Optional[str]]:
-    """Map and coerce a raw CSV row to InventoryItem field values.
+    """Map and coerce one spreadsheet row to item field values.
 
-    Returns (mapped_data, error_message).  mapped_data is empty on error.
+    Uses the importer's forgiving readers: "$1,200.00", "1.234,56 EUR",
+    "2.0" or "3 pairs" quantities, IMAGE()/hyperlink photo cells. A row with
+    no name is named by its SKU or UPC. A price or quantity that can't be
+    read, a negative number, or no name at all flags the row for the seller
+    to fix on the review screen; the rest of the import goes ahead. Returns (mapped_data, error_message).
     """
     mapped: dict = {}
     for csv_col, canonical in mapping.items():
-        raw_val = (raw.get(csv_col) or "").strip()
+        value = raw.get(csv_col)
+        if isinstance(value, (list, dict)):
+            continue
+        raw_val = str(unescape_cell(value) or "").strip()
         if not raw_val:
             continue
-        try:
-            if canonical in DECIMAL_FIELDS:
-                # Strip currency symbols
-                mapped[canonical] = float(raw_val.replace("$", "").replace(",", ""))
-            elif canonical in INT_FIELDS:
-                mapped[canonical] = int(raw_val)
-            else:
-                mapped[canonical] = raw_val
-        except (ValueError, TypeError) as exc:
-            return {}, f"Column '{csv_col}': {exc}"
+        if canonical in DECIMAL_FIELDS:
+            amount, warning = parse_money(raw_val)
+            if warning and warning.startswith("Negative"):
+                return {}, "Prices can't be negative."
+            if amount is None:
+                return {}, f"Column '{csv_col}': couldn't read the price \"{raw_val}\"."
+            mapped[canonical] = float(amount)
+        elif canonical in INT_FIELDS:
+            if re.fullmatch(r"-\s*\d+(\.\d+)?", raw_val):
+                return {}, "Quantity can't be negative."
+            quantity, warning = parse_quantity(raw_val)
+            if warning and warning.startswith("Could not read"):
+                return {}, f"Column '{csv_col}': couldn't read the quantity \"{raw_val}\"."
+            mapped[canonical] = quantity
+        elif canonical in PHOTO_URL_FIELDS:
+            url = extract_url(raw_val)
+            if url:
+                mapped[canonical] = url
+        else:
+            limit = _FIELD_MAX.get(canonical)
+            mapped[canonical] = raw_val[:limit] if limit else raw_val
+    variants = raw.get("__variants")
+    if isinstance(variants, list) and variants:
+        mapped["_variants"] = variants
     if "name" not in mapped:
-        return {}, "Required field 'name' is missing or empty."
+        fallback = mapped.get("sku") or mapped.get("upc")
+        if not fallback:
+            return {}, "Required field 'name' is missing or empty."
+        mapped["name"] = fallback
     return mapped, None
+
+
+# Imports must never fail for being "too big". Files up to the direct limit go
+# in one request; anything larger is sent in chunks (Cloudflare caps a single
+# request at 100 MB) and reassembled on disk, so the only ceiling is the
+# spreadsheet parser's own limit.
+DIRECT_IMPORT_UPLOAD_BYTES = 90 * 1024 * 1024
+IMPORT_CHUNK_MAX_BYTES = 6 * 1024 * 1024
+# .xlsx files are read from disk without opening their pictures, so photo-heavy
+# sheets have no practical size limit; this ceiling only guards the server disk.
+IMPORT_UPLOAD_MAX_BYTES = 20 * 1024 * 1024 * 1024
+IMPORT_DISK_HEADROOM_BYTES = 2 * 1024 * 1024 * 1024
+IMPORT_UPLOAD_DIR = Path(tempfile.gettempdir()) / "resqlo-import-uploads"
+IMPORT_UPLOAD_TTL_SECONDS = 6 * 3600
+SPREADSHEET_EXTENSIONS = (".csv", ".xlsx", ".txt")
+
+
+def _check_import_filename(filename: str | None) -> str:
+    name = (filename or "").strip() or "inventory.csv"
+    lower = name.lower()
+    if lower.endswith(".xls"):
+        raise HTTPException(
+            status_code=400,
+            detail="Old .xls files can't be read. In Excel, choose File > Save As > .xlsx or .csv and import that.",
+        )
+    if not lower.endswith(SPREADSHEET_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="Choose a .csv or .xlsx spreadsheet.")
+    return name
+
+
+def _stringify_cell(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, datetime):
+        return value.isoformat() if (value.hour or value.minute or value.second) else value.date().isoformat()
+    return str(value)
+
+
+def _spreadsheet_headers_rows(filename: str, content: bytes) -> tuple[list[str], list[dict]]:
+    """Headers + string rows from a CSV or XLSX file, for the preview mapper."""
+    file_format = detect_format(filename, None, content)
+    if file_format != "xlsx" and not content.strip():
+        raise HTTPException(status_code=400, detail="CSV file has no header row.")
+    return _headers_rows_from_table(_read_spreadsheet(lambda: rows_from_bytes(content, file_format)))
+
+
+def _read_spreadsheet(read) -> list[dict]:
+    try:
+        return read()
+    except HTTPException:
+        raise
+    except Exception as exc:  # openpyxl raises many types for damaged files
+        raise HTTPException(
+            status_code=400,
+            detail="Couldn't read this spreadsheet. Re-save it as .xlsx or .csv and try again.",
+        ) from exc
+
+
+def _headers_rows_from_table(table: list[dict]) -> tuple[list[str], list[dict]]:
+    headers: list[str] = []
+    seen: set[str] = set()
+    rows: list[dict] = []
+    for row in table:
+        clean: dict = {}
+        for key, value in row.items():
+            if key == "__variants":
+                clean[key] = value  # size breakdown from a size-grid sheet
+                continue
+            if str(key).startswith("__"):
+                continue
+            clean[key] = _stringify_cell(value)
+            if key not in seen:
+                seen.add(key)
+                headers.append(key)
+        rows.append(clean)
+    if not headers:
+        raise HTTPException(status_code=400, detail="Spreadsheet has no header row.")
+    return headers, rows
 
 
 @router.post("/imports/preview", response_model=ImportPreviewResponse, status_code=status.HTTP_201_CREATED)
 async def preview_import(
-    file: UploadFile = File(..., description="CSV file to preview"),
+    file: UploadFile = File(..., description="CSV or XLSX file to preview"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Upload a CSV, parse it, detect column mapping, and return a preview.
+    """Upload a spreadsheet, parse it, detect column mapping, and return a preview.
 
     No inventory changes are made.  Call POST /imports/{job_id}/commit to apply.
+    Files over the direct limit go through /imports/uploads in chunks.
     """
-    if not file.filename or not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only .csv files are accepted.")
+    filename = _check_import_filename(file.filename)
+    content = await _read_upload_limited(file, DIRECT_IMPORT_UPLOAD_BYTES)
+    return _build_import_preview(filename, content, db, current_user)
 
-    content = await _read_upload_limited(file, 5 * 1024 * 1024)
 
-    headers, raw_rows = _parse_csv_bytes(content)
+class ImportUploadStart(_PydBase):
+    filename: str
+    size: int
+
+
+class ImportUploadChunk(_PydBase):
+    index: int
+    data: str  # base64
+
+
+class ImportUploadFinish(_PydBase):
+    filename: str
+
+
+def _upload_path(user: User, upload_id: UUID) -> Path:
+    # upload_id is a validated UUID; still confine the path to the upload dir.
+    base = os.path.realpath(IMPORT_UPLOAD_DIR)
+    full = os.path.normpath(os.path.join(base, f"{user.id}-{UUID(str(upload_id)).hex}.part"))
+    if not full.startswith(base + os.sep):  # pragma: no cover - unreachable for a UUID
+        raise HTTPException(status_code=400, detail="Invalid upload id.")
+    return Path(full)
+
+
+def _sweep_stale_uploads() -> None:
+    if not IMPORT_UPLOAD_DIR.exists():
+        return
+    cutoff = time.time() - IMPORT_UPLOAD_TTL_SECONDS
+    for stale in IMPORT_UPLOAD_DIR.iterdir():
+        try:
+            if stale.stat().st_mtime < cutoff:
+                stale.unlink()
+        except OSError:
+            pass
+
+
+@router.post("/imports/uploads", status_code=status.HTTP_201_CREATED)
+async def start_import_upload(
+    payload: ImportUploadStart,
+    current_user: User = Depends(get_current_user),
+):
+    """Begin a chunked spreadsheet upload for files too big for one request."""
+    name = _check_import_filename(payload.filename)
+    # A CSV holds no pictures: 500 MB of text is millions of rows.
+    limit = IMPORT_UPLOAD_MAX_BYTES if name.lower().endswith(".xlsx") else MAX_CSV_IMPORT_BYTES
+    if payload.size > limit:
+        limit_mb = limit // (1024 * 1024)
+        hint = " Save it as .xlsx instead." if limit < IMPORT_UPLOAD_MAX_BYTES else ""
+        raise HTTPException(status_code=413, detail=f"Spreadsheets over {limit_mb} MB can't be imported.{hint}")
+    _sweep_stale_uploads()
+    IMPORT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(IMPORT_UPLOAD_DIR).free < payload.size + IMPORT_DISK_HEADROOM_BYTES:
+        raise HTTPException(
+            status_code=507,
+            detail="Resqlo is short on space for a file this big right now. Try again later or contact support.",
+        )
+    upload_id = uuid.uuid4()
+    _upload_path(current_user, upload_id).write_bytes(b"")
+    return {"upload_id": str(upload_id), "chunk_bytes": IMPORT_CHUNK_MAX_BYTES}
+
+
+@router.put("/imports/uploads/{upload_id}")
+async def append_import_upload(
+    upload_id: UUID,
+    payload: ImportUploadChunk,
+    current_user: User = Depends(get_current_user),
+):
+    """Append one chunk. Chunks arrive in order; a retried chunk is ignored."""
+    path = _upload_path(current_user, upload_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Upload not found or expired. Pick the file again.")
+    try:
+        chunk = base64.b64decode(payload.data, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Upload chunk is corrupted.") from exc
+    if len(chunk) > IMPORT_CHUNK_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Upload chunk is too large.")
+    counter = path.with_suffix(".idx")
+    received = int(counter.read_text()) if counter.exists() else 0
+    if payload.index < received:
+        return {"received": received}
+    if payload.index != received:
+        raise HTTPException(status_code=409, detail=f"Expected chunk {received}.")
+    if path.stat().st_size + len(chunk) > IMPORT_UPLOAD_MAX_BYTES:
+        path.unlink(missing_ok=True)
+        counter.unlink(missing_ok=True)
+        raise HTTPException(status_code=413, detail="Spreadsheet is larger than Resqlo can import.")
+    with path.open("ab") as handle:
+        handle.write(chunk)
+    counter.write_text(str(received + 1))
+    return {"received": received + 1}
+
+
+@router.post(
+    "/imports/uploads/{upload_id}/preview",
+    response_model=ImportPreviewResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def preview_import_upload(
+    upload_id: UUID,
+    payload: ImportUploadFinish,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Build the import preview from a completed chunked upload."""
+    filename = _check_import_filename(payload.filename)
+    path = _upload_path(current_user, upload_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Upload not found or expired. Pick the file again.")
+    with path.open("rb") as handle:
+        is_xlsx = filename.lower().endswith(".xlsx") or handle.read(2) == b"PK"
+    if is_xlsx:
+        # Photos take a while: build the preview in the background and let
+        # the app poll GET /imports/{job_id} for progress.
+        job = InventoryImportJob(
+            user_id=current_user.id, status="pending", source="spreadsheet", filename=filename,
+            field_mapping={"_progress": {"done": 0, "total": 0}}, total_rows=0,
+            rows_created=0, rows_updated=0, rows_skipped=0, rows_errored=0,
+        )
+        db.add(job)
+        db.commit()
+        _run_import_job(lambda session: _process_xlsx_upload(session, job.id, current_user.id, path, filename))
+        return JSONResponse(status_code=202, content={"job_id": str(job.id), "status": "pending"})
+    try:
+        if path.stat().st_size > MAX_CSV_IMPORT_BYTES:
+            raise HTTPException(status_code=413, detail="CSV files over 500 MB can't be imported. Save it as .xlsx instead.")
+        parsed = _spreadsheet_headers_rows(filename, path.read_bytes())
+    finally:
+        _remove_upload(path)
+    return _build_import_preview(filename, b"", db, current_user, parsed=parsed)
+
+
+def _remove_upload(path: Path) -> None:
+    path.unlink(missing_ok=True)
+    path.with_suffix(".idx").unlink(missing_ok=True)
+
+
+def _run_import_job(work) -> None:
+    """Run ``work(session)`` on a worker thread with its own DB session."""
+    def runner():
+        session = SessionLocal()
+        try:
+            work(session)
+        finally:
+            session.close()
+
+    threading.Thread(target=runner, name="import-preview", daemon=True).start()
+
+
+def _process_xlsx_upload(db: Session, job_id, user_id, path: Path, filename: str) -> None:
+    job = db.get(InventoryImportJob, job_id)
+    user = db.get(User, user_id)
+    last = {"at": 0.0}
+
+    def progress(done: int, total: int) -> None:
+        now = time.monotonic()
+        if done != total and now - last["at"] < 1.0:
+            return
+        last["at"] = now
+        job.field_mapping = {"_progress": {"done": done, "total": total}}
+        db.commit()
+
+    try:
+        parsed = _headers_rows_from_table(
+            _read_spreadsheet(lambda: xlsx_rows_from_path(str(path), on_progress=progress))
+        )
+        _build_import_preview(filename, b"", db, user, parsed=parsed, job=job)
+    except Exception as exc:  # report every failure on the job instead of losing it
+        db.rollback()
+        detail = exc.detail if isinstance(exc, HTTPException) else "Couldn't read this spreadsheet. Re-save it as .xlsx and try again."
+        if not isinstance(exc, HTTPException):
+            logger.exception("Import preview failed for job %s", job_id)
+        job = db.get(InventoryImportJob, job_id)
+        job.status = "failed"
+        job.field_mapping = {"_error": str(detail)}
+        db.commit()
+    finally:
+        _remove_upload(path)
+
+
+def _build_import_preview(
+    filename: str,
+    content: bytes,
+    db: Session,
+    current_user: User,
+    parsed: tuple[list[str], list[dict]] | None = None,
+    job: InventoryImportJob | None = None,
+) -> ImportPreviewResponse:
+    headers, raw_rows = parsed or _spreadsheet_headers_rows(filename, content)
+    file = SimpleNamespace(filename=filename)
     detected_mapping = _detect_mapping(headers)
 
     # Persist the job in 'pending' state
-    job = InventoryImportJob(
-        user_id=current_user.id,
-        status="pending",
-        source="spreadsheet",
-        filename=file.filename,
-        field_mapping=detected_mapping,
-        total_rows=len(raw_rows),
-        rows_created=0,
-        rows_updated=0,
-        rows_skipped=0,
-        rows_errored=0,
-    )
+    new_job = job is None
+    if new_job:
+        job = InventoryImportJob(user_id=current_user.id, source="spreadsheet")
+    job.status = "pending"
+    job.filename = file.filename
+    job.field_mapping = detected_mapping
+    job.total_rows = len(raw_rows)
+    job.rows_created = job.rows_updated = job.rows_skipped = job.rows_errored = 0
     db.add(job)
     db.flush()  # get job.id
 
@@ -1181,7 +1698,7 @@ async def preview_import(
     # Build lookups of existing items by SKU and by id for the current user.
     # SKU match is preferred; id match (from re-imported export) is the fallback
     # so items without a SKU are updated rather than duplicated on round-trip.
-    existing_by_sku: dict[str, InventoryItem] = {}
+    existing_by_sku: dict[str, list[InventoryItem]] = {}
     existing_by_id: dict[str, InventoryItem] = {}
     all_items = db.query(InventoryItem).filter(
         InventoryItem.user_id == current_user.id,
@@ -1189,7 +1706,7 @@ async def preview_import(
     ).all()
     for it in all_items:
         if it.sku:
-            existing_by_sku[it.sku.lower()] = it
+            existing_by_sku.setdefault(_sku_key(it.sku), []).append(it)
         existing_by_id[str(it.id)] = it
 
     for row_num, raw in enumerate(raw_rows, start=1):
@@ -1206,7 +1723,7 @@ async def preview_import(
         else:
             sku = (mapped.get("sku") or "").lower()
             import_id = (mapped.pop("_import_id", None) or "").strip()
-            existing = existing_by_sku.get(sku) if sku else None
+            existing = _match_existing(existing_by_sku.get(_sku_key(sku), []), mapped.get("size")) if sku else None
             match_key, match_value = "sku", mapped.get("sku")
             if not existing and import_id:
                 existing = existing_by_id.get(import_id)
@@ -1236,7 +1753,7 @@ async def preview_import(
             row_number=row_num,
             action=action,
             inventory_item_id=row_result.inventory_item_id,
-            raw_data=dict(raw),
+            raw_data=_without_photos(raw),
             mapped_data=mapped or None,
             error_message=error,
             match_key=row_result.match_key,
@@ -1256,12 +1773,65 @@ async def preview_import(
         status=job.status,
         filename=job.filename,
         detected_mapping=detected_mapping,
-        rows=preview_rows,
+        rows=_slim_preview_rows(preview_rows),
         total_rows=job.total_rows,
         rows_to_create=counts["create"],
         rows_to_update=counts["update"],
         rows_to_skip=counts["skip"],
         rows_errored=counts["error"],
+    )
+
+
+PHOTO_FIELDS = ("photo_front_url", "photo_back_url")
+# The review screen shows the first rows with their pictures; later rows keep
+# their photos server-side (they still import) but are sent without them so a
+# sheet with thousands of photos doesn't become a huge download to the phone.
+PREVIEW_PHOTO_ROWS = 100
+
+
+def _is_data_image(value) -> bool:
+    return isinstance(value, str) and value.startswith("data:image/")
+
+
+def _without_photos(raw: dict) -> dict:
+    return {k: ("[photo]" if _is_data_image(v) else v) for k, v in raw.items()}
+
+
+def _slim_preview_rows(rows: list[ImportRowResult]) -> list[ImportRowResult]:
+    out = []
+    for index, row in enumerate(rows):
+        if index >= PREVIEW_PHOTO_ROWS and row.mapped_data and any(_is_data_image(v) for v in row.mapped_data.values()):
+            row = row.model_copy(update={
+                "mapped_data": {k: v for k, v in row.mapped_data.items() if not _is_data_image(v)},
+            })
+        out.append(row)
+    return out
+
+
+@router.get("/imports/{job_id}/preview", response_model=ImportPreviewResponse)
+def get_import_preview(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The preview of a job built in the background, once it's ready."""
+    job = _get_previewed_job(job_id, current_user.id, db)
+    rows = db.query(InventoryImportRow).filter(
+        InventoryImportRow.job_id == job.id,
+    ).order_by(InventoryImportRow.row_number).all()
+    results = [_row_result(row) for row in rows]
+    actions = [row.action for row in rows]
+    return ImportPreviewResponse(
+        job_id=job.id,
+        status=job.status,
+        filename=job.filename,
+        detected_mapping=job.field_mapping or {},
+        rows=_slim_preview_rows(results),
+        total_rows=job.total_rows,
+        rows_to_create=actions.count("create"),
+        rows_to_update=actions.count("update"),
+        rows_to_skip=actions.count("skip"),
+        rows_errored=actions.count("error"),
     )
 
 
@@ -1289,16 +1859,59 @@ def _get_previewed_job(job_id: UUID, user_id, db: Session) -> InventoryImportJob
     return job
 
 
+def _remember_imported(db: Session, user_id, items: list[InventoryItem]) -> None:
+    """Teach Smart Scan and the Resqlo catalog from imported items.
+
+    A side benefit only: if it fails, the import itself still goes through.
+    """
+    try:
+        with db.begin_nested():
+            remember_items(db, user_id, items)
+    except Exception:
+        logger.warning("Import: scan memory update skipped", exc_info=True)
+
+
+def _sku_key(sku: str) -> str:
+    return (sku or "").strip().lower()
+
+
+def _size_key(size) -> str:
+    text = " ".join(str(size or "").lower().split())
+    for prefix in ("us ", "size "):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+    return text
+
+
+def _match_existing(candidates: list[InventoryItem], size) -> Optional[InventoryItem]:
+    """The existing item a row updates: same SKU *and* size.
+
+    Stores often give every size of a shoe the same SKU (the style code), one
+    row per size, so a SKU alone would make every size row overwrite one
+    item. A row without a size matches only when that SKU is a single item.
+    """
+    if not candidates:
+        return None
+    wanted = _size_key(size)
+    exact = [item for item in candidates if _size_key(item.size) == wanted]
+    if exact:
+        return exact[-1]
+    if not wanted and len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def _resolve_row_action(row: InventoryImportRow, mapped: dict, user_id, db: Session) -> None:
     """Re-run the preview's create/update decision for an edited row."""
     sku = (mapped.get("sku") or "").strip()
     existing = None
     if sku:
-        existing = db.query(InventoryItem).filter(
+        same_sku = db.query(InventoryItem).filter(
             InventoryItem.user_id == user_id,
             InventoryItem.deleted_at.is_(None),
             func.lower(InventoryItem.sku) == sku.lower(),
-        ).first()
+        ).all()
+        existing = _match_existing(same_sku, mapped.get("size"))
     if existing:
         row.action, row.inventory_item_id = "update", existing.id
         row.match_key, row.match_value = "sku", sku
@@ -1351,6 +1964,10 @@ def update_import_row(
         unknown = sorted(set(payload.data) - EDITABLE_IMPORT_FIELDS)
         if unknown:
             raise HTTPException(status_code=422, detail=f"Unknown field(s): {', '.join(unknown)}")
+        kept_photos = {
+            k: v for k, v in (row.mapped_data or {}).items()
+            if k in PHOTO_FIELDS and k not in payload.data and v
+        }
         as_text = {k: "" if v is None else str(v) for k, v in payload.data.items()}
         mapped, error = _coerce_row(as_text, {k: k for k in as_text})
         if not error and mapped.get("quantity") is not None and mapped["quantity"] < 0:
@@ -1361,8 +1978,9 @@ def update_import_row(
         if error:
             row.action = "error"
             # Keep what the seller typed so they can fix it from the same sheet.
-            row.mapped_data = {k: v for k, v in payload.data.items() if v not in (None, "")}
+            row.mapped_data = {**{k: v for k, v in payload.data.items() if v not in (None, "")}, **kept_photos}
         else:
+            mapped.update(kept_photos)
             row.mapped_data = mapped
             _resolve_row_action(row, mapped, current_user.id, db)
 
@@ -1380,6 +1998,10 @@ def update_import_row(
     db.add(job)
     db.commit()
     db.refresh(row)
+    return _row_result(row)
+
+
+def _row_result(row: InventoryImportRow) -> ImportRowResult:
     return ImportRowResult(
         id=row.id,
         row_number=row.row_number,
@@ -1442,7 +2064,8 @@ def commit_import(
                 buy_price=mapped.get("buy_price"),
                 expected_sell_price=mapped.get("expected_sell_price"),
                 actual_sell_price=mapped.get("actual_sell_price"),
-                quantity=int(mapped.get("quantity") or 1),
+                quantity=int(mapped["quantity"]) if mapped.get("quantity") is not None else 1,
+                custom_attributes={"variants": mapped["_variants"]} if mapped.get("_variants") else {},
                 vendor_name=mapped.get("vendor_name"),
                 notes=mapped.get("notes"),
                 platform=mapped.get("platform"),
@@ -1466,7 +2089,7 @@ def commit_import(
                 continue
 
             # Write a ledger entry for quantity changes
-            new_qty = int(mapped.get("quantity") or item.quantity)
+            new_qty = int(mapped["quantity"]) if mapped.get("quantity") is not None else item.quantity
             delta = new_qty - item.quantity
             if delta != 0:
                 ledger = InventoryStockLedger(
@@ -1482,10 +2105,12 @@ def commit_import(
                 db.add(ledger)
 
             # Apply all mapped fields (skip internal import-only keys)
-            _SKIP_ON_UPDATE = {"_import_id"}
+            _SKIP_ON_UPDATE = {"_import_id", "_variants"}
             for field, value in mapped.items():
                 if field not in _SKIP_ON_UPDATE and hasattr(item, field):
                     setattr(item, field, value)
+            if mapped.get("_variants"):
+                item.custom_attributes = {**(item.custom_attributes or {}), "variants": mapped["_variants"]}
             db.add(item)
             touched.append(item)
             counts["update"] += 1
@@ -1493,7 +2118,7 @@ def commit_import(
             counts["skip"] += 1
 
     # Rows with a barcode + name teach Smart Scan (never over seller-confirmed memory).
-    remember_items(db, current_user.id, touched)
+    _remember_imported(db, current_user.id, touched)
 
     job.status = "committed"
     job.rows_created = counts["create"]
@@ -1525,4 +2150,10 @@ def get_import_job(
     ).first()
     if not job:
         raise HTTPException(status_code=404, detail="Import job not found.")
-    return job
+    meta = job.field_mapping if isinstance(job.field_mapping, dict) else {}
+    out = ImportJobResponse.model_validate(job)
+    out.progress = meta.get("_progress") if job.status == "pending" else None
+    out.error = meta.get("_error") if job.status == "failed" else None
+    if out.progress is not None or out.error is not None:
+        out.field_mapping = None
+    return out
