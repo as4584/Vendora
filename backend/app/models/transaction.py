@@ -18,7 +18,7 @@ class Transaction(Base, TimestampMixin):
     __tablename__ = "transactions"
     __table_args__ = (
         CheckConstraint(
-            "method IN ('stripe', 'cashapp', 'paypal', 'zelle', 'venmo', 'cash', 'card', 'other', 'split')",
+            "method IN ('stripe', 'cashapp', 'paypal', 'zelle', 'venmo', 'cash', 'card', 'other', 'split', 'trade')",
             name="ck_transactions_method",
         ),
         CheckConstraint(
@@ -110,6 +110,34 @@ class OrderPayment(Base, TimestampMixin):
     order_id = Column(Uuid, nullable=False)
     method = Column(String(20), nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
+
+
+class Trade(Base, TimestampMixin):
+    """A swap at the table: pairs out, pairs in, and any cash either way.
+
+    Pairs given are recorded as sale Transactions (method "trade") sharing
+    order_id; pairs received become new inventory whose cost basis is what
+    was actually given for them (value out minus cash received).
+    """
+    __tablename__ = "trades"
+    __table_args__ = (
+        Index("ix_trades_user_id", "user_id"),
+        Index("uq_trades_user_request", "user_id", "client_request_id", unique=True,
+              postgresql_where=sa.text("client_request_id IS NOT NULL")),
+    )
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    order_id = Column(Uuid, nullable=False)
+    customer_id = Column(Uuid, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    # Positive: the other person paid me. Negative: I paid them.
+    cash_amount = Column(Numeric(10, 2), nullable=False, server_default="0.00")
+    cash_method = Column(String(20), nullable=True)
+    value_out = Column(Numeric(10, 2), nullable=False)
+    value_in = Column(Numeric(10, 2), nullable=False)
+    received_item_ids = Column(sa.JSON, nullable=False, default=list)
+    notes = Column(String(500), nullable=True)
+    client_request_id = Column(String(64), nullable=True)
 
 
 @sa.event.listens_for(Transaction, "before_insert")
