@@ -438,6 +438,8 @@ describe('QuickSaleScreen (checkout)', () => {
     const screen = await ready();
     fireEvent.press(screen.getByLabelText('Scan barcode to add'));
     await waitFor(() => expect(mockOnScan).toBeDefined());
+    // The server resolves a label QR whose item isn't in the loaded list.
+    (apiMock.resolveBarcode as jest.Mock).mockResolvedValueOnce({ code: 'x', matched_by: 'label', rule_name: null, item: ITEM2 });
     await act(async () => mockOnScan!({ data: 'resqlo:item:item-2' }));
     expect(screen.getByText(/Cart · 1 item/)).toBeTruthy();
     // A tag for a pair not in the loaded list is fetched; sold-out pairs are refused.

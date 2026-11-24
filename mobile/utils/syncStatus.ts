@@ -36,6 +36,7 @@ const KIND_LABELS: Record<FailedSync["kind"], string> = {
   quick_sale: "Sale",
   sale_order: "Sale",
   create_invoice: "Invoice",
+  trade: "Trade",
 };
 
 export function failedSyncLabel(kind: FailedSync["kind"]): string {

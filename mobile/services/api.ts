@@ -2697,6 +2697,8 @@ export interface Savings {
 /** Work Resqlo's integrations did for the seller this month. */
 export async function getSavings(): Promise<Savings> {
   return request<Savings>("/dashboard/savings");
+}
+
 export interface AgingStock {
   days: number;
   count: number;

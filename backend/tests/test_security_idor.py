@@ -112,14 +112,12 @@ def victim_objects(db, test_user, tmp_path, monkeypatch):
 
 
 BODIES = {
-    "PUT": {"name": "pwned", "customer_name": "pwned", "index": 0, "data": "cHduZWQ=",
-    "PUT": {"name": "pwned", "customer_name": "pwned", "prefix": "PWN",
+    "PUT": {"name": "pwned", "customer_name": "pwned", "index": 0, "data": "cHduZWQ=", "prefix": "PWN",
             "items": [{"description": "x", "quantity": 1, "unit_price": "1.00"}]},
     "PATCH": {"status": "sold", "price": "1.00", "quantity": 0, "amount": "1.00",
               "photo_front": None, "resolution_note": "x"},
     "POST": {"amount": "1.00", "method": "cash", "price": "1.00", "quantity": 1,
-             "product_id": "p", "variant_id": "v", "filename": "pwned.csv"},
-             "product_id": "p", "variant_id": "v", "code": "PWNED"},
+             "product_id": "p", "variant_id": "v", "filename": "pwned.csv", "code": "PWNED"},
 }
 
 

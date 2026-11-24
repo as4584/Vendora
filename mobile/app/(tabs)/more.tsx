@@ -8,18 +8,6 @@ import { COLORS, RADII, SPACING } from "../../theme/tokens";
 type MoreLink = { label: string; helper: string; icon: IconName; route: string };
 type Group = { title: string; links: MoreLink[] };
 
-const LINKS: MoreLink[] = [
-  { label: "Show Summary", helper: "Close out the show: cash box, profit, top items", icon: "storefront-outline", route: "/settings/show-summary" },
-  { label: "Trade", helper: "Swap pairs plus cash in one step", icon: "swap-horizontal-outline", route: "/inventory/trade" },
-  { label: "Price Labels", helper: "Print tags with a scan-to-sell QR", icon: "pricetags-outline", route: "/inventory/labels" },
-  { label: "Customers", helper: "Buyers, purchase history and totals", icon: "people-outline", route: "/customers" },
-  { label: "Invoices", helper: "Create and share branded invoices", icon: "receipt-outline", route: "/inventory/invoices" },
-  { label: "Sync Center", helper: "Provider syncs & reconciliation", icon: "sync-outline", route: "/settings/sync-center" },
-  { label: "Advanced Analytics", helper: "Revenue, sell-through, top categories", icon: "bar-chart-outline", route: "/settings/analytics" },
-  { label: "Tax Pack", helper: "Year-end profit by platform, CSV for your accountant", icon: "document-text-outline", route: "/settings/tax-pack" },
-  { label: "Plans & Billing", helper: "Manage your subscription", icon: "card-outline", route: "/settings/subscription" },
-  { label: "Settings", helper: "Account, branding & integrations", icon: "settings-outline", route: "/settings" },
-  { label: "Support", helper: "Get help from the Resqlo team", icon: "help-buoy-outline", route: "/settings/support" },
 // Plain words, one job per row. Grouped by what the seller wants to do.
 const START_STEPS: MoreLink[] = [
   { label: "1. Bring in your inventory", helper: "Upload your Excel or CSV sheet, photos and all", icon: "cloud-upload-outline", route: "/inventory/import" },
@@ -33,6 +21,8 @@ const GROUPS: Group[] = [
     links: [
       { label: "Customers", helper: "Who bought what, and how much they spent", icon: "people-outline", route: "/customers" },
       { label: "Invoices", helper: "Send a receipt with your logo", icon: "receipt-outline", route: "/inventory/invoices" },
+      { label: "Trade", helper: "Swap pairs, plus cash either way, in one step", icon: "swap-horizontal-outline", route: "/inventory/trade" },
+      { label: "Price Labels", helper: "Print price tags that scan straight to a sale", icon: "pricetags-outline", route: "/inventory/labels" },
       { label: "Show Summary", helper: "After an event: cash, profit and best sellers", icon: "storefront-outline", route: "/settings/show-summary" },
     ],
   },
@@ -40,6 +30,8 @@ const GROUPS: Group[] = [
     title: "Your numbers",
     links: [
       { label: "Advanced Analytics", helper: "What sells, what sits, and what you made", icon: "bar-chart-outline", route: "/settings/analytics" },
+      { label: "Not Selling", helper: "Pairs sitting too long, with one-tap price drops", icon: "hourglass-outline", route: "/inventory/aging" },
+      { label: "Tax Pack", helper: "Year-end profit, ready for your accountant", icon: "document-text-outline", route: "/settings/tax-pack" },
     ],
   },
   {

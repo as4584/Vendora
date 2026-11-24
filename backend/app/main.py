@@ -18,8 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from app.routers import auth, inventory, transactions, dashboard, invoices, webhooks
 from app.routers import export, features, sellers, integrations
 from app.routers import subscriptions, support, reset_bridge, legal_pages, scan, stockx, customers
-from app.routers import google_sheets, events, devices, trades
-from app.routers import google_sheets, events, devices, barcodes, catalog
+from app.routers import google_sheets, events, devices, trades, barcodes, catalog
 from app.config import settings
 from app.observability import init_sentry
 from app.rate_limit import limiter

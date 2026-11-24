@@ -334,8 +334,12 @@ export default function QuickSaleScreen() {
     scanLock.current = true;
     lastScan.current = { code: data, at: now };
     const labelId = itemIdFromScan(data);
-    let hit = labelId ? items.find((item) => item.id === labelId) : items.find((item) => sameBarcode(item.upc, data));
+    let hit = labelId
+      ? items.find((item) => item.id === labelId)
+      : items.find((item) => sameBarcode(item.upc, data) || sameSku(item.sku, data));
+    let reachable = true;
     if (!hit && labelId) {
+      // A printed Resqlo price label: fetch the item it names.
       try {
         const item = await api.getItem(labelId);
         hit = resolveQty(item) > 0 ? item : undefined;
@@ -343,9 +347,6 @@ export default function QuickSaleScreen() {
         hit = undefined;
       }
     } else if (!hit) {
-    let hit = items.find((item) => sameBarcode(item.upc, data) || sameSku(item.sku, data));
-    let reachable = true;
-    if (!hit) {
       try {
         // Store tags, SKU stickers, label QRs and the seller's own rules.
         hit = (await api.resolveBarcode(data)).item ?? undefined;
@@ -366,6 +367,10 @@ export default function QuickSaleScreen() {
       addToCart(found);
       const inCart = (cart[found.id]?.qty ?? 0) + 1;
       showScanNote(`Added ${found.name}${inCart > 1 ? ` · ${inCart} in cart` : ""}`, true);
+    } else if (labelId) {
+      // Our own label: the pair is sold out or gone, not an unknown code.
+      triggerHaptic("warning");
+      showScanNote(`Not in stock: ${data}. Add it in Add Stock first.`, false);
     } else if (reachable) {
       triggerHaptic("warning");
       setUnknownCode(data);
