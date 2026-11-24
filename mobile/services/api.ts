@@ -1512,6 +1512,32 @@ export function orderReceiptPdfUrl(orderId: string): string {
   return `${API_BASE_URL}/transactions/order/${encodeURIComponent(orderId)}/receipt.pdf`;
 }
 
+export interface TaxTotals {
+  gross_sales: string;
+  refunds: string;
+  fees: string;
+  cost_of_goods: string;
+  net_profit: string;
+  sales_count: number;
+}
+
+export interface TaxSummary extends TaxTotals {
+  year: number;
+  sales_missing_cost: number;
+  by_month: (TaxTotals & { month: number })[];
+  by_channel: (TaxTotals & { channel: string; label: string })[];
+}
+
+/** Year-end profit and loss by month and sales channel (Pro). */
+export async function getTaxSummary(year: number): Promise<TaxSummary> {
+  return request<TaxSummary>(`/export/tax-summary?year=${year}`);
+}
+
+/** Absolute URL for the year's tax pack CSV (Pro). */
+export function taxPackCsvUrl(year: number): string {
+  return `${API_BASE_URL}/export/tax-pack?year=${year}`;
+}
+
 /** Absolute URL for the styled .xlsx export with embedded item photos (Pro). */
 export function exportInventoryXlsxUrl(): string {
   return `${API_BASE_URL}/export/inventory?format=xlsx`;

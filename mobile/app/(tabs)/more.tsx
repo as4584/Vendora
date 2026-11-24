@@ -11,6 +11,7 @@ const LINKS: MoreLink[] = [
   { label: "Invoices", helper: "Create and share branded invoices", icon: "receipt-outline", route: "/inventory/invoices" },
   { label: "Sync Center", helper: "Provider syncs & reconciliation", icon: "sync-outline", route: "/settings/sync-center" },
   { label: "Advanced Analytics", helper: "Revenue, sell-through, top categories", icon: "bar-chart-outline", route: "/settings/analytics" },
+  { label: "Tax Pack", helper: "Year-end profit by platform, CSV for your accountant", icon: "document-text-outline", route: "/settings/tax-pack" },
   { label: "Plans & Billing", helper: "Manage your subscription", icon: "card-outline", route: "/settings/subscription" },
   { label: "Settings", helper: "Account, branding & integrations", icon: "settings-outline", route: "/settings" },
   { label: "Support", helper: "Get help from the Resqlo team", icon: "help-buoy-outline", route: "/settings/support" },

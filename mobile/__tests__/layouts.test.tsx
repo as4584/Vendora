@@ -133,6 +133,7 @@ describe('router layouts', () => {
       'settings/analytics',
       'settings/support',
       'settings/show-summary',
+      'settings/tax-pack',
       'customers/index',
       'customers/[id]',
     ]);
