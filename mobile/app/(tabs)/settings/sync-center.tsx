@@ -207,6 +207,11 @@ export default function SyncCenterScreen() {
       </Card>
 
       <Text style={styles.autoNote}>Everything syncs automatically every few minutes. Pull down to sync now.</Text>
+      <ActionButton
+        label="Import sales from Poshmark, Mercari, Whatnot…"
+        tone="secondary"
+        onPress={() => router.push("/settings/import-sales")}
+      />
 
       <SectionLabel>Sync History</SectionLabel>
       <Card style={styles.stack}>

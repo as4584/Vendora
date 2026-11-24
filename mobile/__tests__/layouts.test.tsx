@@ -129,6 +129,7 @@ describe('router layouts', () => {
         'inventory/add-costs',
       'inventory/aging',
       'settings/sync-center',
+      'settings/import-sales',
       'settings/subscription',
       'settings/analytics',
       'settings/support',

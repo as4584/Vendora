@@ -103,6 +103,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="inventory/add-costs" options={{ href: null, headerTitle: "Add Costs" }} />
       <Tabs.Screen name="inventory/aging" options={{ href: null, headerTitle: "Not Selling" }} />
       <Tabs.Screen name="settings/sync-center" options={{ href: null, headerTitle: "Sync Center" }} />
+      <Tabs.Screen name="settings/import-sales" options={{ href: null, headerTitle: "Import Sales" }} />
       <Tabs.Screen name="settings/subscription" options={{ href: null, headerTitle: "Plans & Billing" }} />
       <Tabs.Screen name="settings/analytics" options={{ href: null, headerTitle: "Advanced Analytics" }} />
       <Tabs.Screen name="settings/support" options={{ href: null, headerTitle: "Support" }} />
