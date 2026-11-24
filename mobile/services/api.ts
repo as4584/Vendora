@@ -661,6 +661,8 @@ export interface ListItemsParams {
   upc?: string;
   /** Sort menu order; server default is newest. */
   sort?: SortKey;
+  /** Only items with no buy price. */
+  missingCost?: boolean;
 }
 
 export async function listItems(
@@ -690,6 +692,7 @@ export async function listItems(
   if (params.source) qs.set("source", params.source);
   if (params.availableOnly) qs.set("available_only", "true");
   if (params.upc) qs.set("upc", params.upc);
+  if (params.missingCost) qs.set("missing_cost", "true");
   if (params.sort && params.sort !== "newest") qs.set("sort", params.sort);
 
   if (!isOnline()) return offlineListItems(normalized, session);

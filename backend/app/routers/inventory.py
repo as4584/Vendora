@@ -462,6 +462,7 @@ def list_items(
     source_filter: Optional[str] = Query(None, alias="source", description="Filter by source (e.g. lightspeed)"),
     available_only: bool = Query(False, description="Only items with quantity > 0 and status in (in_stock, listed)"),
     upc: Optional[str] = Query(None, max_length=50, description="Exact barcode (UPC/EAN) match, for scan-to-sell"),
+    missing_cost: bool = Query(False, description="Only items with no buy price (profit can't be computed)"),
     sort: str = Query(
         "newest",
         pattern="^(newest|oldest|price_high|price_low|profit|qty|name)$",
@@ -489,6 +490,9 @@ def list_items(
 
     if source_filter:
         base_query = base_query.filter(InventoryItem.source == source_filter)
+
+    if missing_cost:
+        base_query = base_query.filter(InventoryItem.buy_price.is_(None))
 
     if available_only:
         base_query = base_query.filter(

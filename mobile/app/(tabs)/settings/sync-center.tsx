@@ -94,8 +94,19 @@ export default function SyncCenterScreen() {
     }
     setSyncing(key);
     try {
-      await provider.sync();
+      const result = (await provider.sync()) as { items_imported?: number } | undefined;
       await load();
+      const imported = result?.items_imported ?? 0;
+      if (key === "ebay" && imported > 0) {
+        Alert.alert(
+          `Imported ${imported} item${imported === 1 ? "" : "s"} from eBay`,
+          "Add what you paid for them so your profit is right.",
+          [
+            { text: "Later", style: "cancel" },
+            { text: "Add costs", onPress: () => router.push("/inventory/add-costs") },
+          ],
+        );
+      }
     } catch (err) {
       Alert.alert("Sync failed", errorMessage(err, `Could not sync ${provider.name}.`));
     } finally {
