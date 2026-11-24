@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 
 from app.main import app
+from app.routers import inventory as inventory_router
 from app.models.customer import Customer
 from app.models.inventory import InventoryImportJob, InventoryImportRow, InventoryItem
 from app.models.invoice import Invoice
@@ -56,12 +57,16 @@ def _param_kind(path: str, name: str) -> str:
         "barcode": "barcode",
         "customer_id": "customer",
         "row_id": "import_row",
+        "upload_id": "import_upload",
     }[name]
 
 
 @pytest.fixture()
-def victim_objects(db, test_user):
+def victim_objects(db, test_user, tmp_path, monkeypatch):
     uid = test_user.id
+    monkeypatch.setattr(inventory_router, "IMPORT_UPLOAD_DIR", tmp_path)
+    upload_id = uuid.uuid4()
+    inventory_router._upload_path(test_user, upload_id).write_bytes(b"Product Name,Victim")
     item = InventoryItem(user_id=uid, name="Victim sneaker", quantity=3, status="in_stock",
                          buy_price=Decimal("40.00"), expected_sell_price=Decimal("100.00"))
     db.add(item)
@@ -91,16 +96,17 @@ def victim_objects(db, test_user):
         "import_job": job.id, "run": run.id, "issue": issue.id, "outbox": outbox.id,
         "stockx_listing": listing.id, "barcode": "0012345678905",
         "customer": customer.id, "import_row": import_row.id,
+        "import_upload": upload_id,
     }
 
 
 BODIES = {
-    "PUT": {"name": "pwned", "customer_name": "pwned",
+    "PUT": {"name": "pwned", "customer_name": "pwned", "index": 0, "data": "cHduZWQ=",
             "items": [{"description": "x", "quantity": 1, "unit_price": "1.00"}]},
     "PATCH": {"status": "sold", "price": "1.00", "quantity": 0, "amount": "1.00",
               "photo_front": None, "resolution_note": "x"},
     "POST": {"amount": "1.00", "method": "cash", "price": "1.00", "quantity": 1,
-             "product_id": "p", "variant_id": "v"},
+             "product_id": "p", "variant_id": "v", "filename": "pwned.csv"},
 }
 
 
@@ -114,7 +120,7 @@ def test_other_user_cannot_touch_object(client, db, victim_objects, second_auth_
     assert response.status_code == 404, (method, path, response.status_code, response.text[:300])
 
 
-def test_victim_objects_unchanged_after_attacks(client, db, victim_objects, second_auth_headers):
+def test_victim_objects_unchanged_after_attacks(client, db, victim_objects, second_auth_headers, test_user):
     """Belt and braces: after every mutating attempt, A's data is intact."""
     for method, path in sorted(set(_routes())):
         if method == "GET":
@@ -132,6 +138,8 @@ def test_victim_objects_unchanged_after_attacks(client, db, victim_objects, seco
     assert db.get(Customer, victim_objects["customer"]).name == "Victim buyer"
     row = db.get(InventoryImportRow, victim_objects["import_row"])
     assert row.action == "create" and row.mapped_data == {"name": "Victim row"}
+    upload = inventory_router._upload_path(test_user, victim_objects["import_upload"])
+    assert upload.read_bytes() == b"Product Name,Victim"
 
 
 def test_owner_can_read_own_item(client, victim_objects, auth_headers):

@@ -23,7 +23,7 @@ def remember_items(db: Session, user_id, items: Iterable[InventoryItem]) -> dict
     by_code: dict[str, dict] = {}
     skipped = 0
     for item in items:
-        code = normalize_barcode(item.upc or "") if item.upc else ""
+        code = normalize_barcode(item.upc or "")[:64] if item.upc else ""
         fields = _item_fields(item)
         if len(code) < 4 or not fields.get("name"):
             skipped += 1

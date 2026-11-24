@@ -536,6 +536,75 @@ describe('API endpoint contracts', () => {
   });
 
 
+  it('uploads big spreadsheets in ordered chunks, retrying a dropped chunk once', async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(response({ upload_id: 'up-1', chunk_bytes: 4 }, 201))
+      .mockResolvedValueOnce(response({ received: 1 }))
+      .mockRejectedValueOnce(new Error('Network request failed'))
+      .mockResolvedValueOnce(response({ received: 2 }))
+      .mockResolvedValueOnce(response({ job_id: 'job-big', rows: [] }, 201));
+    const reads: number[] = [];
+    const progress: number[] = [];
+    const result = await api.previewInventoryImportChunked(
+      { uri: 'file:///big.xlsx', name: 'big.xlsx', size: 6 },
+      async (_uri, offset) => { reads.push(offset); return 'QQ=='; },
+      (f) => progress.push(f),
+    );
+    expect(result).toEqual({ job_id: 'job-big', rows: [] });
+    expect(reads).toEqual([0, 4]);
+    expect(progress).toEqual([0.5, 1]);
+    const calls = fetchMock.mock.calls as Array<[string, RequestInit]>;
+    expectPath(calls[0][0], '/inventory/imports/uploads');
+    expect(JSON.parse(calls[0][1].body as string)).toEqual({ filename: 'big.xlsx', size: 6 });
+    expectPath(calls[3][0], '/inventory/imports/uploads/up-1');
+    expect(JSON.parse(calls[3][1].body as string)).toEqual({ index: 1, data: 'QQ==' });
+    expectPath(calls[4][0], '/inventory/imports/uploads/up-1/preview');
+  });
+
+  it('polls a background Excel preview, reporting photo progress, until it is ready', async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(response({ upload_id: 'up-3', chunk_bytes: 10 }, 201))
+      .mockResolvedValueOnce(response({ received: 1 }))
+      .mockResolvedValueOnce(response({ job_id: 'job-3', status: 'pending' }, 202))
+      .mockResolvedValueOnce(response({ id: 'job-3', status: 'pending', progress: { done: 0, total: 0 } }))
+      .mockResolvedValueOnce(response({ id: 'job-3', status: 'pending', progress: { done: 50, total: 80 } }))
+      .mockResolvedValueOnce(response({ id: 'job-3', status: 'pending', progress: null }))
+      .mockResolvedValueOnce(response({ id: 'job-3', status: 'previewed' }))
+      .mockResolvedValueOnce(response({ job_id: 'job-3', rows: [{ row_number: 1 }] }));
+    const photos: Array<[number, number]> = [];
+    const result = await api.previewInventoryImportChunked(
+      { uri: 'u', name: 'photos.xlsx', size: 5 }, async () => 'QQ==', undefined,
+      (done, total) => photos.push([done, total]), 0,
+    );
+    expect(result).toEqual({ job_id: 'job-3', rows: [{ row_number: 1 }] });
+    expect(photos).toEqual([[0, 0], [50, 80]]);
+    const calls = fetchMock.mock.calls as Array<[string, RequestInit]>;
+    expectPath(calls[3][0], '/inventory/imports/job-3');
+    expectPath(calls[7][0], '/inventory/imports/job-3/preview');
+  });
+
+  it('surfaces a failed background preview with the server reason', async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(response({ id: 'j', status: 'failed', error: 'Could not find an inventory header row.' }))
+      .mockResolvedValueOnce(response({ id: 'j', status: 'failed', error: null }));
+    await expect(api.waitForImportPreview('j', undefined, 0)).rejects.toThrow('header row');
+    await expect(api.waitForImportPreview('j', undefined, 0)).rejects.toThrow("Couldn't read this spreadsheet.");
+  });
+
+  it('does not retry a chunk the server rejected', async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(response({ upload_id: 'up-2', chunk_bytes: 10 }, 201))
+      .mockResolvedValueOnce(response({ detail: 'Spreadsheet is larger than Resqlo can import.' }, 413));
+    await expect(
+      api.previewInventoryImportChunked({ uri: 'u', name: 'a.csv', size: 5 }, async () => 'QQ=='),
+    ).rejects.toThrow('larger than Resqlo');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('uploads preview and import files as FormData with defaults and overrides', async () => {
     const preview = new FormData();
     await api.previewInventoryImport(preview);
