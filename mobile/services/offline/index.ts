@@ -27,6 +27,7 @@ export {
   readCachedDashboard,
   isTempId,
 } from "./inventory";
+export type { FailedSync } from "./inventory";
 export { peekSnapshot, loadSnapshot, saveSnapshot } from "./snapshot";
 export { setSender } from "./sender";
 
