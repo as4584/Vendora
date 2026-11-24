@@ -737,7 +737,7 @@ export default function AddItemScreen() {
                 </View>
                 <StockxPriceHint name={name} size={size} />
 
-                <EbayCompsCard query={name} onUsePrice={setExpectedPrice} />
+                <EbayCompsCard query={name} onUsePrice={setExpectedPrice} buyPrice={buyPrice} autoLoadKey={upc && name.trim().length >= 2 ? `${upc}:${name.trim()}` : undefined} />
 
                 <Text style={styles.label}>Platform</Text>
                 <TextInput
