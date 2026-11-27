@@ -496,6 +496,8 @@ def _find_matrix_product_name(
                 continue
             if _is_matrix_size_label(candidate) or candidate.isdigit():
                 continue
+            if normalized == "total" or _BLOCK_PRICE_CELL.match(candidate):
+                continue
             return candidate, row_idx + 1, col + 1
     return None, None, None
 
@@ -665,6 +667,29 @@ def _horizontal_size_table_rows_to_dicts_should_stop(row: list[Any], name_col: i
     value = normalize_header(row[name_col] if name_col < len(row) else "")
     return value in {"itemname", "productname"}
 
+_BLOCK_PRICE_CELL = re.compile(r"^\$\s?(\d[\d,]*(?:\.\d{1,2})?)$")
+_NAME_PRICE_SUFFIX = re.compile(r"\s*\$\s?(\d[\d,]*(?:\.\d{1,2})?)\s*$")
+
+
+def _split_name_price(name: str) -> tuple[str, str | None]:
+    """'Accolade Hoodie Black $120' -> ('Accolade Hoodie Black', '120')."""
+    match = _NAME_PRICE_SUFFIX.search(name)
+    if not match or not match.string[: match.start()].strip():
+        return name, None
+    return name[: match.start()].strip(), match.group(1).replace(",", "")
+
+
+def _find_block_price(
+    table_rows: list[list[Any]], first_row_idx: int, header_idx: int, left_bound: int, right_bound: int,
+) -> str | None:
+    """Card-grid sheets put the price anywhere in the card: under the name or in the Total slot."""
+    for row in table_rows[max(0, first_row_idx): header_idx]:
+        for col in range(left_bound, right_bound + 1):
+            match = _BLOCK_PRICE_CELL.match(_non_empty(row, col))
+            if match:
+                return match.group(1).replace(",", "")
+    return None
+
 
 def _warehouse_matrix_rows_to_dicts(
     table_rows: list[list[Any]],
@@ -690,7 +715,7 @@ def _warehouse_matrix_rows_to_dicts(
             if not product_name or product_row_number is None or product_col_number is None:
                 continue
 
-            name = _compact_text(product_name)
+            name, price = _split_name_price(_compact_text(product_name))
             total_quantity = sum(int(variant["quantity"]) for variant in variants)
             size_col, qty_col = pairs[pair_idx]
             left_bound = pairs[pair_idx - 1][1] + 1 if pair_idx > 0 else 0
@@ -713,6 +738,11 @@ def _warehouse_matrix_rows_to_dicts(
             )
             if image_url:
                 parsed_row["Image URL"] = image_url
+            price = price or _find_block_price(
+                table_rows, product_row_number - 1, header_idx, left_bound, right_bound,
+            )
+            if price:
+                parsed_row["Price"] = price
             category = _infer_category(name)
             if category:
                 parsed_row["Category"] = category

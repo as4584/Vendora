@@ -9,6 +9,7 @@ import {
   TextInput,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { useRouter } from "expo-router";
 import { DIRECT_UPLOAD_LIMIT, readBase64Chunk } from "../../../utils/chunkedUpload";
 import * as api from "../../../services/api";
 import { ActionButton, Card, HeaderTitle, Pill, SectionLabel, Stepper } from "../../../components/ui";
@@ -31,6 +32,9 @@ function pickerLabel(
 export default function InventoryImportScreen() {
   const [preview, setPreview] = useState<api.InventoryImportPreview | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const router = useRouter();
+  // Alert.alert does nothing on web, so the result lives on screen instead.
+  const [done, setDone] = useState<{ title: string; detail: string } | null>(null);
   const [photoProgress, setPhotoProgress] = useState<{ done: number; total: number } | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -98,10 +102,11 @@ export default function InventoryImportScreen() {
     try {
       const result = await api.commitInventoryImport(preview!.job_id);
       const added = result.rows_created + result.rows_updated;
-      Alert.alert(
-        added === 1 ? "1 item added" : `${added} items added`,
-        `${result.rows_created} new, ${result.rows_updated} updated${result.rows_skipped ? `, ${result.rows_skipped} left out` : ""}.`
-      );
+      setDone({
+        title: added === 1 ? "1 item added" : `${added} items added`,
+        detail: `${result.rows_created} new, ${result.rows_updated} updated${result.rows_skipped ? `, ${result.rows_skipped} left out` : ""}.`,
+      });
+      scrollRef.current?.scrollTo?.({ y: 0, animated: true });
       setPreview(null);
       setFileName(null);
     } catch (err) {
@@ -147,10 +152,11 @@ export default function InventoryImportScreen() {
             reviewMessage
         );
       } else {
-        Alert.alert(
-          importedCount > 0 ? "Spreadsheet imported" : "No items imported",
-          `${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`
-        );
+        setDone({
+          title: importedCount > 0 ? `${importedCount} items imported` : "No items imported",
+          detail: `${result.created} new, ${result.updated} updated, ${result.skipped} skipped.${reviewMessage}`,
+        });
+        scrollRef.current?.scrollTo?.({ y: 0, animated: true });
       }
     } catch (err) {
       Alert.alert("Link import failed", errorMessage(err, "Could not import from this spreadsheet link."));
@@ -165,6 +171,14 @@ export default function InventoryImportScreen() {
         title="Import Inventory"
         subtitle="Upload a CSV or Excel sheet of any size, review each item, then add them to your inventory."
       />
+
+      {done ? (
+        <Card style={{ gap: SPACING.md, borderColor: COLORS.primary, borderWidth: 1 }}>
+          <Text style={styles.doneTitle}>{done.title}</Text>
+          <Text style={styles.helperText}>{done.detail}</Text>
+          <ActionButton label="See my inventory" onPress={() => router.replace("/inventory")} />
+        </Card>
+      ) : null}
 
       <Card style={{ gap: SPACING.md }}>
         <SectionLabel>Flow</SectionLabel>
@@ -261,6 +275,7 @@ export default function InventoryImportScreen() {
 }
 
 const styles = StyleSheet.create({
+  doneTitle: { color: COLORS.text, fontSize: 20, fontWeight: "700" },
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: SPACING.lg, paddingBottom: 48, gap: SPACING.md },
   helperText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },

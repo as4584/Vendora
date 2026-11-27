@@ -14,6 +14,9 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 
+const mockReplace = jest.fn();
+jest.mock('expo-router', () => ({ useRouter: () => ({ replace: mockReplace, push: jest.fn() }) }));
+
 jest.mock('expo-document-picker', () => ({
   getDocumentAsync: jest.fn(),
 }));
@@ -111,7 +114,10 @@ describe('InventoryImportScreen', () => {
     });
 
     expect(apiMock.commitInventoryImport).toHaveBeenCalledWith('job-22');
-    expect(Alert.alert).toHaveBeenCalledWith('1 item added', '1 new, 0 updated.');
+    expect(screen.getByText('1 item added')).toBeTruthy();
+    expect(screen.getByText('1 new, 0 updated.')).toBeTruthy();
+    fireEvent.press(screen.getByText('See my inventory'));
+    expect(mockReplace).toHaveBeenCalledWith('/inventory');
     expect(screen.queryByText('Review import')).toBeNull();
   });
 
@@ -339,10 +345,7 @@ describe('InventoryImportScreen', () => {
     fireEvent.changeText(screen.getByLabelText('Spreadsheet link'), 'https://example.com/items.xlsx');
     fireEvent.press(screen.getByText('Import Link'));
     await waitFor(() =>
-      expect(Alert.alert).toHaveBeenCalledWith(
-        'Spreadsheet imported',
-        '1 created, 1 updated, 0 skipped.',
-      ),
+      expect(screen.getByText('2 items imported')).toBeTruthy(),
     );
     fireEvent.press(screen.getByText('Import Link'));
     await waitFor(() =>

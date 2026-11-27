@@ -30,9 +30,31 @@ describe("web reachability", () => {
     expect(await cfg.reachabilityTest({ status: 503 })).toBe(false);
   });
 
-  it("leaves the default probe alone on iOS", () => {
+  it("probes our API health endpoint on iOS and re-checks fast while offline", () => {
     const { NetInfo } = load("ios");
-    expect(NetInfo.configure).not.toHaveBeenCalled();
+    const cfg = NetInfo.configure.mock.calls[0][0];
+    expect(cfg.reachabilityUrl).toMatch(/\/api\/v1\/health$/);
+    expect(cfg.reachabilityShortTimeout).toBeLessThanOrEqual(2_000);
+  });
+});
+
+describe("markReachable", () => {
+  it("flips back online at once when the server answers", () => {
+    const { net, NetInfo } = load("ios");
+    let emit: (s: State) => void = () => {};
+    NetInfo.addEventListener.mockImplementation((cb: (s: State) => void) => {
+      emit = cb;
+      return () => {};
+    });
+    NetInfo.fetch.mockResolvedValueOnce({ isConnected: true, isInternetReachable: null });
+    net.initNetwork();
+    emit({ isConnected: true, isInternetReachable: false });
+    const seen: boolean[] = [];
+    net.subscribeNetwork((o) => seen.push(o));
+    net.markReachable();
+    net.markReachable();
+    expect(net.isOnline()).toBe(true);
+    expect(seen).toEqual([true]);
   });
 });
 

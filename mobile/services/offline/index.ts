@@ -6,7 +6,7 @@ import { flushInBackground } from "./inventory";
 import { loadConMode } from "../conMode";
 import { subscribeSession } from "../session";
 
-export { isOnline, subscribeNetwork } from "./net";
+export { isOnline, markReachable, subscribeNetwork } from "./net";
 export {
   cacheItemsFromServer,
   cacheItemFromServer,
