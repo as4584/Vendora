@@ -9,6 +9,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import {
   isOnline,
+  markReachable,
   setSender,
   cacheItemsFromServer,
   cacheItemFromServer,
@@ -326,6 +327,7 @@ export async function request<T>(
     assertSession(session);
     throw new ConnectionError(error instanceof Error ? error.message : "Network request failed.");
   }
+  markReachable();
   assertSession(session);
 
   if (response.status === 401 && token && !publicAuth) {
